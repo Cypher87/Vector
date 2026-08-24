@@ -1,0 +1,8 @@
+{
+  "dataBaseUrl": "/api/readsb?source=live",
+  "historyBaseUrl": "/api/readsb?source=history",
+  "mapStyleUrl": "/map-style.json",
+  "siteName": "Vector",
+  "receiverName": "Local readsb receiver",
+  "unitSystem": "metric"
+}

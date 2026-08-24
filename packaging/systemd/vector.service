@@ -1,0 +1,44 @@
+[Unit]
+Description=Vector ADS-B Radar
+Documentation=https://github.com/Cypher87/Vector
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=vector
+Group=vector
+WorkingDirectory=/opt/vector/app
+Environment=NODE_ENV=production
+Environment=HOME=/var/lib/vector
+EnvironmentFile=/etc/vector/vector.env
+ExecStart=/opt/vector/runtime/node/bin/node /opt/vector/app/dist/standalone/server.js
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=20s
+UMask=0027
+
+# The application needs outbound HTTP(S) for readsb, map and enrichment data,
+# but it does not need privileges or writable access to its installation.
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/vector
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

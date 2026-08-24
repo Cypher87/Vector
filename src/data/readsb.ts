@@ -1,0 +1,309 @@
+import type { Aircraft, AircraftHistorySnapshot, AircraftSource, AircraftTracePoint, Receiver, RuntimeConfig, UnitSystem } from '../domain/aircraft';
+
+type UnknownRecord = Record<string, unknown>;
+
+const supportedSources = new Set<AircraftSource>([
+  'adsb_icao',
+  'adsb_icao_nt',
+  'adsr_icao',
+  'tisb_icao',
+  'mlat',
+  'mode_s',
+  'other',
+]);
+
+const asRecord = (value: unknown): UnknownRecord | undefined =>
+  typeof value === 'object' && value !== null ? (value as UnknownRecord) : undefined;
+
+const asNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+const asString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
+const asBoolean = (value: unknown): boolean => value === true;
+
+const sourceFrom = (value: unknown): AircraftSource => {
+  const candidate = asString(value) as AircraftSource | undefined;
+  return candidate && supportedSources.has(candidate) ? candidate : 'other';
+};
+
+const unitSystemFrom = (value: unknown): UnitSystem => {
+  const candidate = asString(value);
+  return candidate === 'aeronautical' || candidate === 'imperial' || candidate === 'metric'
+    ? candidate
+    : 'metric';
+};
+
+async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
+  const response = await fetch(url, { cache: 'no-store', signal });
+  if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+  return response.json();
+}
+
+async function fetchBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const response = await fetch(url, { cache: 'no-store', signal });
+  if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+  return response.arrayBuffer();
+}
+
+const dataRequestUrl = (baseUrl: string, file: string) => {
+  const [path, query = ''] = baseUrl.split('?', 2);
+  if (path !== '/api/readsb') throw new Error('The configured readsb proxy path is invalid');
+  const parameters = new URLSearchParams(query);
+  parameters.set('path', file);
+  return `${path}?${parameters.toString()}`;
+};
+
+export async function loadRuntimeConfig(signal?: AbortSignal): Promise<RuntimeConfig> {
+  const defaults: RuntimeConfig = {
+    dataBaseUrl: '/data/',
+    historyBaseUrl: '/globe_history/',
+    mapStyleUrl: '/map-style.json',
+    siteName: 'Vector',
+    receiverName: 'Local readsb receiver',
+    unitSystem: 'metric',
+  };
+
+  try {
+    let value: UnknownRecord | undefined;
+    for (const configUrl of ['/api/config', '/config.json']) {
+      try {
+        value = asRecord(await fetchJson(configUrl, signal));
+        if (value) break;
+      } catch {
+        // The static file remains a safe fallback for non-server previews.
+      }
+    }
+    if (!value) return defaults;
+    return {
+      dataBaseUrl: asString(value.dataBaseUrl) ?? defaults.dataBaseUrl,
+      historyBaseUrl: asString(value.historyBaseUrl) ?? defaults.historyBaseUrl,
+      mapStyleUrl: asString(value.mapStyleUrl) ?? defaults.mapStyleUrl,
+      siteName: asString(value.siteName) ?? defaults.siteName,
+      receiverName: asString(value.receiverName) ?? defaults.receiverName,
+      unitSystem: unitSystemFrom(value.unitSystem),
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+export async function loadReceiver(baseUrl: string, signal?: AbortSignal): Promise<Receiver> {
+  const value = asRecord(await fetchJson(dataRequestUrl(baseUrl, 'receiver.json'), signal));
+  if (!value) throw new Error('receiver.json does not contain an object');
+
+  return {
+    haveReplay: asBoolean(value.haveReplay),
+    historyCount: Math.max(0, Math.floor(asNumber(value.history) ?? 0)),
+    version: asString(value.version),
+    refreshMs: Math.min(5_000, Math.max(500, asNumber(value.refresh) ?? 1_000)),
+    latitude: asNumber(value.lat),
+    longitude: asNumber(value.lon),
+  };
+}
+
+const replaySourceFrom = (code: number): AircraftSource => {
+  if (code === 0) return 'adsb_icao';
+  if (code === 1) return 'adsb_icao_nt';
+  if (code === 2) return 'adsr_icao';
+  if (code === 3) return 'tisb_icao';
+  if (code === 5) return 'mlat';
+  if (code === 7) return 'mode_s';
+  return 'other';
+};
+
+const bearingBetween = (from: [number, number] | undefined, to: [number, number]) => {
+  if (!from || from[0] === to[0] && from[1] === to[1]) return undefined;
+  const radians = (degrees: number) => degrees * Math.PI / 180;
+  const degrees = (value: number) => value * 180 / Math.PI;
+  const fromLatitude = radians(from[1]);
+  const toLatitude = radians(to[1]);
+  const deltaLongitude = radians(to[0] - from[0]);
+  const y = Math.sin(deltaLongitude) * Math.cos(toLatitude);
+  const x = Math.cos(fromLatitude) * Math.sin(toLatitude)
+    - Math.sin(fromLatitude) * Math.cos(toLatitude) * Math.cos(deltaLongitude);
+  return (degrees(Math.atan2(y, x)) + 360) % 360;
+};
+
+const replayDatePath = (date: Date) => [
+  date.getUTCFullYear(),
+  String(date.getUTCMonth() + 1).padStart(2, '0'),
+  String(date.getUTCDate()).padStart(2, '0'),
+].join('/');
+
+export async function loadAircraftReplayChunk(
+  historyBaseUrl: string,
+  date: Date,
+  signal?: AbortSignal,
+): Promise<AircraftHistorySnapshot[]> {
+  const chunkIndex = date.getUTCHours() * 2 + Math.floor(date.getUTCMinutes() / 30);
+  const path = `${replayDatePath(date)}/heatmap/${String(chunkIndex).padStart(2, '0')}.bin.ttf`;
+  const buffer = await fetchBinary(dataRequestUrl(historyBaseUrl, path), signal);
+  if (buffer.byteLength === 0 || buffer.byteLength % 16 !== 0) throw new Error('Invalid readsb replay file');
+
+  const signed = new Int32Array(buffer);
+  const unsigned = new Uint32Array(buffer);
+  const bytes = new Uint8Array(buffer);
+  const slices: number[] = [];
+  for (let index = 0; index < signed.length; index += 4) {
+    if (signed[index] === 0x0e7f7c9d) slices.push(index);
+  }
+  if (slices.length === 0) throw new Error('No readsb replay slices found');
+
+  const identities = new Map<string, { flight?: string; squawk?: string }>();
+  const previousPositions = new Map<string, [number, number]>();
+  const snapshots = slices.map((sliceStart, sliceIndex): AircraftHistorySnapshot => {
+    const sliceEnd = slices[sliceIndex + 1] ?? signed.length;
+    const timestamp = unsigned[sliceStart + 2] / 1_000 + unsigned[sliceStart + 1] * 4_294_967.296;
+    const aircraft: Aircraft[] = [];
+
+    for (let index = sliceStart + 4; index < sliceEnd; index += 4) {
+      const latitudeRaw = signed[index + 1];
+      const id = `${(unsigned[index] & 0x01000000) !== 0 ? '~' : ''}${(unsigned[index] & 0x00ffffff).toString(16).padStart(6, '0')}`;
+      if (latitudeRaw >= 1_073_741_824) {
+        const byteOffset = 4 * (index + 2);
+        const flight = String.fromCharCode(...bytes.slice(byteOffset, byteOffset + 8)).replaceAll('\0', '').trim() || undefined;
+        identities.set(id, { flight, squawk: String(latitudeRaw & 0xffff).padStart(4, '0') });
+        continue;
+      }
+
+      const latitude = latitudeRaw / 1_000_000;
+      const longitude = signed[index + 2] / 1_000_000;
+      if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) continue;
+
+      let altitudeCode = signed[index + 3] & 0xffff;
+      if ((altitudeCode & 0x8000) !== 0) altitudeCode |= -0x10000;
+      const onGround = altitudeCode === -123;
+      const altitudeFt = altitudeCode === -123 || altitudeCode === -124 ? undefined : altitudeCode * 25;
+      const speedCode = signed[index + 3] >> 16;
+      const position: [number, number] = [longitude, latitude];
+      const identity = identities.get(id);
+
+      aircraft.push({
+        id,
+        flight: identity?.flight ?? id.toUpperCase(),
+        altitudeFt,
+        onGround,
+        groundSpeedKts: speedCode === -1 ? undefined : speedCode / 10,
+        trackDeg: bearingBetween(previousPositions.get(id), position),
+        latitude,
+        longitude,
+        squawk: identity?.squawk,
+        source: replaySourceFrom((unsigned[index] >> 27) & 0x1f),
+        seenSeconds: 0,
+        messages: 0,
+        dbFlags: 0,
+      });
+      previousPositions.set(id, position);
+    }
+
+    return { aircraft, timestamp };
+  });
+
+  const futurePositions = new Map<string, {
+    different?: [number, number];
+    nearest: [number, number];
+  }>();
+  for (let snapshotIndex = snapshots.length - 1; snapshotIndex >= 0; snapshotIndex -= 1) {
+    snapshots[snapshotIndex].aircraft = snapshots[snapshotIndex].aircraft.map((item) => {
+      if (item.latitude === undefined || item.longitude === undefined) return item;
+
+      const current: [number, number] = [item.longitude, item.latitude];
+      const future = futurePositions.get(item.id);
+      const nearestIsCurrent = future
+        && future.nearest[0] === current[0]
+        && future.nearest[1] === current[1];
+      const nextDifferent = nearestIsCurrent ? future.different : future?.nearest;
+      futurePositions.set(item.id, {
+        nearest: current,
+        different: nearestIsCurrent ? future?.different : future?.nearest,
+      });
+
+      if (item.trackDeg !== undefined || !nextDifferent) return item;
+      const trackDeg = bearingBetween(current, nextDifferent);
+      return trackDeg === undefined ? item : { ...item, trackDeg };
+    });
+  }
+
+  return snapshots;
+}
+
+export async function loadAircraft(baseUrl: string, signal?: AbortSignal) {
+  const value = asRecord(await fetchJson(dataRequestUrl(baseUrl, 'aircraft.json'), signal));
+  if (!value) throw new Error('aircraft.json does not contain an object');
+
+  const records = Array.isArray(value.aircraft) ? value.aircraft : [];
+  const aircraft = records.flatMap((candidate): Aircraft[] => {
+    const item = asRecord(candidate);
+    const rawHex = item ? asString(item.hex) : undefined;
+    if (!item || !rawHex) return [];
+
+    const altitude = item.alt_baro;
+    const verticalRate = asNumber(item.baro_rate) ?? asNumber(item.geom_rate);
+
+    return [{
+      id: rawHex.toLowerCase(),
+      flight: asString(item.flight) ?? asString(item.r) ?? rawHex.toUpperCase(),
+      category: asString(item.category),
+      registration: asString(item.r),
+      aircraftType: asString(item.t),
+      description: asString(item.desc),
+      altitudeFt: asNumber(altitude) ?? asNumber(item.alt_geom),
+      onGround: altitude === 'ground',
+      groundSpeedKts: asNumber(item.gs),
+      trackDeg: asNumber(item.track) ?? asNumber(item.true_heading),
+      verticalRateFpm: verticalRate,
+      latitude: asNumber(item.lat),
+      longitude: asNumber(item.lon),
+      squawk: asString(item.squawk),
+      source: sourceFrom(item.type),
+      seenSeconds: asNumber(item.seen) ?? 0,
+      messages: asNumber(item.messages) ?? 0,
+      dbFlags: asNumber(item.dbFlags) ?? 0,
+    }];
+  });
+
+  return {
+    now: asNumber(value.now) ?? Date.now() / 1_000,
+    messages: asNumber(value.messages) ?? 0,
+    aircraft,
+  };
+}
+
+export async function loadAircraftLegTrace(baseUrl: string, aircraftId: string, signal?: AbortSignal): Promise<AircraftTracePoint[]> {
+  const normalizedId = aircraftId.toLowerCase();
+  if (!/^~?[0-9a-f]{6}$/.test(normalizedId)) return [];
+
+  const tracePath = `traces/${normalizedId.slice(-2)}/trace_recent_${normalizedId}.json`;
+  const value = asRecord(await fetchJson(dataRequestUrl(baseUrl, tracePath), signal));
+  const baseTimestamp = value ? asNumber(value.timestamp) : undefined;
+  if (!value || baseTimestamp === undefined || !Array.isArray(value.trace)) return [];
+
+  const points = value.trace.flatMap((candidate): AircraftTracePoint[] => {
+    if (!Array.isArray(candidate)) return [];
+    const offset = asNumber(candidate[0]);
+    const latitude = asNumber(candidate[1]);
+    const longitude = asNumber(candidate[2]);
+    if (offset === undefined || latitude === undefined || longitude === undefined) return [];
+    if (Math.abs(latitude) > 90 || Math.abs(longitude) > 180) return [];
+
+    const altitude = candidate[3];
+    const flags = asNumber(candidate[6]) ?? 0;
+    return [{
+      altitudeFt: asNumber(altitude),
+      latitude,
+      longitude,
+      onGround: altitude === 'ground',
+      stale: (flags & 1) !== 0,
+      startsLeg: (flags & 2) !== 0,
+      timestamp: offset > 1_000_000_000 ? offset : baseTimestamp + offset,
+    }];
+  });
+
+  let latestLegStart = 0;
+  points.forEach((point, index) => {
+    if (point.startsLeg) latestLegStart = index;
+  });
+  return points.slice(latestLegStart);
+}

@@ -1,0 +1,33 @@
+{
+  "version": 8,
+  "name": "Vector local map",
+  "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+  "sources": {
+    "openstreetmap": {
+      "type": "raster",
+      "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      "tileSize": 256,
+      "attribution": "© OpenStreetMap contributors",
+      "maxzoom": 19
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#132126" }
+    },
+    {
+      "id": "openstreetmap",
+      "type": "raster",
+      "source": "openstreetmap",
+      "paint": {
+        "raster-opacity": 0.82,
+        "raster-saturation": -0.78,
+        "raster-contrast": 0.18,
+        "raster-brightness-min": 0.08,
+        "raster-brightness-max": 0.62
+      }
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "now": 1787556000,
+  "messages": 1845621,
+  "aircraft": [
+    { "hex": "4840d6", "flight": "KLM1451", "r": "PH-BXA", "t": "B738", "desc": "BOEING 737-800", "type": "adsb_icao", "alt_baro": 31000, "gs": 462, "track": 326, "baro_rate": 1152, "lat": 52.51, "lon": 4.70, "squawk": "2261", "seen": 0.4, "messages": 4231, "dbFlags": 0 },
+    { "hex": "485209", "flight": "TRA6784", "r": "PH-YHA", "t": "A21N", "desc": "AIRBUS A321NEO", "type": "adsb_icao", "alt_baro": 12400, "gs": 338, "track": 62, "baro_rate": -1856, "lat": 51.98, "lon": 4.18, "squawk": "1000", "seen": 0.2, "messages": 2865, "dbFlags": 0 },
+    { "hex": "3c66b0", "flight": "DLH9AV", "r": "D-AIUP", "t": "A320", "desc": "AIRBUS A320", "type": "adsb_icao", "alt_baro": 36975, "gs": 451, "track": 308, "baro_rate": 0, "lat": 52.82, "lon": 5.49, "squawk": "1000", "seen": 0.8, "messages": 6178, "dbFlags": 0 },
+    { "hex": "484abc", "flight": "PH-HZL", "r": "PH-HZL", "t": "C172", "desc": "CESSNA 172S", "type": "adsb_icao", "alt_baro": 2850, "gs": 104, "track": 12, "baro_rate": 512, "lat": 51.83, "lon": 5.28, "squawk": "7000", "seen": 1.1, "messages": 1269, "dbFlags": 0 },
+    { "hex": "4ca9ea", "flight": "RYR31NJ", "r": "EI-HAT", "t": "B38M", "desc": "BOEING 737 MAX 8", "type": "adsb_icao", "alt_baro": 38000, "gs": 475, "track": 282, "baro_rate": 0, "lat": 52.22, "lon": 5.92, "squawk": "2000", "seen": 0.5, "messages": 5184, "dbFlags": 0 },
+    { "hex": "44cc45", "flight": "BEL8LR", "r": "OO-SBE", "t": "A20N", "desc": "AIRBUS A320NEO", "type": "mlat", "alt_baro": 24700, "gs": 402, "track": 42, "baro_rate": 768, "lat": 52.68, "lon": 3.61, "squawk": "1000", "seen": 1.8, "messages": 3486, "dbFlags": 0 }
+  ]
+}
