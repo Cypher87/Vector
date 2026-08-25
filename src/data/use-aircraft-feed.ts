@@ -107,7 +107,14 @@ export function useAircraftFeed(): FeedState {
             ? Math.max(0, Math.round((snapshot.messages - earlier.messages) / elapsedSeconds))
             : 0;
           previous.current = { messages: snapshot.messages, at };
-          const stableAircraft = snapshot.aircraft.map((item) => stabilizeAircraft(item, previousAircraft.current.get(item.id)));
+          const stableAircraft = snapshot.aircraft.map((item) => {
+            const priorAircraft = previousAircraft.current.get(item.id);
+            const stable = stabilizeAircraft(item, priorAircraft);
+            const messageRate = priorAircraft && elapsedSeconds > 0
+              ? Math.max(0, (item.messages - priorAircraft.messages) / elapsedSeconds)
+              : undefined;
+            return { ...stable, messageRate };
+          });
           previousAircraft.current = new Map(stableAircraft.map((item) => [item.id, item]));
           failures = 0;
           setState((current) => ({

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AircraftPhoto } from '../src/components/aircraft-photo';
 import { AircraftRoute } from '../src/components/aircraft-route';
+import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
 import { HistoryControls } from '../src/components/history-controls';
 import { useAircraftFeed } from '../src/data/use-aircraft-feed';
 import { useAircraftHistory } from '../src/data/use-aircraft-history';
@@ -64,6 +65,7 @@ export default function Home() {
   const [following, setFollowing] = useState(false);
   const [labelsVisible, setLabelsVisible] = useState(true);
   const [legTraceVisible, setLegTraceVisible] = useState(true);
+  const [technicalDataOpen, setTechnicalDataOpen] = useState(false);
   const [mapFocus, setMapFocus] = useState<{ latitude?: number; longitude?: number; request: number }>();
   const [unitOverride, setUnitOverride] = useState<UnitSystem>();
   const [language, setLanguage] = useState<Language>('nl');
@@ -163,7 +165,19 @@ export default function Home() {
   const displayedAircraft = useMemo(() => {
     if (!history.open || !history.currentSnapshot) return feed.aircraft;
     const liveAircraft = new Map(feed.aircraft.map((item) => [item.id, item]));
-    return history.currentSnapshot.aircraft.map((item) => ({ ...liveAircraft.get(item.id), ...item }));
+    return history.currentSnapshot.aircraft.map((item) => {
+      const metadata = liveAircraft.get(item.id);
+      return {
+        ...item,
+        category: metadata?.category,
+        registration: metadata?.registration,
+        aircraftType: metadata?.aircraftType,
+        description: metadata?.description,
+        ownerOperator: metadata?.ownerOperator,
+        year: metadata?.year,
+        dbFlags: metadata?.dbFlags ?? item.dbFlags,
+      };
+    });
   }, [feed.aircraft, history.currentSnapshot, history.open]);
 
   const filterMatchedAircraft = useMemo(() => displayedAircraft.filter((item) => {
@@ -204,9 +218,10 @@ export default function Home() {
   const selectedAltitude = selected ? altitudeValue(selected, unitSystem, language) : undefined;
   const selectedSpeed = selected ? speedValue(selected.groundSpeedKts, unitSystem, language) : undefined;
   const selectedVerticalRate = selected ? verticalRateValue(selected.verticalRateFpm, unitSystem, language) : undefined;
-  const selectedDistance = selected
-    ? distanceValue(distanceKilometres(centerLat, centerLon, selected.latitude, selected.longitude), unitSystem, language)
+  const selectedDistanceKilometres = selected
+    ? distanceKilometres(centerLat, centerLon, selected.latitude, selected.longitude)
     : undefined;
+  const selectedDistance = selected ? distanceValue(selectedDistanceKilometres, unitSystem, language) : undefined;
   const selectedKind = selected ? aircraftKind(selected) : undefined;
   const activeFilterCount = Object.values(aircraftFilters).filter(Boolean).length;
   const mapAircraft = selected && !filterMatchedAircraft.some((item) => item.id === selected.id)
@@ -497,10 +512,31 @@ export default function Home() {
             <section className="signal-card">
               <div>
                 <span className="signal-bars"><i /><i /><i /><i /></span>
-                <span><strong>{sourceLabel(selected.source)} {t('reception')}</strong><small>{selected.latitude === undefined ? t('noCurrentPosition') : `${selectedDistance?.value} ${selectedDistance?.unit} ${t('fromReceiver')}`} · {formatNumber(selected.messages, language)} {t('messages')}</small></span>
+                <span>
+                  <strong>{sourceLabel(selected.source)} {t('reception')}{selected.rssiDbfs === undefined || history.open ? '' : ` · ${seconds.format(selected.rssiDbfs)} dBFS`}</strong>
+                  <small>{selected.latitude === undefined ? t('noCurrentPosition') : `${selectedDistance?.value} ${selectedDistance?.unit} ${t('fromReceiver')}`} · {history.open ? '—' : formatNumber(selected.messages, language)} {t('messages')}{selected.messageRate === undefined || history.open ? '' : ` · ${seconds.format(selected.messageRate)} msg/s`}</small>
+                </span>
               </div>
-              <button>{t('technicalData')} <span>›</span></button>
+              <button
+                type="button"
+                className={technicalDataOpen ? 'active' : ''}
+                aria-controls="aircraft-technical-data"
+                aria-expanded={technicalDataOpen}
+                onClick={() => setTechnicalDataOpen((open) => !open)}
+              >
+                {t('technicalData')} <span aria-hidden="true">›</span>
+              </button>
             </section>
+
+            {technicalDataOpen && (
+              <AircraftTechnicalData
+                aircraft={selected}
+                distanceKilometres={selectedDistanceKilometres}
+                historyMode={history.open}
+                language={language}
+                unitSystem={unitSystem}
+              />
+            )}
 
             <button className="primary-action" onClick={() => setFollowing(true)}>
               {t(following ? 'aircraftFollowing' : 'followOnMap')} <span>→</span>
