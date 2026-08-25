@@ -13,6 +13,9 @@ readonly VECTOR_SERVICE='/etc/systemd/system/vector.service'
 readonly VECTOR_REPOSITORY_DEFAULT='https://github.com/Cypher87/Vector.git'
 readonly NODE_VERSION='22.23.2'
 readonly PNPM_VERSION='11.19.0'
+readonly SYSTEM_PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+export PATH="$SYSTEM_PATH"
 
 VECTOR_REPOSITORY="${VECTOR_REPOSITORY:-$VECTOR_REPOSITORY_DEFAULT}"
 VECTOR_REF="${VECTOR_REF:-main}"
@@ -128,7 +131,10 @@ install -d -o "$VECTOR_USER" -g "$VECTOR_GROUP" -m 0750 "$VECTOR_STATE"
 install -d -o root -g "$VECTOR_GROUP" -m 0750 "$VECTOR_CONFIG_DIR"
 
 run_as_vector() {
+  local working_directory="$1"
+  shift
   runuser -u "$VECTOR_USER" -- env \
+    --chdir="$working_directory" \
     HOME="$VECTOR_STATE" \
     XDG_CACHE_HOME="$VECTOR_STATE/.cache" \
     PATH="$VECTOR_RUNTIME/node/bin:/usr/bin:/bin" \
@@ -137,28 +143,28 @@ run_as_vector() {
 }
 
 if [[ -d "$VECTOR_APP/.git" ]]; then
-  [[ -z "$(run_as_vector git -C "$VECTOR_APP" status --porcelain)" ]] \
+  [[ -z "$(run_as_vector "$VECTOR_ROOT" git -C "$VECTOR_APP" status --porcelain)" ]] \
     || fail "$VECTOR_APP contains local changes; update aborted without overwriting them."
-  current_remote="$(run_as_vector git -C "$VECTOR_APP" remote get-url origin)"
+  current_remote="$(run_as_vector "$VECTOR_ROOT" git -C "$VECTOR_APP" remote get-url origin)"
   [[ "$current_remote" == "$VECTOR_REPOSITORY" ]] \
     || fail "Existing checkout uses a different origin: $current_remote"
 else
   [[ -z "$(find "$VECTOR_APP" -mindepth 1 -maxdepth 1 -print -quit)" ]] \
     || fail "$VECTOR_APP exists and is not an empty Git checkout."
   log 'Cloning Vector.'
-  run_as_vector git clone --filter=blob:none "$VECTOR_REPOSITORY" "$VECTOR_APP"
+  run_as_vector "$VECTOR_ROOT" git clone --filter=blob:none "$VECTOR_REPOSITORY" "$VECTOR_APP"
 fi
 
 log "Selecting Vector revision $VECTOR_REF."
-run_as_vector git -C "$VECTOR_APP" fetch --prune --tags origin
-if target_revision="$(run_as_vector git -C "$VECTOR_APP" rev-parse --verify --quiet "origin/$VECTOR_REF^{commit}")"; then
+run_as_vector "$VECTOR_ROOT" git -C "$VECTOR_APP" fetch --prune --tags origin
+if target_revision="$(run_as_vector "$VECTOR_ROOT" git -C "$VECTOR_APP" rev-parse --verify --quiet "origin/$VECTOR_REF^{commit}")"; then
   :
-elif target_revision="$(run_as_vector git -C "$VECTOR_APP" rev-parse --verify --quiet "$VECTOR_REF^{commit}")"; then
+elif target_revision="$(run_as_vector "$VECTOR_ROOT" git -C "$VECTOR_APP" rev-parse --verify --quiet "$VECTOR_REF^{commit}")"; then
   :
 else
   fail "Cannot resolve VECTOR_REF=$VECTOR_REF."
 fi
-run_as_vector git -C "$VECTOR_APP" checkout --detach "$target_revision"
+run_as_vector "$VECTOR_ROOT" git -C "$VECTOR_APP" checkout --detach "$target_revision"
 
 if [[ ! -e "$VECTOR_CONFIG" ]]; then
   log "Creating $VECTOR_CONFIG."
@@ -191,14 +197,15 @@ fi
 ln -sfn "$(basename "$node_directory")" "$VECTOR_RUNTIME/node"
 
 log "Activating pnpm $PNPM_VERSION through Corepack."
+export PATH="$VECTOR_RUNTIME/node/bin:$SYSTEM_PATH"
 export COREPACK_HOME="$VECTOR_RUNTIME/corepack"
 "$node_directory/bin/corepack" enable --install-directory "$node_directory/bin"
 "$node_directory/bin/corepack" install --global "pnpm@$PNPM_VERSION"
 chmod -R a+rX "$VECTOR_RUNTIME"
 
 log 'Installing locked dependencies and creating the production build.'
-run_as_vector pnpm install --frozen-lockfile
-run_as_vector pnpm build
+run_as_vector "$VECTOR_APP" pnpm install --frozen-lockfile
+run_as_vector "$VECTOR_APP" pnpm build
 [[ -f "$VECTOR_APP/dist/standalone/server.js" ]] \
   || fail 'The Vinext standalone server was not produced.'
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AttributionControl, GeoJSONSource, Map as MapLibre, Marker } from 'maplibre-gl';
+import { AttributionControl, Map as MapLibre, Marker } from 'maplibre-gl';
 import type { Aircraft, AircraftTracePoint, UnitSystem } from '../domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../domain/aircraft-kind';
 import { loadAircraftLegTrace } from '../data/readsb';
@@ -46,12 +46,7 @@ type AircraftMarker = {
 };
 
 type LabelBox = { bottom: number; left: number; right: number; top: number };
-type TraceFeature = {
-  type: 'Feature';
-  geometry: { type: 'LineString'; coordinates: number[][] } | { type: 'Point'; coordinates: number[] };
-  properties: { color: string; kind: 'trace' | 'leg-start'; stale: boolean };
-};
-type TraceFeatureCollection = { type: 'FeatureCollection'; features: TraceFeature[] };
+type TraceSegmentElements = { glow?: SVGLineElement; line: SVGLineElement };
 
 const overlaps = (first: LabelBox, second: LabelBox) =>
   first.left < second.right && first.right > second.left && first.top < second.bottom && first.bottom > second.top;
@@ -70,46 +65,6 @@ const markerDistanceMetres = (
   const haversine = Math.sin(deltaLatitude / 2) ** 2
     + Math.cos(originLatitude) * Math.cos(destinationLatitude) * Math.sin(deltaLongitude / 2) ** 2;
   return 6_371_000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-};
-
-const emptyTraceData = (): TraceFeatureCollection => ({ type: 'FeatureCollection', features: [] });
-
-const traceData = (points: AircraftTracePoint[]): TraceFeatureCollection => {
-  const features: TraceFeature[] = [];
-
-  for (let index = 1; index < points.length; index += 1) {
-    const previous = points[index - 1];
-    const current = points[index];
-    features.push({
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [previous.longitude, previous.latitude],
-          [current.longitude, current.latitude],
-        ],
-      },
-      properties: {
-        color: altitudeColorForValue(current.altitudeFt ?? previous.altitudeFt, current.onGround),
-        kind: 'trace',
-        stale: previous.stale || current.stale,
-      },
-    });
-  }
-
-  const firstPoint = points[0];
-  if (firstPoint) {
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: [firstPoint.longitude, firstPoint.latitude] },
-      properties: {
-        color: altitudeColorForValue(firstPoint.altitudeFt, firstPoint.onGround),
-        kind: 'leg-start',
-        stale: firstPoint.stale,
-      },
-    });
-  }
-  return { type: 'FeatureCollection', features };
 };
 
 const mapControlLabels = (language: Language) => ({
@@ -225,6 +180,10 @@ export function RadarMap({ aircraft, center, dataBaseUrl, focusTarget, following
   const animationFrameRef = useRef<number | undefined>(undefined);
   const lastAnimationFrameRef = useRef<number | undefined>(undefined);
   const followTargetRef = useRef<[longitude: number, latitude: number] | undefined>(undefined);
+  const traceElementsRef = useRef<{ segments: TraceSegmentElements[]; start?: SVGCircleElement }>({ segments: [] });
+  const traceOverlayRef = useRef<SVGSVGElement | null>(null);
+  const tracePointsRef = useRef<AircraftTracePoint[]>([]);
+  const traceSignatureRef = useRef<string>();
   const labelsVisibleRef = useRef(labelsVisible);
   const languageRef = useRef(language);
   const navigationControlRef = useRef<ReturnType<typeof createMapNavigationControl> | undefined>(undefined);
@@ -289,9 +248,82 @@ export function RadarMap({ aircraft, center, dataBaseUrl, focusTarget, following
     animationFrameRef.current = requestAnimationFrame(animateMarkers);
   }, [animateMarkers]);
 
+  const updateTraceOverlayPositions = useCallback(() => {
+    const map = mapRef.current;
+    const points = tracePointsRef.current;
+    if (!map || points.length === 0) return;
+
+    const projected = points.map((point) => map.project([point.longitude, point.latitude]));
+    traceElementsRef.current.segments.forEach(({ glow, line }, index) => {
+      const from = projected[index];
+      const to = projected[index + 1];
+      for (const element of glow ? [glow, line] : [line]) {
+        element.setAttribute('x1', String(from.x));
+        element.setAttribute('y1', String(from.y));
+        element.setAttribute('x2', String(to.x));
+        element.setAttribute('y2', String(to.y));
+      }
+    });
+
+    const start = traceElementsRef.current.start;
+    if (start) {
+      start.setAttribute('cx', String(projected[0].x));
+      start.setAttribute('cy', String(projected[0].y));
+    }
+  }, []);
+
+  const renderTraceOverlay = useCallback((points: AircraftTracePoint[]) => {
+    const overlay = traceOverlayRef.current;
+    if (!overlay) return;
+
+    overlay.replaceChildren();
+    tracePointsRef.current = points;
+    const segments: TraceSegmentElements[] = [];
+    for (let index = 1; index < points.length; index += 1) {
+      const previous = points[index - 1];
+      const current = points[index];
+      const stale = previous.stale || current.stale;
+      const color = stale
+        ? '#91a4aa'
+        : altitudeColorForValue(current.altitudeFt ?? previous.altitudeFt, current.onGround);
+      let glow: SVGLineElement | undefined;
+      if (!stale) {
+        glow = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        glow.setAttribute('stroke', color);
+        glow.setAttribute('stroke-linecap', 'round');
+        glow.setAttribute('stroke-opacity', '0.2');
+        glow.setAttribute('stroke-width', '7');
+        overlay.appendChild(glow);
+      }
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-linecap', 'round');
+      line.setAttribute('stroke-opacity', stale ? '0.58' : '0.92');
+      line.setAttribute('stroke-width', stale ? '2.2' : '2.6');
+      if (stale) line.setAttribute('stroke-dasharray', '3 4');
+      overlay.appendChild(line);
+      segments.push({ glow, line });
+    }
+
+    let start: SVGCircleElement | undefined;
+    const firstPoint = points[0];
+    if (firstPoint) {
+      start = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      start.setAttribute('fill', '#0b1316');
+      start.setAttribute('r', '3.5');
+      start.setAttribute('stroke', altitudeColorForValue(firstPoint.altitudeFt, firstPoint.onGround));
+      start.setAttribute('stroke-opacity', '0.7');
+      start.setAttribute('stroke-width', '1.5');
+      overlay.appendChild(start);
+    }
+    traceElementsRef.current = { segments, start };
+    updateTraceOverlayPositions();
+  }, [updateTraceOverlayPositions]);
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
+    setReady(false);
     const map = new MapLibre({
       container: containerRef.current,
       style: mapStyleUrl,
@@ -300,6 +332,11 @@ export function RadarMap({ aircraft, center, dataBaseUrl, focusTarget, following
       attributionControl: false,
     });
     mapRef.current = map;
+    const traceOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    traceOverlay.classList.add('map-leg-trace-overlay');
+    traceOverlay.setAttribute('aria-hidden', 'true');
+    map.getCanvasContainer().appendChild(traceOverlay);
+    traceOverlayRef.current = traceOverlay;
     let layersInitialized = false;
 
     const updateLabelVisibility = () => {
@@ -339,6 +376,7 @@ export function RadarMap({ aircraft, center, dataBaseUrl, focusTarget, following
     map.on('click', () => onDeselectRef.current());
     map.on('moveend', updateLabelVisibility);
     map.on('zoomend', updateLabelVisibility);
+    map.on('move', updateTraceOverlayPositions);
     map.on('rotate', () => {
       markersRef.current.forEach((aircraftMarker) => {
         if (aircraftMarker.aircraft) {
@@ -371,61 +409,6 @@ export function RadarMap({ aircraft, center, dataBaseUrl, focusTarget, following
         source: 'receiver',
         paint: { 'circle-radius': 4, 'circle-color': '#0b1316', 'circle-stroke-color': '#4fe4d3', 'circle-stroke-width': 2 },
       });
-      map.addSource('selected-leg-trace', {
-        type: 'geojson',
-        data: emptyTraceData(),
-      });
-      map.addLayer({
-        id: 'selected-leg-trace-glow',
-        type: 'line',
-        source: 'selected-leg-trace',
-        filter: ['all', ['==', ['get', 'kind'], 'trace'], ['==', ['get', 'stale'], false]],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-blur': 2,
-          'line-color': ['get', 'color'],
-          'line-opacity': 0.2,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 4, 4, 10, 8],
-        },
-      });
-      map.addLayer({
-        id: 'selected-leg-trace-line',
-        type: 'line',
-        source: 'selected-leg-trace',
-        filter: ['all', ['==', ['get', 'kind'], 'trace'], ['==', ['get', 'stale'], false]],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': ['get', 'color'],
-          'line-opacity': 0.92,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.2, 10, 2.6],
-        },
-      });
-      map.addLayer({
-        id: 'selected-leg-trace-stale',
-        type: 'line',
-        source: 'selected-leg-trace',
-        filter: ['all', ['==', ['get', 'kind'], 'trace'], ['==', ['get', 'stale'], true]],
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: {
-          'line-color': '#91a4aa',
-          'line-dasharray': [1.5, 2],
-          'line-opacity': 0.58,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 2.2],
-        },
-      });
-      map.addLayer({
-        id: 'selected-leg-trace-start',
-        type: 'circle',
-        source: 'selected-leg-trace',
-        filter: ['==', ['get', 'kind'], 'leg-start'],
-        paint: {
-          'circle-color': '#0b1316',
-          'circle-radius': 3.5,
-          'circle-stroke-color': ['get', 'color'],
-          'circle-stroke-opacity': 0.7,
-          'circle-stroke-width': 1.5,
-        },
-      });
       setReady(true);
     };
 
@@ -443,9 +426,13 @@ export function RadarMap({ aircraft, center, dataBaseUrl, focusTarget, following
       updateLabelVisibilityRef.current = () => undefined;
       map.remove();
       mapRef.current = null;
+      traceElementsRef.current = { segments: [] };
+      traceOverlayRef.current = null;
+      tracePointsRef.current = [];
+      traceSignatureRef.current = undefined;
       navigationControlRef.current = undefined;
     };
-  }, [centerLatitude, centerLongitude, mapStyleUrl]);
+  }, [centerLatitude, centerLongitude, mapStyleUrl, updateTraceOverlayPositions]);
 
   useEffect(() => {
     if (!selectedId || !legTraceVisible) return;
@@ -548,18 +535,44 @@ export function RadarMap({ aircraft, center, dataBaseUrl, focusTarget, following
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
-    const source = map.getSource('selected-leg-trace') as GeoJSONSource | undefined;
-    if (!source || !selectedId || !legTraceVisible) {
-      source?.setData(emptyTraceData());
+
+    if (!selectedId || !legTraceVisible) {
+      renderTraceOverlay([]);
+      traceSignatureRef.current = undefined;
+      return;
+    }
+    if (selectedTrace?.aircraftId !== selectedId) {
+      renderTraceOverlay([]);
+      traceSignatureRef.current = undefined;
       return;
     }
 
-    const serverPoints = selectedTrace?.aircraftId === selectedId ? selectedTrace.points : [];
+    const serverPoints = selectedTrace.points;
     const livePoints = liveTracesRef.current.get(selectedId) ?? [];
     const latestServerTimestamp = serverPoints.at(-1)?.timestamp ?? 0;
     const combined = [...serverPoints, ...livePoints.filter((point) => point.timestamp > latestServerTimestamp)];
-    source.setData(traceData(combined));
-  }, [aircraft, legTraceVisible, ready, selectedId, selectedTrace]);
+    if (combined.length === 0) {
+      renderTraceOverlay([]);
+      traceSignatureRef.current = `${selectedId}:empty`;
+      return;
+    }
+
+    const lastPoint = combined.at(-1)!;
+    const signature = [
+      selectedId,
+      combined.length,
+      lastPoint.timestamp,
+      lastPoint.latitude,
+      lastPoint.longitude,
+      lastPoint.altitudeFt,
+      lastPoint.onGround,
+      lastPoint.stale,
+    ].join(':');
+    if (traceSignatureRef.current === signature) return;
+
+    renderTraceOverlay(combined);
+    traceSignatureRef.current = signature;
+  }, [aircraft, legTraceVisible, ready, renderTraceOverlay, selectedId, selectedTrace]);
 
   useEffect(() => {
     if (!ready || focusTarget?.latitude === undefined || focusTarget.longitude === undefined) return;

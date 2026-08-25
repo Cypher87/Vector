@@ -72,6 +72,8 @@ PORT=3000
 
 De upstream-URLs blijven op de server. De browser krijgt alleen relatieve proxyresources te zien en kan de proxy niet naar een andere host sturen. HTTP-redirects, credentials in upstream-URLs, path traversal en onbekende bestanden worden geweigerd.
 
+Vector gebruikt geen `public/config.json`. De server bouwt `/api/config` uitsluitend op uit de environmentconfiguratie en veilige standaardwaarden. Gebruik lokaal een door Git genegeerde `.env.local`; de Pi-installatie gebruikt uitsluitend `/etc/vector/vector.env`.
+
 ### Openen
 
 Open Vector vanaf een apparaat op hetzelfde netwerk:

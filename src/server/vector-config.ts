@@ -1,4 +1,5 @@
 import type { RuntimeConfig, UnitSystem } from '../domain/aircraft';
+import { DEFAULT_RUNTIME_CONFIG } from '../runtime-config.ts';
 
 export type VectorServerConfig = {
   historyBaseUrl: URL;
@@ -61,11 +62,10 @@ export function readVectorServerConfig(
       'READSB_HISTORY_URL',
     ),
     publicConfig: {
-      dataBaseUrl: '/api/readsb?source=live',
-      historyBaseUrl: '/api/readsb?source=history',
-      mapStyleUrl: configuredText(environment.VECTOR_MAP_STYLE_URL, '/map-style.json', 2_048),
-      siteName: configuredText(environment.VECTOR_SITE_NAME, 'Vector', 80),
-      receiverName: configuredText(environment.VECTOR_RECEIVER_TITLE, 'Local readsb receiver', 120),
+      ...DEFAULT_RUNTIME_CONFIG,
+      mapStyleUrl: configuredText(environment.VECTOR_MAP_STYLE_URL, DEFAULT_RUNTIME_CONFIG.mapStyleUrl, 2_048),
+      siteName: configuredText(environment.VECTOR_SITE_NAME, DEFAULT_RUNTIME_CONFIG.siteName, 80),
+      receiverName: configuredText(environment.VECTOR_RECEIVER_TITLE, DEFAULT_RUNTIME_CONFIG.receiverName, 120),
       unitSystem: configuredUnitSystem(environment.VECTOR_UNIT_SYSTEM),
     },
   };
