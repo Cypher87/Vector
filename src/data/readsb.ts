@@ -23,6 +23,27 @@ const asString = (value: unknown): string | undefined =>
 
 const asBoolean = (value: unknown): boolean => value === true;
 
+const asFlag = (value: unknown): boolean | undefined => {
+  const candidate = asNumber(value);
+  return candidate === undefined ? undefined : candidate !== 0;
+};
+
+const asStringArray = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const entries = value.flatMap((entry) => {
+    const candidate = asString(entry);
+    return candidate ? [candidate] : [];
+  });
+  return entries.length > 0 ? entries : undefined;
+};
+
+const asDisplayString = (value: unknown): string | undefined => {
+  const candidate = asString(value);
+  if (candidate) return candidate;
+  const number = asNumber(value);
+  return number === undefined ? undefined : String(number);
+};
+
 const sourceFrom = (value: unknown): AircraftSource => {
   const candidate = asString(value) as AircraftSource | undefined;
   return candidate && supportedSources.has(candidate) ? candidate : 'other';
@@ -209,8 +230,8 @@ export async function loadAircraftReplayChunk(
   return snapshots;
 }
 
-export async function loadAircraft(baseUrl: string, signal?: AbortSignal) {
-  const value = asRecord(await fetchJson(dataRequestUrl(baseUrl, 'aircraft.json'), signal));
+export function parseAircraftSnapshot(input: unknown) {
+  const value = asRecord(input);
   if (!value) throw new Error('aircraft.json does not contain an object');
 
   const records = Array.isArray(value.aircraft) ? value.aircraft : [];
@@ -220,7 +241,11 @@ export async function loadAircraft(baseUrl: string, signal?: AbortSignal) {
     if (!item || !rawHex) return [];
 
     const altitude = item.alt_baro;
-    const verticalRate = asNumber(item.baro_rate) ?? asNumber(item.geom_rate);
+    const barometricAltitudeFt = asNumber(altitude);
+    const geometricAltitudeFt = asNumber(item.alt_geom);
+    const barometricVerticalRateFpm = asNumber(item.baro_rate);
+    const geometricVerticalRateFpm = asNumber(item.geom_rate);
+    const verticalRate = barometricVerticalRateFpm ?? geometricVerticalRateFpm;
 
     return [{
       id: rawHex.toLowerCase(),
@@ -229,14 +254,53 @@ export async function loadAircraft(baseUrl: string, signal?: AbortSignal) {
       registration: asString(item.r),
       aircraftType: asString(item.t),
       description: asString(item.desc),
-      altitudeFt: asNumber(altitude) ?? asNumber(item.alt_geom),
-      onGround: altitude === 'ground',
+      ownerOperator: asString(item.ownOp),
+      year: asDisplayString(item.year),
+      altitudeFt: barometricAltitudeFt ?? geometricAltitudeFt,
+      barometricAltitudeFt,
+      geometricAltitudeFt,
+      onGround: altitude === 'ground' || item.ground === true,
       groundSpeedKts: asNumber(item.gs),
+      indicatedAirSpeedKts: asNumber(item.ias),
+      trueAirSpeedKts: asNumber(item.tas),
+      mach: asNumber(item.mach),
       trackDeg: asNumber(item.track) ?? asNumber(item.true_heading),
+      trackRateDegPerSecond: asNumber(item.track_rate),
+      rollDeg: asNumber(item.roll),
+      magneticHeadingDeg: asNumber(item.mag_heading),
+      trueHeadingDeg: asNumber(item.true_heading),
       verticalRateFpm: verticalRate,
+      barometricVerticalRateFpm,
+      geometricVerticalRateFpm,
       latitude: asNumber(item.lat),
       longitude: asNumber(item.lon),
+      positionSeenSeconds: asNumber(item.seen_pos),
       squawk: asString(item.squawk),
+      emergency: asString(item.emergency),
+      navigationQnhHpa: asNumber(item.nav_qnh),
+      selectedAltitudeMcpFt: asNumber(item.nav_altitude_mcp),
+      selectedAltitudeFmsFt: asNumber(item.nav_altitude_fms),
+      selectedHeadingDeg: asNumber(item.nav_heading),
+      navigationModes: asStringArray(item.nav_modes),
+      adsbVersion: asNumber(item.version),
+      nic: asNumber(item.nic),
+      radiusOfContainmentM: asNumber(item.rc),
+      nicBaro: asNumber(item.nic_baro),
+      nacP: asNumber(item.nac_p),
+      nacV: asNumber(item.nac_v),
+      sil: asNumber(item.sil),
+      silType: asString(item.sil_type),
+      gva: asNumber(item.gva),
+      sda: asNumber(item.sda),
+      alert: asFlag(item.alert),
+      spi: asFlag(item.spi),
+      rssiDbfs: asNumber(item.rssi),
+      mlatFields: asStringArray(item.mlat),
+      tisbFields: asStringArray(item.tisb),
+      windDirectionDeg: asNumber(item.wd),
+      windSpeedKts: asNumber(item.ws),
+      outsideAirTemperatureC: asNumber(item.oat),
+      totalAirTemperatureC: asNumber(item.tat),
       source: sourceFrom(item.type),
       seenSeconds: asNumber(item.seen) ?? 0,
       messages: asNumber(item.messages) ?? 0,
@@ -249,6 +313,10 @@ export async function loadAircraft(baseUrl: string, signal?: AbortSignal) {
     messages: asNumber(value.messages) ?? 0,
     aircraft,
   };
+}
+
+export async function loadAircraft(baseUrl: string, signal?: AbortSignal) {
+  return parseAircraftSnapshot(await fetchJson(dataRequestUrl(baseUrl, 'aircraft.json'), signal));
 }
 
 export async function loadAircraftLegTrace(baseUrl: string, aircraftId: string, signal?: AbortSignal): Promise<AircraftTracePoint[]> {
