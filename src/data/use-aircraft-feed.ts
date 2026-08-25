@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { Aircraft, FeedStatus, Receiver, RuntimeConfig } from '../domain/aircraft';
+import { DEFAULT_RUNTIME_CONFIG } from '../runtime-config';
 import { distanceKilometres } from '../units';
 import { loadAircraft, loadReceiver, loadRuntimeConfig } from './readsb';
 
@@ -13,15 +14,6 @@ type FeedState = {
   lastUpdate?: number;
   messageRate: number;
   error?: 'liveDataUnavailable' | 'receiverUnavailable';
-};
-
-const defaultConfig: RuntimeConfig = {
-  dataBaseUrl: '/data/',
-  historyBaseUrl: '/globe_history/',
-  mapStyleUrl: '/map-style.json',
-  siteName: 'Vector',
-  receiverName: 'Local readsb receiver',
-  unitSystem: 'metric',
 };
 
 const shortestAngleDifference = (from: number, to: number) => ((to - from + 540) % 360) - 180;
@@ -60,7 +52,7 @@ const stabilizeAircraft = (next: Aircraft, previous?: Aircraft): Aircraft => {
 export function useAircraftFeed(): FeedState {
   const [state, setState] = useState<FeedState>({
     aircraft: [],
-    config: defaultConfig,
+    config: DEFAULT_RUNTIME_CONFIG,
     status: 'connecting',
     messageRate: 0,
   });
@@ -74,7 +66,18 @@ export function useAircraftFeed(): FeedState {
     const controller = new AbortController();
 
     async function start() {
-      const config = await loadRuntimeConfig(controller.signal);
+      let config: RuntimeConfig;
+      try {
+        config = await loadRuntimeConfig(controller.signal);
+      } catch {
+        if (!active || controller.signal.aborted) return;
+        setState((current) => ({
+          ...current,
+          status: 'offline',
+          error: 'receiverUnavailable',
+        }));
+        return;
+      }
       if (!active) return;
       setState((current) => ({ ...current, config }));
 

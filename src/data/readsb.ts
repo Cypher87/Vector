@@ -28,11 +28,11 @@ const sourceFrom = (value: unknown): AircraftSource => {
   return candidate && supportedSources.has(candidate) ? candidate : 'other';
 };
 
-const unitSystemFrom = (value: unknown): UnitSystem => {
+const unitSystemFrom = (value: unknown): UnitSystem | undefined => {
   const candidate = asString(value);
   return candidate === 'aeronautical' || candidate === 'imperial' || candidate === 'metric'
     ? candidate
-    : 'metric';
+    : undefined;
 };
 
 async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
@@ -56,37 +56,17 @@ const dataRequestUrl = (baseUrl: string, file: string) => {
 };
 
 export async function loadRuntimeConfig(signal?: AbortSignal): Promise<RuntimeConfig> {
-  const defaults: RuntimeConfig = {
-    dataBaseUrl: '/data/',
-    historyBaseUrl: '/globe_history/',
-    mapStyleUrl: '/map-style.json',
-    siteName: 'Vector',
-    receiverName: 'Local readsb receiver',
-    unitSystem: 'metric',
-  };
-
-  try {
-    let value: UnknownRecord | undefined;
-    for (const configUrl of ['/api/config', '/config.json']) {
-      try {
-        value = asRecord(await fetchJson(configUrl, signal));
-        if (value) break;
-      } catch {
-        // The static file remains a safe fallback for non-server previews.
-      }
-    }
-    if (!value) return defaults;
-    return {
-      dataBaseUrl: asString(value.dataBaseUrl) ?? defaults.dataBaseUrl,
-      historyBaseUrl: asString(value.historyBaseUrl) ?? defaults.historyBaseUrl,
-      mapStyleUrl: asString(value.mapStyleUrl) ?? defaults.mapStyleUrl,
-      siteName: asString(value.siteName) ?? defaults.siteName,
-      receiverName: asString(value.receiverName) ?? defaults.receiverName,
-      unitSystem: unitSystemFrom(value.unitSystem),
-    };
-  } catch {
-    return defaults;
+  const value = asRecord(await fetchJson('/api/config', signal));
+  const dataBaseUrl = value ? asString(value.dataBaseUrl) : undefined;
+  const historyBaseUrl = value ? asString(value.historyBaseUrl) : undefined;
+  const mapStyleUrl = value ? asString(value.mapStyleUrl) : undefined;
+  const siteName = value ? asString(value.siteName) : undefined;
+  const receiverName = value ? asString(value.receiverName) : undefined;
+  const unitSystem = value ? unitSystemFrom(value.unitSystem) : undefined;
+  if (!dataBaseUrl || !historyBaseUrl || !mapStyleUrl || !siteName || !receiverName || !unitSystem) {
+    throw new Error('/api/config returned an invalid Vector runtime configuration');
   }
+  return { dataBaseUrl, historyBaseUrl, mapStyleUrl, siteName, receiverName, unitSystem };
 }
 
 export async function loadReceiver(baseUrl: string, signal?: AbortSignal): Promise<Receiver> {
