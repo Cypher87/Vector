@@ -345,16 +345,12 @@ export async function loadAircraft(baseUrl: string, signal?: AbortSignal) {
   return parseAircraftSnapshot(await fetchJson(dataRequestUrl(baseUrl, 'aircraft.json'), signal));
 }
 
-export async function loadAircraftLegTrace(baseUrl: string, aircraftId: string, signal?: AbortSignal): Promise<AircraftTracePoint[]> {
-  const normalizedId = aircraftId.toLowerCase();
-  if (!/^~?[0-9a-f]{6}$/.test(normalizedId)) return [];
-
-  const tracePath = `traces/${normalizedId.slice(-2)}/trace_recent_${normalizedId}.json`;
-  const value = asRecord(await fetchJson(dataRequestUrl(baseUrl, tracePath), signal));
+export function parseAircraftTrace(input: unknown): AircraftTracePoint[] {
+  const value = asRecord(input);
   const baseTimestamp = value ? asNumber(value.timestamp) : undefined;
   if (!value || baseTimestamp === undefined || !Array.isArray(value.trace)) return [];
 
-  const points = value.trace.flatMap((candidate): AircraftTracePoint[] => {
+  return value.trace.flatMap((candidate): AircraftTracePoint[] => {
     if (!Array.isArray(candidate)) return [];
     const offset = asNumber(candidate[0]);
     const latitude = asNumber(candidate[1]);
@@ -374,10 +370,38 @@ export async function loadAircraftLegTrace(baseUrl: string, aircraftId: string, 
       timestamp: offset > 1_000_000_000 ? offset : baseTimestamp + offset,
     }];
   });
+}
 
-  let latestLegStart = 0;
-  points.forEach((point, index) => {
-    if (point.startsLeg) latestLegStart = index;
-  });
-  return points.slice(latestLegStart);
+export function mergeAircraftTraces(
+  fullTrace: AircraftTracePoint[],
+  recentTrace: AircraftTracePoint[],
+): AircraftTracePoint[] {
+  if (fullTrace.length === 0) return recentTrace;
+  const lastFullTimestamp = fullTrace.at(-1)!.timestamp;
+  return [
+    ...fullTrace,
+    ...recentTrace.filter((point) => point.timestamp > lastFullTimestamp),
+  ];
+}
+
+export async function loadAircraftLegTrace(baseUrl: string, aircraftId: string, signal?: AbortSignal): Promise<AircraftTracePoint[]> {
+  const normalizedId = aircraftId.toLowerCase();
+  if (!/^~?[0-9a-f]{6}$/.test(normalizedId)) return [];
+
+  const bucket = normalizedId.slice(-2);
+  const loadTraceFile = async (kind: 'full' | 'recent') => {
+    try {
+      const path = `traces/${bucket}/trace_${kind}_${normalizedId}.json`;
+      return parseAircraftTrace(await fetchJson(dataRequestUrl(baseUrl, path), signal));
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      return [];
+    }
+  };
+
+  const [fullTrace, recentTrace] = await Promise.all([
+    loadTraceFile('full'),
+    loadTraceFile('recent'),
+  ]);
+  return mergeAircraftTraces(fullTrace, recentTrace);
 }

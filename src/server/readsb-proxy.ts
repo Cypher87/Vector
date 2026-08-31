@@ -5,7 +5,7 @@ export type ReadsbSource = 'history' | 'live';
 export class ReadsbRequestError extends Error {}
 
 const LIVE_FILES = new Set(['aircraft.json', 'receiver.json']);
-const TRACE_PATH = /^traces\/([0-9a-f]{2})\/trace_recent_(~?)([0-9a-f]{6})\.json$/i;
+const TRACE_PATH = /^traces\/([0-9a-f]{2})\/trace_(?:recent|full)_(~?)([0-9a-f]{6})\.json$/i;
 const REPLAY_PATH = /^(\d{4})\/(\d{2})\/(\d{2})\/heatmap\/(\d{2})\.bin\.ttf$/;
 const MAX_RESOURCE_PATH_LENGTH = 256;
 

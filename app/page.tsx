@@ -41,10 +41,10 @@ const statusText: Record<FeedStatus, TranslationKey> = {
   stale: 'dataDelayed',
   offline: 'receiverOffline',
 };
-type AircraftFilterKey = 'adsbOnly' | 'airborneOnly' | 'positionOnly';
+type AircraftFilterKey = 'adsbOnly' | 'airborneOnly' | 'favoritesOnly' | 'positionOnly';
 type AircraftFilters = Record<AircraftFilterKey, boolean>;
 type AircraftSort = 'altitude-desc' | 'callsign-asc' | 'distance-asc' | 'seen-asc';
-const emptyFilters: AircraftFilters = { adsbOnly: false, airborneOnly: false, positionOnly: false };
+const emptyFilters: AircraftFilters = { adsbOnly: false, airborneOnly: false, favoritesOnly: false, positionOnly: false };
 const signalBarLevels: Exclude<SignalStrengthLevel, 0>[] = [1, 2, 3, 4];
 
 function LogoMark() {
@@ -103,6 +103,7 @@ export default function Home() {
         setAircraftFilters({
           adsbOnly: savedFilters.adsbOnly === true,
           airborneOnly: savedFilters.airborneOnly === true,
+          favoritesOnly: savedFilters.favoritesOnly === true,
           positionOnly: savedFilters.positionOnly === true,
         });
       } catch {
@@ -198,12 +199,15 @@ export default function Home() {
     });
   }, [feed.aircraft, history.currentSnapshot, history.open]);
 
+  const favoriteAircraftIdSet = useMemo(() => new Set(favoriteAircraftIds), [favoriteAircraftIds]);
+
   const filterMatchedAircraft = useMemo(() => displayedAircraft.filter((item) => {
     if (aircraftFilters.positionOnly && (item.latitude === undefined || item.longitude === undefined)) return false;
     if (aircraftFilters.airborneOnly && item.onGround) return false;
     if (aircraftFilters.adsbOnly && !item.source.startsWith('adsb')) return false;
+    if (aircraftFilters.favoritesOnly && !favoriteAircraftIdSet.has(item.id)) return false;
     return true;
-  }), [aircraftFilters, displayedAircraft]);
+  }), [aircraftFilters, displayedAircraft, favoriteAircraftIdSet]);
 
   const filteredAircraft = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -233,7 +237,6 @@ export default function Home() {
   const selected = selectedId === null
     ? undefined
     : displayedAircraft.find((item) => item.id === selectedId);
-  const favoriteAircraftIdSet = useMemo(() => new Set(favoriteAircraftIds), [favoriteAircraftIds]);
   const selectedIsFavorite = selected ? favoriteAircraftIdSet.has(selected.id) : false;
   const selectedAltitude = selected ? altitudeValue(selected, unitSystem, language) : undefined;
   const selectedSpeed = selected ? speedValue(selected.groundSpeedKts, unitSystem, language) : undefined;
@@ -343,6 +346,10 @@ export default function Home() {
                     <strong>{t('filterAircraft')}</strong>
                     <button type="button" disabled={activeFilterCount === 0} onClick={resetAircraftFilters}>{t('clear')}</button>
                   </div>
+                  <label>
+                    <span><strong>{t('favoritesOnly')}</strong><small>{t('favoritesOnlyHelp')}</small></span>
+                    <input type="checkbox" checked={aircraftFilters.favoritesOnly} onChange={(event) => changeAircraftFilter('favoritesOnly', event.target.checked)} />
+                  </label>
                   <label>
                     <span><strong>{t('positionAvailable')}</strong><small>{t('positionAvailableHelp')}</small></span>
                     <input type="checkbox" checked={aircraftFilters.positionOnly} onChange={(event) => changeAircraftFilter('positionOnly', event.target.checked)} />

@@ -16,7 +16,7 @@ test('allows only the required live snapshot files', () => {
   assert.throws(() => validateReadsbResourcePath('history', 'aircraft.json'), ReadsbRequestError);
 });
 
-test('accepts valid recent trace paths and rejects malformed trace paths', () => {
+test('accepts valid recent and full trace paths and rejects malformed trace paths', () => {
   assert.equal(
     validateReadsbResourcePath('live', 'traces/ef/trace_recent_abcdef.json'),
     'traces/ef/trace_recent_abcdef.json',
@@ -25,12 +25,16 @@ test('accepts valid recent trace paths and rejects malformed trace paths', () =>
     validateReadsbResourcePath('live', 'traces/ef/trace_recent_~abcdef.json'),
     'traces/ef/trace_recent_~abcdef.json',
   );
+  assert.equal(
+    validateReadsbResourcePath('live', 'traces/ef/trace_full_abcdef.json'),
+    'traces/ef/trace_full_abcdef.json',
+  );
   assert.throws(
     () => validateReadsbResourcePath('live', 'traces/ab/trace_recent_abcdef.json'),
     ReadsbRequestError,
   );
   assert.throws(
-    () => validateReadsbResourcePath('live', 'traces/ef/trace_full_abcdef.json'),
+    () => validateReadsbResourcePath('live', 'traces/ef/trace_history_abcdef.json'),
     ReadsbRequestError,
   );
 });

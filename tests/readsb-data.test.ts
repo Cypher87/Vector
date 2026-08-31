@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseAircraftSnapshot } from '../src/data/readsb.ts';
+import { mergeAircraftTraces, parseAircraftSnapshot, parseAircraftTrace } from '../src/data/readsb.ts';
 
 test('maps the readsb fields used by the tar1090-style technical overview', () => {
   const snapshot = parseAircraftSnapshot({
@@ -145,4 +145,62 @@ test('keeps unavailable values absent and recognizes ground aircraft', () => {
 
 test('rejects a non-object aircraft snapshot', () => {
   assert.throws(() => parseAircraftSnapshot(null), /does not contain an object/);
+});
+
+test('parses trace timestamps, flags, ground altitude and skips invalid coordinates', () => {
+  assert.deepEqual(parseAircraftTrace({
+    timestamp: 1_724_000_000,
+    trace: [
+      [10, 52.1, 5.1, 12_000, 250, 90, 0],
+      [20, 52.2, 5.2, 'ground', 30, 180, 3],
+      [30, 92, 5.3, 13_000, 260, 91, 0],
+      [1_724_000_040, 52.4, 5.4, 14_000, 270, 92, 2],
+    ],
+  }), [
+    {
+      altitudeFt: 12_000,
+      latitude: 52.1,
+      longitude: 5.1,
+      onGround: false,
+      stale: false,
+      startsLeg: false,
+      timestamp: 1_724_000_010,
+    },
+    {
+      altitudeFt: undefined,
+      latitude: 52.2,
+      longitude: 5.2,
+      onGround: true,
+      stale: true,
+      startsLeg: true,
+      timestamp: 1_724_000_020,
+    },
+    {
+      altitudeFt: 14_000,
+      latitude: 52.4,
+      longitude: 5.4,
+      onGround: false,
+      stale: false,
+      startsLeg: true,
+      timestamp: 1_724_000_040,
+    },
+  ]);
+});
+
+test('merges the full and recent traces without duplicating their overlap', () => {
+  const point = (timestamp: number): ReturnType<typeof parseAircraftTrace>[number] => ({
+    altitudeFt: 10_000,
+    latitude: 52,
+    longitude: 5,
+    onGround: false,
+    stale: false,
+    startsLeg: false,
+    timestamp,
+  });
+
+  assert.deepEqual(
+    mergeAircraftTraces([point(100), point(200)], [point(150), point(200), point(250)]),
+    [point(100), point(200), point(250)],
+  );
+  assert.deepEqual(mergeAircraftTraces([], [point(250)]), [point(250)]);
 });
