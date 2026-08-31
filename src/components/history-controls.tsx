@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { localeForLanguage, translate, type Language } from '../i18n';
 import type { HistorySource } from '../data/use-aircraft-history';
+import { VectorIcon } from './vector-icon';
 
 type HistoryControlsProps = {
   canNextPeriod: boolean;
@@ -21,7 +22,6 @@ type HistoryControlsProps = {
   onIndexChange: (index: number) => void;
   onLoadAt: (date: Date) => void;
   onNextPeriod: () => void;
-  onOpen: () => void;
   onPreviousPeriod: () => void;
   onSpeedChange: (speed: number) => void;
   onTogglePlaying: () => void;
@@ -65,7 +65,6 @@ export function HistoryControls(props: HistoryControlsProps) {
     onIndexChange,
     onLoadAt,
     onNextPeriod,
-    onOpen,
     onPreviousPeriod,
     onSpeedChange,
     onTogglePlaying,
@@ -95,13 +94,7 @@ export function HistoryControls(props: HistoryControlsProps) {
     return () => cancelAnimationFrame(frame);
   }, [currentTimestamp, open]);
 
-  if (!open) {
-    return (
-      <button className="history-launch" type="button" onClick={onOpen}>
-        <span aria-hidden="true">↶</span> {t('history')}
-      </button>
-    );
-  }
+  if (!open) return null;
 
   const date = currentTimestamp ? new Date(currentTimestamp * 1_000) : undefined;
   const dateFormatter = new Intl.DateTimeFormat(localeForLanguage[language], {
@@ -115,65 +108,77 @@ export function HistoryControls(props: HistoryControlsProps) {
         <div>
           <strong>{t('history')}</strong>
         </div>
-        <button type="button" className="history-live" onClick={onClose}><i /> {t('backToLive')}</button>
+        <button type="button" className="history-live" onClick={onClose}>
+          <VectorIcon name="back" />
+          {t('backToLive')}
+        </button>
       </div>
 
-      <div className="history-playback">
-        <button
-          type="button"
-          className="history-play"
-          aria-label={t(playing ? 'pause' : 'play')}
-          disabled={snapshotCount < 2 || loading}
-          onClick={onTogglePlaying}
-        >{playing ? 'Ⅱ' : '▶'}</button>
-        <button
-          type="button"
-          className="history-period"
-          aria-label={t('previousHistoryPeriod')}
-          disabled={!canPreviousPeriod || loading}
-          onClick={onPreviousPeriod}
-        >‹</button>
-        <time>{date ? dateFormatter.format(date) : '—'}</time>
-        <button
-          type="button"
-          className="history-period"
-          aria-label={t('nextHistoryPeriod')}
-          disabled={!canNextPeriod || loading}
-          onClick={onNextPeriod}
-        >›</button>
-        <input
-          type="range"
-          min="0"
-          max={Math.max(0, snapshotCount - 1)}
-          value={Math.min(index, Math.max(0, snapshotCount - 1))}
-          disabled={snapshotCount < 2 || loading}
-          aria-label={t('historyTimeline')}
-          onChange={(event) => onIndexChange(Number(event.target.value))}
-        />
-        <select aria-label={t('playbackSpeed')} value={speed} onChange={(event) => onSpeedChange(Number(event.target.value))}>
-          {[1, 5, 15, 30, 60].map((value) => <option value={value} key={value}>{value}×</option>)}
-        </select>
-      </div>
-
-      <div className="history-jump">
-        <div className="history-picker" role="group" aria-label={t('dateAndTime')}>
-          <span>{t('dateAndTime')}</span>
-          <input
-            type="date"
-            lang={localeForLanguage[language]}
-            aria-label={t('date')}
-            value={pickerValue.date}
-            onChange={(event) => changePicker('date', event.target.value)}
-          />
-          <select aria-label={t('hour')} value={pickerValue.hour} onChange={(event) => changePicker('hour', event.target.value)}>
-            {Array.from({ length: 24 }, (_, value) => String(value).padStart(2, '0')).map((value) => <option value={value} key={value}>{value}</option>)}
-          </select>
-          <b aria-hidden="true">:</b>
-          <select aria-label={t('minute')} value={pickerValue.minute} onChange={(event) => changePicker('minute', event.target.value)}>
-            {Array.from({ length: 60 }, (_, value) => String(value).padStart(2, '0')).map((value) => <option value={value} key={value}>{value}</option>)}
-          </select>
+      <div className="history-groups">
+        <div className="history-control-group">
+          <span className="history-group-title">{t('play')}</span>
+          <div className="history-playback">
+            <button
+              type="button"
+              className="history-play"
+              aria-label={t(playing ? 'pause' : 'play')}
+              disabled={snapshotCount < 2 || loading}
+              onClick={onTogglePlaying}
+            ><VectorIcon name={playing ? 'pause' : 'play'} /></button>
+            <button
+              type="button"
+              className="history-period"
+              aria-label={t('previousHistoryPeriod')}
+              disabled={!canPreviousPeriod || loading}
+              onClick={onPreviousPeriod}
+            ><VectorIcon name="chevronLeft" /></button>
+            <time>{date ? dateFormatter.format(date) : '—'}</time>
+            <button
+              type="button"
+              className="history-period"
+              aria-label={t('nextHistoryPeriod')}
+              disabled={!canNextPeriod || loading}
+              onClick={onNextPeriod}
+            ><VectorIcon name="chevronRight" /></button>
+            <input
+              type="range"
+              min="0"
+              max={Math.max(0, snapshotCount - 1)}
+              value={Math.min(index, Math.max(0, snapshotCount - 1))}
+              disabled={snapshotCount < 2 || loading}
+              aria-label={t('historyTimeline')}
+              onChange={(event) => onIndexChange(Number(event.target.value))}
+            />
+            <select aria-label={t('playbackSpeed')} value={speed} onChange={(event) => onSpeedChange(Number(event.target.value))}>
+              {[1, 5, 15, 30, 60].map((value) => <option value={value} key={value}>{value}×</option>)}
+            </select>
+          </div>
         </div>
-        <small>{loading ? t('historyLoading') : error ? t('receiverHistoryUnavailable') : source === 'session' ? t('sessionHistoryHelp') : `${snapshotCount} ${t('snapshots')}`}</small>
+
+        <div className="history-control-group">
+          <span className="history-group-title">{t('dateAndTime')}</span>
+          <div className="history-jump">
+            <div className="history-picker" role="group" aria-label={t('dateAndTime')}>
+              <input
+                type="date"
+                lang={localeForLanguage[language]}
+                aria-label={t('date')}
+                value={pickerValue.date}
+                onChange={(event) => changePicker('date', event.target.value)}
+              />
+              <select aria-label={t('hour')} value={pickerValue.hour} onChange={(event) => changePicker('hour', event.target.value)}>
+                {Array.from({ length: 24 }, (_, value) => String(value).padStart(2, '0')).map((value) => <option value={value} key={value}>{value}</option>)}
+              </select>
+              <b aria-hidden="true">:</b>
+              <select aria-label={t('minute')} value={pickerValue.minute} onChange={(event) => changePicker('minute', event.target.value)}>
+                {Array.from({ length: 60 }, (_, value) => String(value).padStart(2, '0')).map((value) => <option value={value} key={value}>{value}</option>)}
+              </select>
+            </div>
+            {(loading || error || source !== 'session') && (
+              <small>{loading ? t('historyLoading') : error ? t('receiverHistoryUnavailable') : `${snapshotCount} ${t('snapshots')}`}</small>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );

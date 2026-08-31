@@ -26,6 +26,30 @@ const configuredUnitSystem = (value: string | undefined): UnitSystem => {
     : 'metric';
 };
 
+const configuredReceiverCoordinates = (
+  latitudeValue: string | undefined,
+  longitudeValue: string | undefined,
+): Pick<RuntimeConfig, 'receiverLatitude' | 'receiverLongitude'> => {
+  const latitudeText = latitudeValue?.trim();
+  const longitudeText = longitudeValue?.trim();
+
+  if (!latitudeText && !longitudeText) return {};
+  if (!latitudeText || !longitudeText) {
+    throw new Error('VECTOR_RECEIVER_LATITUDE and VECTOR_RECEIVER_LONGITUDE must be configured together');
+  }
+
+  const receiverLatitude = Number(latitudeText);
+  const receiverLongitude = Number(longitudeText);
+  if (!Number.isFinite(receiverLatitude) || receiverLatitude < -90 || receiverLatitude > 90) {
+    throw new Error('VECTOR_RECEIVER_LATITUDE must be a number between -90 and 90');
+  }
+  if (!Number.isFinite(receiverLongitude) || receiverLongitude < -180 || receiverLongitude > 180) {
+    throw new Error('VECTOR_RECEIVER_LONGITUDE must be a number between -180 and 180');
+  }
+
+  return { receiverLatitude, receiverLongitude };
+};
+
 export function parseUpstreamBaseUrl(value: string, variableName: string): URL {
   let parsed: URL;
   try {
@@ -66,6 +90,10 @@ export function readVectorServerConfig(
       mapStyleUrl: configuredText(environment.VECTOR_MAP_STYLE_URL, DEFAULT_RUNTIME_CONFIG.mapStyleUrl, 2_048),
       siteName: configuredText(environment.VECTOR_SITE_NAME, DEFAULT_RUNTIME_CONFIG.siteName, 80),
       receiverName: configuredText(environment.VECTOR_RECEIVER_TITLE, DEFAULT_RUNTIME_CONFIG.receiverName, 120),
+      ...configuredReceiverCoordinates(
+        environment.VECTOR_RECEIVER_LATITUDE,
+        environment.VECTOR_RECEIVER_LONGITUDE,
+      ),
       unitSystem: configuredUnitSystem(environment.VECTOR_UNIT_SYSTEM),
     },
   };

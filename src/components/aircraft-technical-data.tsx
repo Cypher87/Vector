@@ -1,4 +1,5 @@
 import type { Aircraft, UnitSystem } from '../domain/aircraft';
+import { decodeAircraftDatabaseFlags, type AircraftDatabaseFlag } from '../domain/database-flags';
 import { localeForLanguage, translate, type Language, type TranslationKey } from '../i18n';
 import { distanceValue, speedValue, verticalRateValue } from '../units';
 
@@ -22,6 +23,22 @@ const sourceLabel = (source: Aircraft['source']) => source === 'mlat'
     : source.replaceAll('_', ' ').toUpperCase();
 
 const formatArray = (value?: string[]) => value?.length ? value.join(', ') : '—';
+
+const databaseFlagLabels: Record<AircraftDatabaseFlag, TranslationKey> = {
+  military: 'databaseFlagMilitary',
+  interesting: 'databaseFlagInteresting',
+  pia: 'databaseFlagPia',
+  ladd: 'databaseFlagLadd',
+};
+
+const formatDatabaseFlags = (value: number, language: Language) => {
+  const decoded = decodeAircraftDatabaseFlags(value);
+  const labels = decoded.flags.map((flag) => translate(language, databaseFlagLabels[flag]));
+  if (decoded.unknownMask !== 0) {
+    labels.push(`${translate(language, 'databaseFlagUnknown')} (${decoded.unknownMask})`);
+  }
+  return labels.length > 0 ? labels.join(', ') : translate(language, 'databaseFlagNone');
+};
 
 function TechnicalSection({
   language,
@@ -89,7 +106,7 @@ export function AircraftTechnicalData({
     { label: 'category', value: aircraft.category ?? '—' },
     { label: 'year', value: aircraft.year ?? '—' },
     { label: 'ownerOperator', value: aircraft.ownerOperator ?? '—' },
-    { label: 'databaseFlags', value: `0x${aircraft.dbFlags.toString(16).padStart(2, '0').toUpperCase()}` },
+    { label: 'databaseFlags', value: formatDatabaseFlags(aircraft.dbFlags, language) },
   ];
 
   const movementRows: TechnicalRow[] = [

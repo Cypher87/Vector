@@ -100,6 +100,36 @@ test('upstream URLs are built only from server-side configured bases', () => {
   );
   assert.equal(config.publicConfig.dataBaseUrl, '/api/readsb?source=live');
   assert.equal(config.publicConfig.historyBaseUrl, '/api/readsb?source=history');
+  assert.equal(config.publicConfig.receiverLatitude, undefined);
+  assert.equal(config.publicConfig.receiverLongitude, undefined);
+});
+
+test('receiver coordinates are read as a validated environment pair', () => {
+  const config = readVectorServerConfig({
+    VECTOR_RECEIVER_LATITUDE: '52.123456',
+    VECTOR_RECEIVER_LONGITUDE: '5.654321',
+  });
+  assert.equal(config.publicConfig.receiverLatitude, 52.123456);
+  assert.equal(config.publicConfig.receiverLongitude, 5.654321);
+
+  assert.throws(
+    () => readVectorServerConfig({ VECTOR_RECEIVER_LATITUDE: '52.1' }),
+    /must be configured together/,
+  );
+  assert.throws(
+    () => readVectorServerConfig({
+      VECTOR_RECEIVER_LATITUDE: '91',
+      VECTOR_RECEIVER_LONGITUDE: '5',
+    }),
+    /between -90 and 90/,
+  );
+  assert.throws(
+    () => readVectorServerConfig({
+      VECTOR_RECEIVER_LATITUDE: '52',
+      VECTOR_RECEIVER_LONGITUDE: '-181',
+    }),
+    /between -180 and 180/,
+  );
 });
 
 test('server base URLs reject credentials, unexpected protocols, queries and fragments', () => {

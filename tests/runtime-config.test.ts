@@ -15,6 +15,8 @@ test('runtime configuration is loaded only from the server API', async () => {
       mapStyleUrl: '/map-style.json',
       siteName: 'Test Vector',
       receiverName: 'Test receiver',
+      receiverLatitude: 52.1,
+      receiverLongitude: 5.2,
       unitSystem: 'metric',
     });
   }) as typeof fetch;
@@ -26,6 +28,8 @@ test('runtime configuration is loaded only from the server API', async () => {
       mapStyleUrl: '/map-style.json',
       siteName: 'Test Vector',
       receiverName: 'Test receiver',
+      receiverLatitude: 52.1,
+      receiverLongitude: 5.2,
       unitSystem: 'metric',
     });
     available = false;

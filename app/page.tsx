@@ -5,15 +5,22 @@ import { AircraftPhoto } from '../src/components/aircraft-photo';
 import { AircraftRoute } from '../src/components/aircraft-route';
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
 import { HistoryControls } from '../src/components/history-controls';
+import { VectorIcon } from '../src/components/vector-icon';
 import { useAircraftFeed } from '../src/data/use-aircraft-feed';
 import { useAircraftHistory } from '../src/data/use-aircraft-history';
 import type { Aircraft, FeedStatus, UnitSystem } from '../src/domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../src/domain/aircraft-kind';
+import {
+  favoriteAircraftStorageKey,
+  parseFavoriteAircraftIds,
+  toggleFavoriteAircraftId,
+} from '../src/domain/favorite-aircraft';
+import { signalStrengthLevel, type SignalStrengthLevel } from '../src/domain/signal-strength';
 import { localeForLanguage, translate, type Language, type TranslationKey } from '../src/i18n';
 import { altitudeColor } from '../src/map/altitude-color';
 import { AircraftIcon } from '../src/map/aircraft-icon';
 import { RadarMap } from '../src/map/radar-map';
-import { aircraftHeadingRotation } from '../src/map/heading';
+import { aircraftIconRotation } from '../src/map/heading';
 import { altitudeLegendScale, altitudeValue, distanceKilometres, distanceValue, formatNumber, speedValue, verticalRateValue } from '../src/units';
 
 const formatCallsign = (value: string) => value.replace(/^([A-Z]{2,3})(\d.*)$/i, '$1 $2');
@@ -38,6 +45,7 @@ type AircraftFilterKey = 'adsbOnly' | 'airborneOnly' | 'positionOnly';
 type AircraftFilters = Record<AircraftFilterKey, boolean>;
 type AircraftSort = 'altitude-desc' | 'callsign-asc' | 'distance-asc' | 'seen-asc';
 const emptyFilters: AircraftFilters = { adsbOnly: false, airborneOnly: false, positionOnly: false };
+const signalBarLevels: Exclude<SignalStrengthLevel, 0>[] = [1, 2, 3, 4];
 
 function LogoMark() {
   return (
@@ -66,11 +74,13 @@ export default function Home() {
   const [labelsVisible, setLabelsVisible] = useState(true);
   const [legTraceVisible, setLegTraceVisible] = useState(true);
   const [technicalDataOpen, setTechnicalDataOpen] = useState(false);
+  const [mobileDetailsExpanded, setMobileDetailsExpanded] = useState(false);
   const [mapFocus, setMapFocus] = useState<{ latitude?: number; longitude?: number; request: number }>();
   const [unitOverride, setUnitOverride] = useState<UnitSystem>();
   const [language, setLanguage] = useState<Language>('nl');
   const [aircraftFilters, setAircraftFilters] = useState<AircraftFilters>(emptyFilters);
   const [aircraftSort, setAircraftSort] = useState<AircraftSort>('altitude-desc');
+  const [favoriteAircraftIds, setFavoriteAircraftIds] = useState<string[]>([]);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -83,6 +93,7 @@ export default function Home() {
       }
       if (window.localStorage.getItem('vector.mapLabels') === 'false') setLabelsVisible(false);
       if (window.localStorage.getItem('vector.legTrace') === 'false') setLegTraceVisible(false);
+      setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
       const savedSort = window.localStorage.getItem('vector.aircraftSort');
       if (savedSort === 'altitude-desc' || savedSort === 'callsign-asc' || savedSort === 'distance-asc' || savedSort === 'seen-asc') {
         setAircraftSort(savedSort);
@@ -158,9 +169,16 @@ export default function Home() {
     setAircraftSort(value);
     window.localStorage.setItem('vector.aircraftSort', value);
   };
+  const toggleFavoriteAircraft = (aircraftId: string) => {
+    setFavoriteAircraftIds((current) => {
+      const next = toggleFavoriteAircraftId(current, aircraftId);
+      window.localStorage.setItem(favoriteAircraftStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
 
-  const centerLat = feed.receiver?.latitude ?? 52.3086;
-  const centerLon = feed.receiver?.longitude ?? 4.7639;
+  const centerLat = feed.config.receiverLatitude ?? feed.receiver?.latitude ?? 52.3086;
+  const centerLon = feed.config.receiverLongitude ?? feed.receiver?.longitude ?? 4.7639;
 
   const displayedAircraft = useMemo(() => {
     if (!history.open || !history.currentSnapshot) return feed.aircraft;
@@ -215,6 +233,8 @@ export default function Home() {
   const selected = selectedId === null
     ? undefined
     : displayedAircraft.find((item) => item.id === selectedId);
+  const favoriteAircraftIdSet = useMemo(() => new Set(favoriteAircraftIds), [favoriteAircraftIds]);
+  const selectedIsFavorite = selected ? favoriteAircraftIdSet.has(selected.id) : false;
   const selectedAltitude = selected ? altitudeValue(selected, unitSystem, language) : undefined;
   const selectedSpeed = selected ? speedValue(selected.groundSpeedKts, unitSystem, language) : undefined;
   const selectedVerticalRate = selected ? verticalRateValue(selected.verticalRateFpm, unitSystem, language) : undefined;
@@ -223,6 +243,11 @@ export default function Home() {
     : undefined;
   const selectedDistance = selected ? distanceValue(selectedDistanceKilometres, unitSystem, language) : undefined;
   const selectedKind = selected ? aircraftKind(selected) : undefined;
+  const selectedRssiDbfs = history.open ? undefined : selected?.rssiDbfs;
+  const selectedSignalLevel = signalStrengthLevel(selectedRssiDbfs);
+  const selectedSignalLabel = selectedRssiDbfs === undefined
+    ? '—'
+    : `${selectedSignalLevel} / 4 · ${seconds.format(selectedRssiDbfs)} dBFS`;
   const activeFilterCount = Object.values(aircraftFilters).filter(Boolean).length;
   const mapAircraft = selected && !filterMatchedAircraft.some((item) => item.id === selected.id)
     ? [...filterMatchedAircraft, selected]
@@ -267,29 +292,37 @@ export default function Home() {
         </div>
 
         <div className="top-actions">
-          <label className="unit-selector">
-            <span>{t('units')}</span>
-            <select
-              aria-label={t('unitSystem')}
-              value={unitSystem}
-              onChange={(event) => changeUnitSystem(event.target.value as UnitSystem)}
-            >
-              <option value="metric">{t('metric')}</option>
-              <option value="aeronautical">{t('aeronautical')}</option>
-              <option value="imperial">{t('imperial')}</option>
-            </select>
-          </label>
-          <label className="unit-selector language-selector">
-            <span>{t('language')}</span>
-            <select
-              aria-label={t('language')}
-              value={language}
-              onChange={(event) => changeLanguage(event.target.value as Language)}
-            >
-              <option value="nl">{t('dutch')}</option>
-              <option value="en">{t('english')}</option>
-            </select>
-          </label>
+          <details className="settings-menu">
+            <summary className="settings-button" aria-label={t('settings')} title={t('settings')}>
+              <VectorIcon name="settings" />
+            </summary>
+            <div className="settings-popover">
+              <strong>{t('settings')}</strong>
+              <label className="settings-field">
+                <span>{t('units')}</span>
+                <select
+                  aria-label={t('unitSystem')}
+                  value={unitSystem}
+                  onChange={(event) => changeUnitSystem(event.target.value as UnitSystem)}
+                >
+                  <option value="metric">{t('metric')}</option>
+                  <option value="aeronautical">{t('aeronautical')}</option>
+                  <option value="imperial">{t('imperial')}</option>
+                </select>
+              </label>
+              <label className="settings-field">
+                <span>{t('language')}</span>
+                <select
+                  aria-label={t('language')}
+                  value={language}
+                  onChange={(event) => changeLanguage(event.target.value as Language)}
+                >
+                  <option value="nl">{t('dutch')}</option>
+                  <option value="en">{t('english')}</option>
+                </select>
+              </label>
+            </div>
+          </details>
         </div>
       </header>
 
@@ -297,13 +330,13 @@ export default function Home() {
         <aside className={`aircraft-panel ${mobileListOpen ? 'mobile-open' : ''}`}>
           <div className="panel-heading">
             <div>
-              <span className="eyebrow">{t('inRange')}</span>
               <h1>{t('aircraftListTitle')}</h1>
             </div>
             <div className="panel-buttons">
               <details className="filter-menu">
                 <summary className="filter-button" aria-label={`${activeFilterCount} ${t('activeFilters')}`}>
-                  {t('filter')} {activeFilterCount > 0 && <span>{activeFilterCount}</span>} <i aria-hidden="true">⌄</i>
+                  {t('filter')} {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
+                  <VectorIcon className="filter-chevron" name="chevronDown" />
                 </summary>
                 <div className="filter-popover">
                   <div className="filter-popover-heading">
@@ -324,12 +357,14 @@ export default function Home() {
                   </label>
                 </div>
               </details>
-              <button className="mobile-sheet-close" aria-label={t('closeList')} onClick={() => setMobileListOpen(false)}>×</button>
+              <button className="mobile-sheet-close" aria-label={t('closeList')} onClick={() => setMobileListOpen(false)} type="button">
+                <VectorIcon name="close" />
+              </button>
             </div>
           </div>
 
           <label className="search-box">
-            <span>⌕</span>
+            <VectorIcon className="search-icon" name="search" />
             <input
               ref={searchInputRef}
               aria-label={t('aircraftSearch')}
@@ -359,22 +394,24 @@ export default function Home() {
           <div className="aircraft-list">
             {filteredAircraft.map((item) => {
               const reading = listReadingFor(item);
+              const kind = aircraftKind(item);
               return (
                 <button
-                  className={`aircraft-row ${selected?.id === item.id ? 'selected' : ''}`}
+                  className={`aircraft-row ${selected?.id === item.id ? 'selected' : ''} ${favoriteAircraftIdSet.has(item.id) ? 'favorite' : ''}`}
                   key={item.id}
                   onClick={() => {
                     setSelectedId(item.id);
                     setDetailsOpen(true);
+                    setMobileDetailsExpanded(false);
                     setMobileListOpen(false);
                     setMapFocus({ latitude: item.latitude, longitude: item.longitude, request: Date.now() });
                   }}
                 >
-                  <span className="aircraft-glyph" title={aircraftKindLabel(aircraftKind(item), language)}>
+                  <span className="aircraft-glyph" title={aircraftKindLabel(kind, language)}>
                     <AircraftIcon
                       aircraft={item}
                       className="list-aircraft-icon"
-                      rotation={aircraftHeadingRotation(item.trackDeg)}
+                      rotation={aircraftIconRotation(kind, item.trackDeg)}
                       style={{
                         color: selected?.id === item.id ? 'var(--cyan)' : altitudeColor(item),
                       }}
@@ -404,14 +441,25 @@ export default function Home() {
             dataBaseUrl={feed.config.dataBaseUrl}
             focusTarget={mapFocus}
             following={following}
+            favoriteIds={favoriteAircraftIdSet}
+            historyOpen={history.open}
             labelsVisible={labelsVisible}
             legTraceVisible={legTraceVisible && !history.open}
             language={language}
             mapStyleUrl={feed.config.mapStyleUrl}
-            onDeselect={() => { setSelectedId(null); setFollowing(false); }}
+            onDeselect={() => { setSelectedId(null); setFollowing(false); setMobileDetailsExpanded(false); }}
+            onHistoryToggle={() => {
+              if (history.open) history.close();
+              else {
+                setFollowing(false);
+                setSelectedId(null);
+                setMobileDetailsExpanded(false);
+                history.openHistory();
+              }
+            }}
             onLabelsVisibleChange={changeLabelsVisible}
             onLegTraceVisibleChange={changeLegTraceVisible}
-            onSelect={(id) => { setSelectedId(id); setDetailsOpen(true); }}
+            onSelect={(id) => { setSelectedId(id); setDetailsOpen(true); setMobileDetailsExpanded(false); }}
             recordLiveTrace={!history.open}
             selectedId={selected?.id}
             unitSystem={unitSystem}
@@ -438,27 +486,57 @@ export default function Home() {
             speed={history.speed}
             onClose={history.close}
             onIndexChange={history.setIndex}
-            onLoadAt={(date) => { setFollowing(false); setSelectedId(null); void history.loadAt(date); }}
+            onLoadAt={(date) => { setFollowing(false); setSelectedId(null); setMobileDetailsExpanded(false); void history.loadAt(date); }}
             onNextPeriod={() => history.stepPeriod(1)}
-            onOpen={() => { setFollowing(false); setSelectedId(null); history.openHistory(); }}
             onPreviousPeriod={() => history.stepPeriod(-1)}
             onSpeedChange={history.setSpeed}
             onTogglePlaying={history.togglePlaying}
           />
 
-          <button className="mobile-list-button" onClick={() => setMobileListOpen(true)}>
-            <strong>{displayedAircraft.length}</strong> {t(displayedAircraft.length === 1 ? 'aircraftSingular' : 'aircraft')} <span>⌃</span>
+          {selected && !mobileDetailsExpanded && (
+            <aside className="mobile-aircraft-summary" aria-label={`${formatCallsign(selected.flight)} ${t('details')}`}>
+              <span className="mobile-summary-icon" title={selectedKind ? aircraftKindLabel(selectedKind, language) : undefined}>
+                <AircraftIcon
+                  aircraft={selected}
+                  rotation={aircraftIconRotation(selectedKind ?? 'unknown', selected.trackDeg)}
+                  style={{ color: altitudeColor(selected) }}
+                />
+              </span>
+              <span className="mobile-summary-copy">
+                <strong>{formatCallsign(selected.flight)}</strong>
+                <small>
+                  {selected.registration ?? selected.aircraftType ?? selected.id.toUpperCase()}
+                  {' · '}{selectedAltitude?.value}{selectedAltitude?.unit ? ` ${selectedAltitude.unit}` : ''}
+                </small>
+              </span>
+              <button
+                type="button"
+                aria-label={t('showFullDetails')}
+                onClick={() => { setDetailsOpen(true); setMobileDetailsExpanded(true); }}
+              >
+                {t('details')} <span aria-hidden="true">›</span>
+              </button>
+            </aside>
+          )}
+
+          <button className="mobile-list-button" onClick={() => setMobileListOpen(true)} type="button">
+            <strong>{displayedAircraft.length}</strong> {t(displayedAircraft.length === 1 ? 'aircraftSingular' : 'aircraft')}
+            <VectorIcon className="mobile-list-icon" name="list" />
           </button>
         </section>
 
         {detailsOpen && !selected && (
           <aside className="detail-panel detail-empty">
             <div className="detail-actions">
-              <span className="source-pill neutral">{t('noSelection')}</span>
-              <div><button aria-label={t('closeDetails')} onClick={() => setDetailsOpen(false)}>×</button></div>
+              <strong className="detail-panel-title">{t('aircraftInformation')}</strong>
+              <div>
+                <button aria-label={t('closeDetails')} onClick={() => setDetailsOpen(false)}>
+                  <VectorIcon name="close" />
+                </button>
+              </div>
             </div>
             <div className="detail-empty-content">
-              <span aria-hidden="true">◎</span>
+              <span><VectorIcon name="follow" /></span>
               <h2>{t('noAircraftSelected')}</h2>
               <p>{t('noAircraftSelectedHelp')}</p>
             </div>
@@ -466,17 +544,33 @@ export default function Home() {
         )}
 
         {detailsOpen && selected && (
-          <aside className="detail-panel">
+          <aside className={`detail-panel ${mobileDetailsExpanded ? 'mobile-expanded' : ''}`}>
             <div className="detail-actions">
-              <span className={`source-pill ${selected.source}`}>{sourceLabel(selected.source)}</span>
+              <span className="detail-title-group">
+                <strong className="detail-panel-title">{t('aircraftInformation')}</strong>
+                <span className={`source-pill ${selected.source}`}>{sourceLabel(selected.source)}</span>
+              </span>
               <div>
+                <button
+                  type="button"
+                  className={`favorite-action ${selectedIsFavorite ? 'active' : ''}`}
+                  aria-label={t(selectedIsFavorite ? 'removeFromFavorites' : 'addToFavorites')}
+                  aria-pressed={selectedIsFavorite}
+                  title={t(selectedIsFavorite ? 'removeFromFavorites' : 'addToFavorites')}
+                  onClick={() => toggleFavoriteAircraft(selected.id)}
+                ><VectorIcon name="favorite" /></button>
                 <button
                   className={following ? 'active' : ''}
                   aria-label={t(following ? 'stopFollowing' : 'followAircraft')}
                   aria-pressed={following}
                   onClick={() => setFollowing((value) => !value)}
-                >◎</button>
-                <button aria-label={t('closeDetails')} onClick={() => setDetailsOpen(false)}>×</button>
+                ><VectorIcon name="follow" /></button>
+                <button className="mobile-details-collapse" aria-label={t('collapseDetails')} onClick={() => setMobileDetailsExpanded(false)}>
+                  <VectorIcon name="chevronDown" />
+                </button>
+                <button className="desktop-details-close" aria-label={t('closeDetails')} onClick={() => setDetailsOpen(false)}>
+                  <VectorIcon name="close" />
+                </button>
               </div>
             </div>
 
@@ -485,7 +579,7 @@ export default function Home() {
                 <AircraftIcon
                   aircraft={selected}
                   className="detail-aircraft-icon"
-                  rotation={aircraftHeadingRotation(selected.trackDeg)}
+                  rotation={aircraftIconRotation(selectedKind ?? 'unknown', selected.trackDeg)}
                 />
               </span>
               <div>
@@ -511,9 +605,18 @@ export default function Home() {
 
             <section className="signal-card">
               <div>
-                <span className="signal-bars"><i /><i /><i /><i /></span>
+                <span
+                  className="signal-bars"
+                  role="img"
+                  aria-label={`${t('signalStrength')}: ${selectedSignalLabel}`}
+                  title={`${t('signalStrength')}: ${selectedSignalLabel}`}
+                >
+                  {signalBarLevels.map((level) => (
+                    <i className={level <= selectedSignalLevel ? 'active' : ''} key={level} />
+                  ))}
+                </span>
                 <span>
-                  <strong>{sourceLabel(selected.source)} {t('reception')}{selected.rssiDbfs === undefined || history.open ? '' : ` · ${seconds.format(selected.rssiDbfs)} dBFS`}</strong>
+                  <strong>{sourceLabel(selected.source)} {t('reception')}{selectedRssiDbfs === undefined ? '' : ` · ${seconds.format(selectedRssiDbfs)} dBFS`}</strong>
                   <small>{selected.latitude === undefined ? t('noCurrentPosition') : `${selectedDistance?.value} ${selectedDistance?.unit} ${t('fromReceiver')}`} · {history.open ? '—' : formatNumber(selected.messages, language)} {t('messages')}{selected.messageRate === undefined || history.open ? '' : ` · ${seconds.format(selected.messageRate)} msg/s`}</small>
                 </span>
               </div>

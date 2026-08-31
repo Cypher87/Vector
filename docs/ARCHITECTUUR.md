@@ -133,11 +133,14 @@ READSB_HISTORY_URL=http://127.0.0.1/tar1090/globe_history/
 VECTOR_SITE_NAME=Vector
 VECTOR_RECEIVER_TITLE="Local readsb receiver"
 VECTOR_UNIT_SYSTEM=metric
+# Optioneel, beide waarden samen instellen in decimale graden:
+# VECTOR_RECEIVER_LATITUDE=52.000000
+# VECTOR_RECEIVER_LONGITUDE=5.000000
 HOST=0.0.0.0
 PORT=3000
 ```
 
-De Debian-installatie bewaart deze waarden in `/etc/vector/vector.env`, buiten de Git-checkout. Dezelfde build kan zo voor een andere receiver worden gebruikt en updates overschrijven de lokale instellingen niet. De browser ontvangt alleen publieke labels en lokale proxyroutes; upstream-URLs blijven server-side.
+De Debian-installatie bewaart deze waarden in `/etc/vector/vector.env`, buiten de Git-checkout. Dezelfde build kan zo voor een andere receiver worden gebruikt en updates overschrijven de lokale instellingen niet. Als de receivercoördinaten in de environment staan, hebben die voorrang op `receiver.json`; zonder deze variabelen gebruikt Vector de positie uit `receiver.json`. De browser ontvangt alleen publieke labels, receivercoördinaten en lokale proxyroutes; upstream-URLs blijven server-side.
 
 ## Betrouwbaarheid en veiligheid
 

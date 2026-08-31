@@ -83,11 +83,37 @@ export async function loadRuntimeConfig(signal?: AbortSignal): Promise<RuntimeCo
   const mapStyleUrl = value ? asString(value.mapStyleUrl) : undefined;
   const siteName = value ? asString(value.siteName) : undefined;
   const receiverName = value ? asString(value.receiverName) : undefined;
+  const receiverLatitude = value ? asNumber(value.receiverLatitude) : undefined;
+  const receiverLongitude = value ? asNumber(value.receiverLongitude) : undefined;
   const unitSystem = value ? unitSystemFrom(value.unitSystem) : undefined;
   if (!dataBaseUrl || !historyBaseUrl || !mapStyleUrl || !siteName || !receiverName || !unitSystem) {
     throw new Error('/api/config returned an invalid Vector runtime configuration');
   }
-  return { dataBaseUrl, historyBaseUrl, mapStyleUrl, siteName, receiverName, unitSystem };
+  const hasReceiverCoordinates = value
+    ? 'receiverLatitude' in value || 'receiverLongitude' in value
+    : false;
+  if (
+    hasReceiverCoordinates
+    && (
+      receiverLatitude === undefined
+      || receiverLatitude < -90
+      || receiverLatitude > 90
+      || receiverLongitude === undefined
+      || receiverLongitude < -180
+      || receiverLongitude > 180
+    )
+  ) {
+    throw new Error('/api/config returned invalid receiver coordinates');
+  }
+  return {
+    dataBaseUrl,
+    historyBaseUrl,
+    mapStyleUrl,
+    siteName,
+    receiverName,
+    ...(hasReceiverCoordinates ? { receiverLatitude, receiverLongitude } : {}),
+    unitSystem,
+  };
 }
 
 export async function loadReceiver(baseUrl: string, signal?: AbortSignal): Promise<Receiver> {

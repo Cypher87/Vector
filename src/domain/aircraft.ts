@@ -118,5 +118,7 @@ export type RuntimeConfig = {
   mapStyleUrl: string;
   siteName: string;
   receiverName: string;
+  receiverLatitude?: number;
+  receiverLongitude?: number;
   unitSystem: UnitSystem;
 };

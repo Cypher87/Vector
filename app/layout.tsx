@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.SITE_URL ?? 'http://localhost:3000'),
   title: 'Vector — Live ADS-B Radar',
   description: 'Een rustige, moderne live radarinterface voor readsb.',
+  icons: {
+    icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+    shortcut: '/favicon.svg',
+  },
   openGraph: {
     title: 'Vector',
     description: 'Live ADS-B radar',
