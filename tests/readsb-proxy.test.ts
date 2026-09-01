@@ -11,7 +11,9 @@ import { parseUpstreamBaseUrl, readVectorServerConfig } from '../src/server/vect
 
 test('allows only the required live snapshot files', () => {
   assert.equal(validateReadsbResourcePath('live', 'aircraft.json'), 'aircraft.json');
+  assert.equal(validateReadsbResourcePath('live', 'outline.json'), 'outline.json');
   assert.equal(validateReadsbResourcePath('live', 'receiver.json'), 'receiver.json');
+  assert.throws(() => validateReadsbResourcePath('live', 'multiOutline.json'), ReadsbRequestError);
   assert.throws(() => validateReadsbResourcePath('live', 'stats.json'), ReadsbRequestError);
   assert.throws(() => validateReadsbResourcePath('history', 'aircraft.json'), ReadsbRequestError);
 });

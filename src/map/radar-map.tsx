@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AttributionControl, Map as MapLibre, Marker } from 'maplibre-gl';
+import { AttributionControl, type GeoJSONSource, Map as MapLibre, Marker } from 'maplibre-gl';
 import { createVectorIconElement, type VectorIconName } from '../components/vector-icon';
 import type { Aircraft, AircraftTracePoint, UnitSystem } from '../domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../domain/aircraft-kind';
-import { loadAircraftLegTrace } from '../data/readsb';
+import { loadActualRangeOutline, loadAircraftLegTrace } from '../data/readsb';
 import { translate, type Language } from '../i18n';
 import { mapAltitudeLabel } from '../units';
 import { altitudeColor, altitudeColorForValue } from './altitude-color';
@@ -13,6 +13,8 @@ import { createAircraftIconElement, updateAircraftIconElement } from './aircraft
 import { aircraftIconRotation } from './heading';
 
 type RadarMapProps = {
+  actualRangeAvailable: boolean;
+  actualRangeVisible: boolean;
   aircraft: Aircraft[];
   center: [longitude: number, latitude: number];
   dataBaseUrl: string;
@@ -24,6 +26,7 @@ type RadarMapProps = {
   legTraceVisible: boolean;
   language: Language;
   mapStyleUrl: string;
+  onActualRangeVisibleChange: (visible: boolean) => void;
   onDeselect: () => void;
   onHistoryToggle: () => void;
   onLabelsVisibleChange: (visible: boolean) => void;
@@ -58,6 +61,16 @@ const overlaps = (first: LabelBox, second: LabelBox) =>
 
 const shortestAngleDifference = (from: number, to: number) => ((to - from + 540) % 360) - 180;
 const normalizeAngle = (value: number) => ((value % 360) + 360) % 360;
+const aircraftMarkerZIndex = (aircraft: Aircraft, selected: boolean) =>
+  selected ? 100_000 : 10 + Math.max(0, Math.round(aircraft.altitudeFt ?? 0));
+const actualRangeSourceId = 'vector-actual-range-source';
+const actualRangeLayerId = 'vector-actual-range-layer';
+const receiverAccentColor = '#e3ad5b';
+const emptyActualRangeData = {
+  type: 'Feature' as const,
+  properties: {},
+  geometry: { type: 'MultiLineString' as const, coordinates: [] as Array<Array<[number, number]>> },
+};
 const markerDistanceMetres = (
   from: [longitude: number, latitude: number],
   to: [longitude: number, latitude: number],
@@ -72,7 +85,13 @@ const markerDistanceMetres = (
   return 6_371_000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 };
 
-const mapControlLabels = (language: Language, labelsVisible: boolean, legTraceVisible: boolean) => ({
+const mapControlLabels = (
+  language: Language,
+  actualRangeVisible: boolean,
+  labelsVisible: boolean,
+  legTraceVisible: boolean,
+) => ({
+  actualRange: translate(language, actualRangeVisible ? 'hideActualRangeOutline' : 'showActualRangeOutline'),
   center: translate(language, 'centerReceiver'),
   history: translate(language, 'history'),
   labels: translate(language, labelsVisible ? 'hideAircraftLabels' : 'showAircraftLabels'),
@@ -84,15 +103,19 @@ const mapControlLabels = (language: Language, labelsVisible: boolean, legTraceVi
 const createMapNavigationControl = (
   center: [number, number],
   language: Language,
+  actualRangeAvailable: boolean,
+  actualRangeVisible: boolean,
   labelsVisible: boolean,
   legTraceVisible: boolean,
   historyOpen: boolean,
+  onActualRangeToggle: () => void,
   onLabelsToggle: () => void,
   onLegTraceToggle: () => void,
   onHistoryToggle: () => void,
 ) => {
   let container: HTMLDivElement | undefined;
   let controls: {
+    actualRange: HTMLButtonElement;
     center: HTMLButtonElement;
     history: HTMLButtonElement;
     labels: HTMLButtonElement;
@@ -101,6 +124,8 @@ const createMapNavigationControl = (
     zoomOut: HTMLButtonElement;
   } | undefined;
   let currentLanguage = language;
+  let currentActualRangeAvailable = actualRangeAvailable;
+  let currentActualRangeVisible = actualRangeVisible;
   let currentLabelsVisible = labelsVisible;
   let currentLegTraceVisible = legTraceVisible;
   let currentHistoryOpen = historyOpen;
@@ -118,7 +143,12 @@ const createMapNavigationControl = (
 
   const updateState = () => {
     if (!controls) return;
-    const labels = mapControlLabels(currentLanguage, currentLabelsVisible, currentLegTraceVisible);
+    const labels = mapControlLabels(
+      currentLanguage,
+      currentActualRangeVisible,
+      currentLabelsVisible,
+      currentLegTraceVisible,
+    );
     for (const key of ['zoomIn', 'zoomOut', 'center'] as const) {
       controls[key].setAttribute('aria-label', labels[key]);
       controls[key].title = labels[key];
@@ -129,6 +159,11 @@ const createMapNavigationControl = (
       controls[key].title = labels[key];
       controls[key].classList.toggle('active', active);
     }
+    controls.actualRange.setAttribute('aria-label', labels.actualRange);
+    controls.actualRange.setAttribute('aria-pressed', String(currentActualRangeVisible));
+    controls.actualRange.title = labels.actualRange;
+    controls.actualRange.classList.toggle('active', currentActualRangeVisible);
+    controls.actualRange.disabled = !currentActualRangeAvailable;
     controls.legTrace.disabled = currentHistoryOpen;
     controls.history.setAttribute('aria-label', labels.history);
     controls.history.setAttribute('aria-pressed', String(currentHistoryOpen));
@@ -136,8 +171,17 @@ const createMapNavigationControl = (
     controls.history.classList.toggle('active', currentHistoryOpen);
   };
 
-  const setState = (nextLanguage: Language, nextLabelsVisible: boolean, nextLegTraceVisible: boolean, nextHistoryOpen: boolean) => {
+  const setState = (
+    nextLanguage: Language,
+    nextActualRangeAvailable: boolean,
+    nextActualRangeVisible: boolean,
+    nextLabelsVisible: boolean,
+    nextLegTraceVisible: boolean,
+    nextHistoryOpen: boolean,
+  ) => {
     currentLanguage = nextLanguage;
+    currentActualRangeAvailable = nextActualRangeAvailable;
+    currentActualRangeVisible = nextActualRangeVisible;
     currentLabelsVisible = nextLabelsVisible;
     currentLegTraceVisible = nextLegTraceVisible;
     currentHistoryOpen = nextHistoryOpen;
@@ -148,7 +192,12 @@ const createMapNavigationControl = (
     onAdd(map: MapLibre) {
       container = document.createElement('div');
       container.className = 'maplibregl-ctrl maplibregl-ctrl-group vector-map-navigation';
-      const labels = mapControlLabels(currentLanguage, currentLabelsVisible, currentLegTraceVisible);
+      const labels = mapControlLabels(
+        currentLanguage,
+        currentActualRangeVisible,
+        currentLabelsVisible,
+        currentLegTraceVisible,
+      );
       controls = {
         zoomIn: button('vector-map-zoom-in', labels.zoomIn, () => map.zoomIn({ duration: 250 }), 'zoomIn'),
         zoomOut: button('vector-map-zoom-out', labels.zoomOut, () => map.zoomOut({ duration: 250 }), 'zoomOut'),
@@ -159,6 +208,7 @@ const createMapNavigationControl = (
           pitch: 0,
           duration: 700,
         }), 'center'),
+        actualRange: button('vector-map-toggle vector-map-actual-range', labels.actualRange, onActualRangeToggle, 'range'),
         labels: button('vector-map-toggle vector-map-labels', labels.labels, onLabelsToggle, 'labels'),
         legTrace: button('vector-map-toggle vector-map-leg-trace', labels.legTrace, onLegTraceToggle, 'trace'),
         history: button('vector-map-toggle vector-map-history', labels.history, onHistoryToggle, 'history'),
@@ -166,6 +216,7 @@ const createMapNavigationControl = (
       container.appendChild(controls.zoomIn);
       container.appendChild(controls.zoomOut);
       container.appendChild(controls.center);
+      container.appendChild(controls.actualRange);
       container.appendChild(controls.labels);
       container.appendChild(controls.legTrace);
       container.appendChild(controls.history);
@@ -221,7 +272,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   };
 };
 
-export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarget, following, historyOpen, labelsVisible, legTraceVisible, language, mapStyleUrl, onDeselect, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, recordLiveTrace, selectedId, unitSystem }: RadarMapProps) {
+export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, center, dataBaseUrl, favoriteIds, focusTarget, following, historyOpen, labelsVisible, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onDeselect, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, recordLiveTrace, selectedId, unitSystem }: RadarMapProps) {
   const centerLongitude = center[0];
   const centerLatitude = center[1];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -236,10 +287,13 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
   const tracePointsRef = useRef<AircraftTracePoint[]>([]);
   const traceSignatureRef = useRef<string>();
   const historyOpenRef = useRef(historyOpen);
+  const actualRangeAvailableRef = useRef(actualRangeAvailable);
+  const actualRangeVisibleRef = useRef(actualRangeVisible);
   const labelsVisibleRef = useRef(labelsVisible);
   const legTraceVisibleRef = useRef(legTraceVisible);
   const languageRef = useRef(language);
   const navigationControlRef = useRef<ReturnType<typeof createMapNavigationControl> | undefined>(undefined);
+  const onActualRangeVisibleChangeRef = useRef(onActualRangeVisibleChange);
   const onDeselectRef = useRef(onDeselect);
   const onHistoryToggleRef = useRef(onHistoryToggle);
   const onLabelsVisibleChangeRef = useRef(onLabelsVisibleChange);
@@ -251,6 +305,9 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
   const [selectedTrace, setSelectedTrace] = useState<{ aircraftId: string; points: AircraftTracePoint[] }>();
 
   useEffect(() => {
+    actualRangeAvailableRef.current = actualRangeAvailable;
+    actualRangeVisibleRef.current = actualRangeVisible;
+    onActualRangeVisibleChangeRef.current = onActualRangeVisibleChange;
     onDeselectRef.current = onDeselect;
     onHistoryToggleRef.current = onHistoryToggle;
     onLabelsVisibleChangeRef.current = onLabelsVisibleChange;
@@ -259,12 +316,19 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
     historyOpenRef.current = historyOpen;
     labelsVisibleRef.current = labelsVisible;
     legTraceVisibleRef.current = legTraceVisible;
-  }, [historyOpen, labelsVisible, legTraceVisible, onDeselect, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect]);
+  }, [actualRangeAvailable, actualRangeVisible, historyOpen, labelsVisible, legTraceVisible, onActualRangeVisibleChange, onDeselect, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect]);
 
   useEffect(() => {
     languageRef.current = language;
-    navigationControlRef.current?.setState(language, labelsVisible, legTraceVisible, historyOpen);
-  }, [historyOpen, labelsVisible, language, legTraceVisible]);
+    navigationControlRef.current?.setState(
+      language,
+      actualRangeAvailable,
+      actualRangeVisible,
+      labelsVisible,
+      legTraceVisible,
+      historyOpen,
+    );
+  }, [actualRangeAvailable, actualRangeVisible, historyOpen, labelsVisible, language, legTraceVisible]);
 
   const animateMarkers = useCallback(function animateMarkerFrame(now: number) {
     const map = mapRef.current;
@@ -398,7 +462,8 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
     traceOverlay.setAttribute('aria-hidden', 'true');
     map.getCanvasContainer().appendChild(traceOverlay);
     traceOverlayRef.current = traceOverlay;
-    let layersInitialized = false;
+    let mapInitialized = false;
+    let receiverMarker: Marker | undefined;
 
     const updateLabelVisibility = () => {
       const occupied: LabelBox[] = [];
@@ -435,9 +500,12 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
     const navigationControl = createMapNavigationControl(
       [centerLongitude, centerLatitude],
       languageRef.current,
+      actualRangeAvailableRef.current,
+      actualRangeVisibleRef.current,
       labelsVisibleRef.current,
       legTraceVisibleRef.current,
       historyOpenRef.current,
+      () => onActualRangeVisibleChangeRef.current(!actualRangeVisibleRef.current),
       () => onLabelsVisibleChangeRef.current(!labelsVisibleRef.current),
       () => onLegTraceVisibleChangeRef.current(!legTraceVisibleRef.current),
       () => onHistoryToggleRef.current(),
@@ -446,15 +514,19 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
     map.addControl(navigationControl, 'top-right');
     map.addControl(new AttributionControl({ compact: true }), 'bottom-right');
     const attributionElement = containerRef.current.querySelector('.maplibregl-ctrl-attrib');
-    const attributionButton = attributionElement?.querySelector('.maplibregl-ctrl-attrib-button');
-    attributionElement?.classList.add('vector-attribution-collapsed');
-    const handleAttributionInteraction = () => {
-      if (!attributionElement?.classList.contains('vector-attribution-collapsed')) return;
-      attributionElement.classList.remove('vector-attribution-collapsed');
+    let attributionObserver: MutationObserver | undefined;
+    const collapseInitialAttribution = () => {
+      if (!attributionElement?.classList.contains('maplibregl-compact')) return false;
       attributionElement.classList.remove('maplibregl-compact-show');
       attributionElement.removeAttribute('open');
+      return true;
     };
-    attributionButton?.addEventListener('click', handleAttributionInteraction, { capture: true });
+    if (!collapseInitialAttribution() && attributionElement) {
+      attributionObserver = new MutationObserver(() => {
+        if (collapseInitialAttribution()) attributionObserver?.disconnect();
+      });
+      attributionObserver.observe(attributionElement, { attributes: true });
+    }
     map.on('click', () => onDeselectRef.current());
     map.on('moveend', updateLabelVisibility);
     map.on('zoomend', updateLabelVisibility);
@@ -472,31 +544,39 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
       updateLabelVisibility();
     });
 
-    const initializeLayers = () => {
-      if (layersInitialized) return;
-      layersInitialized = true;
-      map.addSource('receiver', {
+    const initializeMap = () => {
+      if (mapInitialized) return;
+      mapInitialized = true;
+      map.addSource(actualRangeSourceId, {
         type: 'geojson',
-        data: { type: 'Feature', geometry: { type: 'Point', coordinates: [centerLongitude, centerLatitude] }, properties: {} },
+        data: emptyActualRangeData,
       });
       map.addLayer({
-        id: 'receiver-halo',
-        type: 'circle',
-        source: 'receiver',
-        paint: { 'circle-radius': 11, 'circle-color': '#4fe4d3', 'circle-opacity': 0.13 },
+        id: actualRangeLayerId,
+        type: 'line',
+        source: actualRangeSourceId,
+        layout: {
+          visibility: actualRangeAvailableRef.current && actualRangeVisibleRef.current ? 'visible' : 'none',
+        },
+        paint: {
+          'line-color': receiverAccentColor,
+          'line-opacity': 0.95,
+          'line-width': 1.8,
+        },
       });
-      map.addLayer({
-        id: 'receiver-point',
-        type: 'circle',
-        source: 'receiver',
-        paint: { 'circle-radius': 4, 'circle-color': '#0b1316', 'circle-stroke-color': '#4fe4d3', 'circle-stroke-width': 2 },
-      });
+      const receiverElement = document.createElement('span');
+      receiverElement.className = 'receiver-map-marker';
+      receiverElement.setAttribute('aria-hidden', 'true');
+      receiverElement.appendChild(createVectorIconElement('receiver', 'receiver-map-icon'));
+      receiverMarker = new Marker({ element: receiverElement, anchor: 'center' })
+        .setLngLat([centerLongitude, centerLatitude])
+        .addTo(map);
       setReady(true);
     };
 
-    map.once('style.load', initializeLayers);
+    map.once('style.load', initializeMap);
     map.on('error', (event) => {
-      if (!layersInitialized) setError(event.error?.message ?? translate(languageRef.current, 'mapLoadFailed'));
+      if (!mapInitialized) setError(event.error?.message ?? translate(languageRef.current, 'mapLoadFailed'));
     });
 
     const markers = markersRef.current;
@@ -505,6 +585,7 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
       animationFrameRef.current = undefined;
       markers.forEach(({ marker }) => marker.remove());
       markers.clear();
+      receiverMarker?.remove();
       updateLabelVisibilityRef.current = () => undefined;
       map.remove();
       mapRef.current = null;
@@ -513,9 +594,44 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
       tracePointsRef.current = [];
       traceSignatureRef.current = undefined;
       navigationControlRef.current = undefined;
-      attributionButton?.removeEventListener('click', handleAttributionInteraction, { capture: true });
+      attributionObserver?.disconnect();
     };
   }, [centerLatitude, centerLongitude, mapStyleUrl, updateTraceOverlayPositions]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready || !map.getLayer(actualRangeLayerId)) return;
+
+    const visible = actualRangeAvailable && actualRangeVisible;
+    map.setLayoutProperty(actualRangeLayerId, 'visibility', visible ? 'visible' : 'none');
+    if (!visible) return;
+
+    const controller = new AbortController();
+    const refresh = async () => {
+      try {
+        const coordinates = await loadActualRangeOutline(dataBaseUrl, controller.signal);
+        if (controller.signal.aborted) return;
+        const source = map.getSource(actualRangeSourceId) as GeoJSONSource | undefined;
+        source?.setData({
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'MultiLineString', coordinates },
+        });
+      } catch {
+        if (!controller.signal.aborted) {
+          const source = map.getSource(actualRangeSourceId) as GeoJSONSource | undefined;
+          source?.setData(emptyActualRangeData);
+        }
+      }
+    };
+
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [actualRangeAvailable, actualRangeVisible, dataBaseUrl, ready]);
 
   useEffect(() => {
     if (!selectedId || !legTraceVisible) return;
@@ -611,6 +727,7 @@ export function RadarMap({ aircraft, center, dataBaseUrl, favoriteIds, focusTarg
       aircraftMarker.element.classList.toggle('selected', aircraftMarker.selected);
       aircraftMarker.element.classList.toggle('favorite', aircraftMarker.favorite);
       aircraftMarker.element.classList.toggle('mlat', item.source === 'mlat');
+      aircraftMarker.element.style.zIndex = String(aircraftMarkerZIndex(item, aircraftMarker.selected));
       aircraftMarker.element.setAttribute('aria-label', [
         item.flight,
         aircraftKindLabel(kind, language),

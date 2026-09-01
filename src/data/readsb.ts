@@ -123,11 +123,63 @@ export async function loadReceiver(baseUrl: string, signal?: AbortSignal): Promi
   return {
     haveReplay: asBoolean(value.haveReplay),
     historyCount: Math.max(0, Math.floor(asNumber(value.history) ?? 0)),
+    outlineJson: asBoolean(value.outlineJson),
     version: asString(value.version),
     refreshMs: Math.min(5_000, Math.max(500, asNumber(value.refresh) ?? 1_000)),
     latitude: asNumber(value.lat),
     longitude: asNumber(value.lon),
   };
+}
+
+export type ActualRangeOutline = Array<Array<[longitude: number, latitude: number]>>;
+
+const parseRangePoints = (value: unknown): ActualRangeOutline => {
+  if (!Array.isArray(value)) return [];
+
+  const points = value.flatMap((candidate): Array<[number, number]> => {
+    if (!Array.isArray(candidate)) return [];
+    const latitude = asNumber(candidate[0]);
+    const longitude = asNumber(candidate[1]);
+    if (
+      latitude === undefined
+      || longitude === undefined
+      || Math.abs(latitude) > 90
+      || Math.abs(longitude) > 180
+    ) return [];
+    return [[longitude, latitude]];
+  });
+  if (points.length < 2) return [];
+
+  const segments: ActualRangeOutline = [];
+  let segment: Array<[number, number]> = [];
+  for (const point of points) {
+    const previous = segment.at(-1);
+    if (previous && Math.abs(previous[0] - point[0]) > 270) {
+      if (segment.length >= 2) segments.push(segment);
+      segment = [];
+    }
+    segment.push(point);
+  }
+  if (segment.length >= 2) segments.push(segment);
+
+  if (segments.length === 1) {
+    const first = segments[0][0];
+    const last = segments[0].at(-1)!;
+    if (first[0] !== last[0] || first[1] !== last[1]) segments[0].push(first);
+  }
+  return segments;
+};
+
+export function parseActualRangeOutline(input: unknown): ActualRangeOutline {
+  const value = asRecord(input);
+  if (!value) return [];
+  const actualRange = asRecord(value.actualRange);
+  const last24Hours = actualRange ? asRecord(actualRange.last24h) : undefined;
+  return parseRangePoints(last24Hours?.points ?? value.points);
+}
+
+export async function loadActualRangeOutline(baseUrl: string, signal?: AbortSignal): Promise<ActualRangeOutline> {
+  return parseActualRangeOutline(await fetchJson(dataRequestUrl(baseUrl, 'outline.json'), signal));
 }
 
 const replaySourceFrom = (code: number): AircraftSource => {

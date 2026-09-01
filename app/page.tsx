@@ -75,6 +75,7 @@ export default function Home() {
   const [following, setFollowing] = useState(false);
   const [labelsVisible, setLabelsVisible] = useState(true);
   const [legTraceVisible, setLegTraceVisible] = useState(true);
+  const [actualRangeVisible, setActualRangeVisible] = useState(false);
   const [technicalDataOpen, setTechnicalDataOpen] = useState(false);
   const [mobileDetailsExpanded, setMobileDetailsExpanded] = useState(false);
   const [mapFocus, setMapFocus] = useState<{ latitude?: number; longitude?: number; request: number }>();
@@ -95,6 +96,7 @@ export default function Home() {
       }
       if (window.localStorage.getItem('vector.mapLabels') === 'false') setLabelsVisible(false);
       if (window.localStorage.getItem('vector.legTrace') === 'false') setLegTraceVisible(false);
+      if (window.localStorage.getItem('vector.actualRangeOutline') === 'true') setActualRangeVisible(true);
       if (window.localStorage.getItem('vector.autoHideDetails') === 'true') setAutoHideDetails(true);
       setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
       const savedSort = window.localStorage.getItem('vector.aircraftSort');
@@ -168,6 +170,10 @@ export default function Home() {
   const changeLegTraceVisible = (visible: boolean) => {
     setLegTraceVisible(visible);
     window.localStorage.setItem('vector.legTrace', String(visible));
+  };
+  const changeActualRangeVisible = (visible: boolean) => {
+    setActualRangeVisible(visible);
+    window.localStorage.setItem('vector.actualRangeOutline', String(visible));
   };
   const changeAutoHideDetails = (enabled: boolean) => {
     setAutoHideDetails(enabled);
@@ -478,6 +484,8 @@ export default function Home() {
 
         <section className={`map ${history.open ? 'history-open' : ''}`} aria-label={t('radarMap')}>
           <RadarMap
+            actualRangeAvailable={feed.receiver?.outlineJson === true}
+            actualRangeVisible={actualRangeVisible}
             aircraft={mapAircraft}
             center={[centerLon, centerLat]}
             dataBaseUrl={feed.config.dataBaseUrl}
@@ -490,6 +498,7 @@ export default function Home() {
             language={language}
             mapStyleUrl={feed.config.mapStyleUrl}
             onDeselect={clearAircraftSelection}
+            onActualRangeVisibleChange={changeActualRangeVisible}
             onHistoryToggle={() => {
               if (history.open) history.close();
               else {
@@ -694,9 +703,13 @@ export default function Home() {
 
       <footer className="statusbar">
         <span><i className={`status-dot ${history.open ? 'history' : feed.status}`} /> {history.open ? t('history') : t(statusText[feed.status])}</span>
-        <span className="desktop-only">{history.open && history.currentSnapshot
-          ? new Intl.DateTimeFormat(localeForLanguage[language], { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(history.currentSnapshot.timestamp * 1_000))
-          : feed.lastUpdate ? t('liveDataReceived') : feed.error ? t(feed.error) : t('connecting')}</span>
+        {history.open && history.currentSnapshot ? (
+          <span className="desktop-only">{new Intl.DateTimeFormat(localeForLanguage[language], { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(history.currentSnapshot.timestamp * 1_000))}</span>
+        ) : feed.error ? (
+          <span className="desktop-only">{t(feed.error)}</span>
+        ) : !feed.lastUpdate ? (
+          <span className="desktop-only">{t('connecting')}</span>
+        ) : null}
         <span className="status-spacer" />
         <span>{centerLat.toFixed(2)}° N, {centerLon.toFixed(2)}° E</span>
         <a className="desktop-only" href="/licenses/tar1090-GPL-2.0-or-later.txt" target="_blank" rel="noreferrer">Icons: tar1090 · GPL</a>

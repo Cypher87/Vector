@@ -1,7 +1,42 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { mergeAircraftTraces, parseAircraftSnapshot, parseAircraftTrace } from '../src/data/readsb.ts';
+import { mergeAircraftTraces, parseActualRangeOutline, parseAircraftSnapshot, parseAircraftTrace } from '../src/data/readsb.ts';
+
+test('parses and closes the readsb actual range outline', () => {
+  assert.deepEqual(parseActualRangeOutline({
+    actualRange: {
+      last24h: {
+        points: [
+          [52.1, 4.8, 12_000],
+          [52.5, 5.4, 20_000],
+          [51.9, 5.1, 8_000],
+        ],
+      },
+    },
+  }), [[
+    [4.8, 52.1],
+    [5.4, 52.5],
+    [5.1, 51.9],
+    [4.8, 52.1],
+  ]]);
+});
+
+test('ignores malformed actual range points and avoids an antimeridian line', () => {
+  assert.deepEqual(parseActualRangeOutline({
+    points: [
+      [52, 179],
+      [52.1, 179.5],
+      [null, 5],
+      [91, 5],
+      [52.2, -179.5],
+      [52.3, -179],
+    ],
+  }), [
+    [[179, 52], [179.5, 52.1]],
+    [[-179.5, 52.2], [-179, 52.3]],
+  ]);
+});
 
 test('maps the readsb fields used by the tar1090-style technical overview', () => {
   const snapshot = parseAircraftSnapshot({

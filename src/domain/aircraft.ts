@@ -102,6 +102,7 @@ export type AircraftKind =
 export type Receiver = {
   haveReplay: boolean;
   historyCount: number;
+  outlineJson: boolean;
   version?: string;
   refreshMs: number;
   latitude?: number;
