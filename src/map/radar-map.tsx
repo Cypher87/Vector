@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AttributionControl, type GeoJSONSource, Map as MapLibre, Marker } from 'maplibre-gl';
+import { AttributionControl, Map as MapLibre, Marker } from 'maplibre-gl';
 import { createVectorIconElement, type VectorIconName } from '../components/vector-icon';
 import type { Aircraft, AircraftTracePoint, UnitSystem } from '../domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../domain/aircraft-kind';
-import { loadActualRangeOutline, loadAircraftLegTrace } from '../data/readsb';
+import { loadActualRangeOutline, loadAircraftLegTrace, type ActualRangeOutline } from '../data/readsb';
 import { translate, type Language } from '../i18n';
 import { mapAltitudeLabel } from '../units';
 import { altitudeColor, altitudeColorForValue } from './altitude-color';
@@ -63,14 +63,7 @@ const shortestAngleDifference = (from: number, to: number) => ((to - from + 540)
 const normalizeAngle = (value: number) => ((value % 360) + 360) % 360;
 const aircraftMarkerZIndex = (aircraft: Aircraft, selected: boolean) =>
   selected ? 100_000 : 10 + Math.max(0, Math.round(aircraft.altitudeFt ?? 0));
-const actualRangeSourceId = 'vector-actual-range-source';
-const actualRangeLayerId = 'vector-actual-range-layer';
 const receiverAccentColor = '#e3ad5b';
-const emptyActualRangeData = {
-  type: 'Feature' as const,
-  properties: {},
-  geometry: { type: 'MultiLineString' as const, coordinates: [] as Array<Array<[number, number]>> },
-};
 const markerDistanceMetres = (
   from: [longitude: number, latitude: number],
   to: [longitude: number, latitude: number],
@@ -282,6 +275,9 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
   const animationFrameRef = useRef<number | undefined>(undefined);
   const lastAnimationFrameRef = useRef<number | undefined>(undefined);
   const followTargetRef = useRef<[longitude: number, latitude: number] | undefined>(undefined);
+  const actualRangeCoordinatesRef = useRef<ActualRangeOutline>([]);
+  const actualRangeElementsRef = useRef<SVGPolylineElement[]>([]);
+  const actualRangeOverlayRef = useRef<SVGSVGElement | null>(null);
   const traceElementsRef = useRef<{ segments: TraceSegmentElements[]; start?: SVGCircleElement }>({ segments: [] });
   const traceOverlayRef = useRef<SVGSVGElement | null>(null);
   const tracePointsRef = useRef<AircraftTracePoint[]>([]);
@@ -373,6 +369,40 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
     animationFrameRef.current = requestAnimationFrame(animateMarkers);
   }, [animateMarkers]);
 
+  const updateActualRangeOverlayPositions = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    actualRangeCoordinatesRef.current.forEach((segment, segmentIndex) => {
+      const element = actualRangeElementsRef.current[segmentIndex];
+      if (!element) return;
+      element.setAttribute('points', segment.map((point) => {
+        const projected = map.project(point);
+        return `${projected.x},${projected.y}`;
+      }).join(' '));
+    });
+  }, []);
+
+  const renderActualRangeOutline = useCallback((coordinates: ActualRangeOutline) => {
+    const overlay = actualRangeOverlayRef.current;
+    if (!overlay) return;
+
+    overlay.replaceChildren();
+    actualRangeCoordinatesRef.current = coordinates;
+    actualRangeElementsRef.current = coordinates.map(() => {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      line.setAttribute('fill', 'none');
+      line.setAttribute('stroke', receiverAccentColor);
+      line.setAttribute('stroke-linecap', 'round');
+      line.setAttribute('stroke-linejoin', 'round');
+      line.setAttribute('stroke-opacity', '0.95');
+      line.setAttribute('stroke-width', '1.8');
+      line.setAttribute('vector-effect', 'non-scaling-stroke');
+      overlay.appendChild(line);
+      return line;
+    });
+    updateActualRangeOverlayPositions();
+  }, [updateActualRangeOverlayPositions]);
+
   const updateTraceOverlayPositions = useCallback(() => {
     const map = mapRef.current;
     const points = tracePointsRef.current;
@@ -457,6 +487,11 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
       attributionControl: false,
     });
     mapRef.current = map;
+    const actualRangeOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    actualRangeOverlay.classList.add('map-actual-range-overlay');
+    actualRangeOverlay.setAttribute('aria-hidden', 'true');
+    map.getCanvasContainer().appendChild(actualRangeOverlay);
+    actualRangeOverlayRef.current = actualRangeOverlay;
     const traceOverlay = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     traceOverlay.classList.add('map-leg-trace-overlay');
     traceOverlay.setAttribute('aria-hidden', 'true');
@@ -530,6 +565,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
     map.on('click', () => onDeselectRef.current());
     map.on('moveend', updateLabelVisibility);
     map.on('zoomend', updateLabelVisibility);
+    map.on('move', updateActualRangeOverlayPositions);
     map.on('move', updateTraceOverlayPositions);
     map.on('rotate', () => {
       markersRef.current.forEach((aircraftMarker) => {
@@ -547,23 +583,6 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
     const initializeMap = () => {
       if (mapInitialized) return;
       mapInitialized = true;
-      map.addSource(actualRangeSourceId, {
-        type: 'geojson',
-        data: emptyActualRangeData,
-      });
-      map.addLayer({
-        id: actualRangeLayerId,
-        type: 'line',
-        source: actualRangeSourceId,
-        layout: {
-          visibility: actualRangeAvailableRef.current && actualRangeVisibleRef.current ? 'visible' : 'none',
-        },
-        paint: {
-          'line-color': receiverAccentColor,
-          'line-opacity': 0.95,
-          'line-width': 1.8,
-        },
-      });
       const receiverElement = document.createElement('span');
       receiverElement.className = 'receiver-map-marker';
       receiverElement.setAttribute('aria-hidden', 'true');
@@ -589,6 +608,9 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
       updateLabelVisibilityRef.current = () => undefined;
       map.remove();
       mapRef.current = null;
+      actualRangeCoordinatesRef.current = [];
+      actualRangeElementsRef.current = [];
+      actualRangeOverlayRef.current = null;
       traceElementsRef.current = { segments: [] };
       traceOverlayRef.current = null;
       tracePointsRef.current = [];
@@ -596,14 +618,15 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
       navigationControlRef.current = undefined;
       attributionObserver?.disconnect();
     };
-  }, [centerLatitude, centerLongitude, mapStyleUrl, updateTraceOverlayPositions]);
+  }, [centerLatitude, centerLongitude, mapStyleUrl, updateActualRangeOverlayPositions, updateTraceOverlayPositions]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || !map.getLayer(actualRangeLayerId)) return;
+    const overlay = actualRangeOverlayRef.current;
+    if (!map || !overlay || !ready) return;
 
     const visible = actualRangeAvailable && actualRangeVisible;
-    map.setLayoutProperty(actualRangeLayerId, 'visibility', visible ? 'visible' : 'none');
+    overlay.style.display = visible ? '' : 'none';
     if (!visible) return;
 
     const controller = new AbortController();
@@ -611,17 +634,9 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
       try {
         const coordinates = await loadActualRangeOutline(dataBaseUrl, controller.signal);
         if (controller.signal.aborted) return;
-        const source = map.getSource(actualRangeSourceId) as GeoJSONSource | undefined;
-        source?.setData({
-          type: 'Feature',
-          properties: {},
-          geometry: { type: 'MultiLineString', coordinates },
-        });
+        renderActualRangeOutline(coordinates);
       } catch {
-        if (!controller.signal.aborted) {
-          const source = map.getSource(actualRangeSourceId) as GeoJSONSource | undefined;
-          source?.setData(emptyActualRangeData);
-        }
+        if (!controller.signal.aborted) renderActualRangeOutline([]);
       }
     };
 
@@ -631,7 +646,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [actualRangeAvailable, actualRangeVisible, dataBaseUrl, ready]);
+  }, [actualRangeAvailable, actualRangeVisible, dataBaseUrl, ready, renderActualRangeOutline]);
 
   useEffect(() => {
     if (!selectedId || !legTraceVisible) return;
