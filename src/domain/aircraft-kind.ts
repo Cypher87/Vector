@@ -16,6 +16,8 @@ const gliderTypes = new Set([
   'S12', 'S12S', 'TS1J', 'VENT', 'VNTE',
 ]);
 
+const balloonTypes = new Set(['BALL', 'SHIP']);
+
 const heavyTypes = new Set(['C17', 'C5M', 'MD11']);
 const heavyPrefixes = ['A33', 'A34', 'A35', 'A38', 'B74', 'B76', 'B77', 'B78', 'IL76'];
 const businessJetPrefixes = [
@@ -34,9 +36,9 @@ export function aircraftKind(aircraft: Aircraft): AircraftKind {
   const category = aircraft.category?.toUpperCase() ?? '';
   const typeDescription = /^[A-Z][1-9][A-Z]$/.test(description) ? description : '';
 
-  if (helicopterTypes.has(type) || description.startsWith('H') || category === 'A7') return 'helicopter';
-  if (gliderTypes.has(type) || category === 'B1') return 'glider';
-  if (category === 'B2') return 'balloon';
+  if (helicopterTypes.has(type) || description.includes('HELICOPTER') || category === 'A7') return 'helicopter';
+  if (gliderTypes.has(type) || description.includes('GLIDER') || category === 'B1') return 'glider';
+  if (balloonTypes.has(type) || description.includes('BALLOON') || description.includes('AIRSHIP') || category === 'B2') return 'balloon';
   if (category === 'B3') return 'skydiver';
   if (category === 'B4') return 'ultralight';
   if (category === 'B6') return 'uav';

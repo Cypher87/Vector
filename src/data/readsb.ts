@@ -1,4 +1,4 @@
-import type { Aircraft, AircraftHistorySnapshot, AircraftSource, AircraftTracePoint, Receiver, RuntimeConfig, UnitSystem } from '../domain/aircraft';
+import type { Aircraft, AircraftHistorySnapshot, AircraftMetadata, AircraftSource, AircraftTracePoint, Receiver, RuntimeConfig, UnitSystem } from '../domain/aircraft';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -114,6 +114,31 @@ export async function loadRuntimeConfig(signal?: AbortSignal): Promise<RuntimeCo
     ...(hasReceiverCoordinates ? { receiverLatitude, receiverLongitude } : {}),
     unitSystem,
   };
+}
+
+export async function loadAircraftMetadata(aircraftIds: string[], signal?: AbortSignal) {
+  const ids = [...new Set(aircraftIds.map((id) => id.toLowerCase()).filter((id) => /^[0-9a-f]{6}$/.test(id)))];
+  const metadata = new Map<string, AircraftMetadata>();
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const batch = ids.slice(offset, offset + 100);
+    const value = asRecord(await fetchJson(`/api/aircraft-metadata?ids=${batch.join(',')}`, signal));
+    const entries = value ? asRecord(value.aircraft) : undefined;
+    if (!entries) throw new Error('/api/aircraft-metadata returned an invalid response');
+    for (const [id, candidate] of Object.entries(entries)) {
+      const item = asRecord(candidate);
+      if (!/^[0-9a-f]{6}$/.test(id) || !item) continue;
+      metadata.set(id, {
+        category: asString(item.category),
+        registration: asString(item.registration),
+        aircraftType: asString(item.aircraftType),
+        description: asString(item.description),
+        ownerOperator: asString(item.ownerOperator),
+        year: asDisplayString(item.year),
+        dbFlags: asNumber(item.dbFlags),
+      });
+    }
+  }
+  return metadata;
 }
 
 export async function loadReceiver(baseUrl: string, signal?: AbortSignal): Promise<Receiver> {

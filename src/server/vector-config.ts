@@ -5,6 +5,7 @@ export type VectorServerConfig = {
   historyBaseUrl: URL;
   liveBaseUrl: URL;
   publicConfig: RuntimeConfig;
+  tar1090BaseUrl: URL;
 };
 
 const DEFAULT_LIVE_URL = 'http://127.0.0.1/tar1090/data/';
@@ -76,15 +77,22 @@ export function parseUpstreamBaseUrl(value: string, variableName: string): URL {
 export function readVectorServerConfig(
   environment: Record<string, string | undefined> = process.env,
 ): VectorServerConfig {
+  const liveBaseUrl = parseUpstreamBaseUrl(
+    environment.READSB_LIVE_URL?.trim() || DEFAULT_LIVE_URL,
+    'READSB_LIVE_URL',
+  );
+  const historyBaseUrl = parseUpstreamBaseUrl(
+    environment.READSB_HISTORY_URL?.trim() || DEFAULT_HISTORY_URL,
+    'READSB_HISTORY_URL',
+  );
+  const tar1090BaseUrl = environment.READSB_TAR1090_URL?.trim()
+    ? parseUpstreamBaseUrl(environment.READSB_TAR1090_URL, 'READSB_TAR1090_URL')
+    : new URL('../', liveBaseUrl);
+
   return {
-    liveBaseUrl: parseUpstreamBaseUrl(
-      environment.READSB_LIVE_URL?.trim() || DEFAULT_LIVE_URL,
-      'READSB_LIVE_URL',
-    ),
-    historyBaseUrl: parseUpstreamBaseUrl(
-      environment.READSB_HISTORY_URL?.trim() || DEFAULT_HISTORY_URL,
-      'READSB_HISTORY_URL',
-    ),
+    liveBaseUrl,
+    historyBaseUrl,
+    tar1090BaseUrl,
     publicConfig: {
       ...DEFAULT_RUNTIME_CONFIG,
       mapStyleUrl: configuredText(environment.VECTOR_MAP_STYLE_URL, DEFAULT_RUNTIME_CONFIG.mapStyleUrl, 2_048),

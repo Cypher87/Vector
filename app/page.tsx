@@ -10,6 +10,7 @@ import { useAircraftFeed } from '../src/data/use-aircraft-feed';
 import { useAircraftHistory } from '../src/data/use-aircraft-history';
 import type { Aircraft, FeedStatus, UnitSystem } from '../src/domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../src/domain/aircraft-kind';
+import { mergeAircraftMetadata } from '../src/domain/aircraft-metadata';
 import {
   favoriteAircraftStorageKey,
   parseFavoriteAircraftIds,
@@ -29,7 +30,11 @@ const formatAltitude = (aircraft: Aircraft, unitSystem: UnitSystem, language: La
   return `${altitude.value}${altitude.unit ? ` ${altitude.unit}` : ''}`;
 };
 const trendArrow = (rate?: number) => rate === undefined || Math.abs(rate) < 128 ? '→' : rate > 0 ? '↗' : '↘';
-const typeLabel = (aircraft: Aircraft, language: Language) => aircraft.description ?? aircraft.aircraftType ?? translate(language, 'unknownType');
+const typeLabel = (aircraft: Aircraft, language: Language) => {
+  if (aircraft.description || aircraft.aircraftType) return aircraft.description ?? aircraft.aircraftType!;
+  const kind = aircraftKind(aircraft);
+  return kind === 'unknown' ? translate(language, 'unknownType') : aircraftKindLabel(kind, language);
+};
 const sourceLabel = (source: Aircraft['source']) => source === 'mlat' ? 'MLAT' : source.startsWith('adsb') ? 'ADS-B' : source.replace('_', ' ').toUpperCase();
 const directionLabel = (degrees?: number) => {
   if (degrees === undefined) return '—';
@@ -214,19 +219,10 @@ export default function Home() {
   const displayedAircraft = useMemo(() => {
     if (!history.open || !history.currentSnapshot) return feed.aircraft;
     const liveAircraft = new Map(feed.aircraft.map((item) => [item.id, item]));
-    return history.currentSnapshot.aircraft.map((item) => {
-      const metadata = liveAircraft.get(item.id);
-      return {
-        ...item,
-        category: metadata?.category,
-        registration: metadata?.registration,
-        aircraftType: metadata?.aircraftType,
-        description: metadata?.description,
-        ownerOperator: metadata?.ownerOperator,
-        year: metadata?.year,
-        dbFlags: metadata?.dbFlags ?? item.dbFlags,
-      };
-    });
+    return history.currentSnapshot.aircraft.map((item) => mergeAircraftMetadata(
+      item,
+      liveAircraft.get(item.id),
+    ));
   }, [feed.aircraft, history.currentSnapshot, history.open]);
 
   const favoriteAircraftIdSet = useMemo(() => new Set(favoriteAircraftIds), [favoriteAircraftIds]);

@@ -55,9 +55,9 @@ button { color: inherit; }
 .maplibre-surface { position: absolute; z-index: 1; inset: 0; }
 .maplibre-surface .maplibregl-canvas { outline: 0; }
 .map-actual-range-overlay, .map-leg-trace-overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
-.map .maplibregl-ctrl-top-right { top: var(--map-edge-inset); right: var(--map-edge-inset); transition: right .34s cubic-bezier(.22, 1, .36, 1); }
+.map .maplibregl-ctrl-top-right { z-index: 200000; top: var(--map-edge-inset); right: var(--map-edge-inset); transition: right .34s cubic-bezier(.22, 1, .36, 1); }
 .map .maplibregl-ctrl-top-right .maplibregl-ctrl { margin: 0; }
-.map .maplibregl-ctrl-bottom-right { right: 0; bottom: 0; left: 0; transition: right .34s cubic-bezier(.22, 1, .36, 1); }
+.map .maplibregl-ctrl-bottom-right { z-index: 200000; right: 0; bottom: 0; left: 0; transition: right .34s cubic-bezier(.22, 1, .36, 1); }
 .map .maplibregl-ctrl-bottom-right .maplibregl-ctrl { margin: 0 var(--map-edge-inset) var(--map-bottom-inset) 0; }
 .map .maplibregl-ctrl-group { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: rgba(9,17,20,.88); box-shadow: 0 7px 22px rgba(0,0,0,.25); backdrop-filter: blur(8px); }
 .map .maplibregl-ctrl-group button { position: relative; border-bottom-color: var(--line); }

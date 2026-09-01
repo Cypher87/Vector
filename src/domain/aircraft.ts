@@ -68,6 +68,13 @@ export type Aircraft = {
   dbFlags: number;
 };
 
+export type AircraftMetadata = Pick<
+  Aircraft,
+  'category' | 'registration' | 'aircraftType' | 'description' | 'ownerOperator' | 'year'
+> & {
+  dbFlags?: number;
+};
+
 export type AircraftTracePoint = {
   altitudeFt?: number;
   latitude: number;

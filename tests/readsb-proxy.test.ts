@@ -104,10 +104,19 @@ test('upstream URLs are built only from server-side configured bases', () => {
     buildReadsbUpstreamUrl(config, 'history', '2024/02/29/heatmap/47.bin.ttf').toString(),
     'http://127.0.0.1/tar1090/globe_history/2024/02/29/heatmap/47.bin.ttf',
   );
+  assert.equal(config.tar1090BaseUrl.toString(), 'http://127.0.0.1/tar1090/');
   assert.equal(config.publicConfig.dataBaseUrl, '/api/readsb?source=live');
   assert.equal(config.publicConfig.historyBaseUrl, '/api/readsb?source=history');
   assert.equal(config.publicConfig.receiverLatitude, undefined);
   assert.equal(config.publicConfig.receiverLongitude, undefined);
+});
+
+test('tar1090 database base can be configured independently from live data', () => {
+  const config = readVectorServerConfig({
+    READSB_LIVE_URL: 'http://readsb.local/custom-data/',
+    READSB_TAR1090_URL: 'https://tar1090.local/radar/',
+  });
+  assert.equal(config.tar1090BaseUrl.toString(), 'https://tar1090.local/radar/');
 });
 
 test('receiver coordinates are read as a validated environment pair', () => {

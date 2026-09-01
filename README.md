@@ -60,6 +60,8 @@ The safe default configuration for tar1090 running on the same Pi is:
 ```ini
 READSB_LIVE_URL=http://127.0.0.1/tar1090/data/
 READSB_HISTORY_URL=http://127.0.0.1/tar1090/globe_history/
+# Optional when tar1090 is not the parent directory of READSB_LIVE_URL:
+# READSB_TAR1090_URL=http://127.0.0.1/tar1090/
 VECTOR_SITE_NAME=Vector
 VECTOR_RECEIVER_TITLE="Local readsb receiver"
 VECTOR_UNIT_SYSTEM=metric
@@ -71,7 +73,7 @@ HOST=0.0.0.0
 PORT=3000
 ```
 
-`VECTOR_UNIT_SYSTEM` accepts `metric`, `aeronautical`, or `imperial`; the default is `metric`. `READSB_LIVE_URL` points to the directory containing at least `receiver.json`, `aircraft.json`, and optionally `traces/`. `READSB_HISTORY_URL` points to the `globe_history` directory written by readsb, containing replay files such as `YYYY/MM/DD/heatmap/NN.bin.ttf`.
+`VECTOR_UNIT_SYSTEM` accepts `metric`, `aeronautical`, or `imperial`; the default is `metric`. `READSB_LIVE_URL` points to the directory containing at least `receiver.json`, `aircraft.json`, and optionally `traces/`. `READSB_HISTORY_URL` points to the `globe_history` directory written by readsb, containing replay files such as `YYYY/MM/DD/heatmap/NN.bin.ttf`. Vector derives the tar1090 application URL from `READSB_LIVE_URL` to obtain aircraft types during replay. Set `READSB_TAR1090_URL` only when that derived location is not correct.
 
 Set `VECTOR_RECEIVER_LATITUDE` and `VECTOR_RECEIVER_LONGITUDE` to the receiver position in decimal degrees when you want to configure the radar location explicitly. Both variables must be set together. Environment coordinates take precedence over `receiver.json`; when they are omitted, Vector uses the position reported by `receiver.json`.
 

@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Aircraft, AircraftHistorySnapshot } from '../domain/aircraft';
-import { loadAircraftReplayChunk } from './readsb';
+import type { Aircraft, AircraftHistorySnapshot, AircraftMetadata } from '../domain/aircraft';
+import { combineAircraftMetadata, mergeAircraftMetadata } from '../domain/aircraft-metadata';
+import { loadAircraftMetadata, loadAircraftReplayChunk } from './readsb';
 
 export type HistorySource = 'receiver' | 'session';
 
@@ -105,6 +106,8 @@ const interpolateSnapshot = (
 export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, receiverHaveReplay }: AircraftHistoryOptions) {
   const sessionSnapshotsRef = useRef<AircraftHistorySnapshot[]>([]);
   const replayCacheRef = useRef(new Map<string, AircraftHistorySnapshot[]>());
+  const aircraftMetadataRef = useRef(new Map<string, AircraftMetadata>());
+  const metadataLookupRef = useRef(new Set<string>());
   const lastCaptureRef = useRef(0);
   const requestRef = useRef<AbortController | undefined>(undefined);
   const [state, setState] = useState<HistoryState>({
@@ -119,6 +122,12 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
   });
 
   useEffect(() => {
+    for (const item of aircraft) {
+      aircraftMetadataRef.current.set(
+        item.id,
+        combineAircraftMetadata(aircraftMetadataRef.current.get(item.id), item),
+      );
+    }
     if (!lastUpdate || lastUpdate - lastCaptureRef.current < CAPTURE_INTERVAL_MS) return;
     lastCaptureRef.current = lastUpdate;
     const oldestTimestamp = (lastUpdate - SESSION_RETENTION_MS) / 1_000;
@@ -187,7 +196,31 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
         }
       }
       if (controller.signal.aborted) return;
-      const index = closestSnapshotIndex(snapshots, receiverTarget.getTime() / 1_000);
+      const metadataIds = [...new Set(snapshots.flatMap((snapshot) => snapshot.aircraft.map((item) => item.id)))]
+        .filter((id) => /^[0-9a-f]{6}$/.test(id) && !metadataLookupRef.current.has(id));
+      if (metadataIds.length > 0) {
+        try {
+          const databaseMetadata = await loadAircraftMetadata(metadataIds, controller.signal);
+          if (controller.signal.aborted) return;
+          for (const id of metadataIds) metadataLookupRef.current.add(id);
+          for (const [id, metadata] of databaseMetadata) {
+            aircraftMetadataRef.current.set(
+              id,
+              combineAircraftMetadata(metadata, aircraftMetadataRef.current.get(id) ?? {}),
+            );
+          }
+        } catch {
+          if (controller.signal.aborted) return;
+        }
+      }
+      const enrichedSnapshots = snapshots.map((snapshot) => ({
+        ...snapshot,
+        aircraft: snapshot.aircraft.map((item) => mergeAircraftMetadata(
+          item,
+          aircraftMetadataRef.current.get(item.id),
+        )),
+      }));
+      const index = closestSnapshotIndex(enrichedSnapshots, receiverTarget.getTime() / 1_000);
       setState((current) => ({
         ...current,
         error: false,
@@ -196,7 +229,7 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
         open: true,
         playbackTimestamp: snapshots[index]?.timestamp,
         playing: options.playAfterLoad && snapshots.length > 1,
-        snapshots,
+        snapshots: enrichedSnapshots,
         source: 'receiver',
       }));
     } catch {
