@@ -66,9 +66,11 @@ export default function Home() {
     receiverHaveReplay: feed.receiver?.haveReplay === true,
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const settingsMenuRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [autoHideDetails, setAutoHideDetails] = useState(false);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [following, setFollowing] = useState(false);
   const [labelsVisible, setLabelsVisible] = useState(true);
@@ -93,6 +95,7 @@ export default function Home() {
       }
       if (window.localStorage.getItem('vector.mapLabels') === 'false') setLabelsVisible(false);
       if (window.localStorage.getItem('vector.legTrace') === 'false') setLegTraceVisible(false);
+      if (window.localStorage.getItem('vector.autoHideDetails') === 'true') setAutoHideDetails(true);
       setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
       const savedSort = window.localStorage.getItem('vector.aircraftSort');
       if (savedSort === 'altitude-desc' || savedSort === 'callsign-asc' || savedSort === 'distance-asc' || savedSort === 'seen-asc') {
@@ -134,6 +137,17 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleSearchShortcut);
   }, []);
 
+  useEffect(() => {
+    const closeSettingsOnOutsideClick = (event: MouseEvent) => {
+      const menu = settingsMenuRef.current;
+      const target = event.target;
+      if (menu?.open && target instanceof Node && !menu.contains(target)) menu.open = false;
+    };
+
+    document.addEventListener('click', closeSettingsOnOutsideClick);
+    return () => document.removeEventListener('click', closeSettingsOnOutsideClick);
+  }, []);
+
   const unitSystem = unitOverride ?? feed.config.unitSystem;
   const altitudeLegend = altitudeLegendScale(unitSystem);
   const seconds = new Intl.NumberFormat(localeForLanguage[language], { maximumFractionDigits: 1 });
@@ -154,6 +168,16 @@ export default function Home() {
   const changeLegTraceVisible = (visible: boolean) => {
     setLegTraceVisible(visible);
     window.localStorage.setItem('vector.legTrace', String(visible));
+  };
+  const changeAutoHideDetails = (enabled: boolean) => {
+    setAutoHideDetails(enabled);
+    window.localStorage.setItem('vector.autoHideDetails', String(enabled));
+  };
+  const clearAircraftSelection = () => {
+    setSelectedId(null);
+    setFollowing(false);
+    setMobileDetailsExpanded(false);
+    if (autoHideDetails) setDetailsOpen(false);
   };
   const changeAircraftFilter = (key: AircraftFilterKey, enabled: boolean) => {
     setAircraftFilters((current) => {
@@ -295,7 +319,7 @@ export default function Home() {
         </div>
 
         <div className="top-actions">
-          <details className="settings-menu">
+          <details className="settings-menu" ref={settingsMenuRef}>
             <summary className="settings-button" aria-label={t('settings')} title={t('settings')}>
               <VectorIcon name="settings" />
             </summary>
@@ -322,6 +346,17 @@ export default function Home() {
                 >
                   <option value="nl">{t('dutch')}</option>
                   <option value="en">{t('english')}</option>
+                </select>
+              </label>
+              <label className="settings-field">
+                <span>{t('autoHideDetails')}</span>
+                <select
+                  aria-label={t('autoHideDetails')}
+                  value={autoHideDetails ? 'yes' : 'no'}
+                  onChange={(event) => changeAutoHideDetails(event.target.value === 'yes')}
+                >
+                  <option value="yes">{t('yes')}</option>
+                  <option value="no">{t('no')}</option>
                 </select>
               </label>
             </div>
@@ -454,13 +489,11 @@ export default function Home() {
             legTraceVisible={legTraceVisible && !history.open}
             language={language}
             mapStyleUrl={feed.config.mapStyleUrl}
-            onDeselect={() => { setSelectedId(null); setFollowing(false); setMobileDetailsExpanded(false); }}
+            onDeselect={clearAircraftSelection}
             onHistoryToggle={() => {
               if (history.open) history.close();
               else {
-                setFollowing(false);
-                setSelectedId(null);
-                setMobileDetailsExpanded(false);
+                clearAircraftSelection();
                 history.openHistory();
               }
             }}
@@ -493,7 +526,7 @@ export default function Home() {
             speed={history.speed}
             onClose={history.close}
             onIndexChange={history.setIndex}
-            onLoadAt={(date) => { setFollowing(false); setSelectedId(null); setMobileDetailsExpanded(false); void history.loadAt(date); }}
+            onLoadAt={(date) => { clearAircraftSelection(); void history.loadAt(date); }}
             onNextPeriod={() => history.stepPeriod(1)}
             onPreviousPeriod={() => history.stepPeriod(-1)}
             onSpeedChange={history.setSpeed}
@@ -532,8 +565,13 @@ export default function Home() {
           </button>
         </section>
 
-        {detailsOpen && !selected && (
-          <aside className="detail-panel detail-empty">
+        <aside
+          className={`detail-panel ${selected ? '' : 'detail-empty'} ${mobileDetailsExpanded ? 'mobile-expanded' : ''}`}
+          aria-hidden={!detailsOpen}
+          inert={detailsOpen ? undefined : true}
+        >
+          {!selected ? (
+            <>
             <div className="detail-actions">
               <strong className="detail-panel-title">{t('aircraftInformation')}</strong>
               <div>
@@ -547,11 +585,9 @@ export default function Home() {
               <h2>{t('noAircraftSelected')}</h2>
               <p>{t('noAircraftSelectedHelp')}</p>
             </div>
-          </aside>
-        )}
-
-        {detailsOpen && selected && (
-          <aside className={`detail-panel ${mobileDetailsExpanded ? 'mobile-expanded' : ''}`}>
+            </>
+          ) : (
+            <>
             <div className="detail-actions">
               <span className="detail-title-group">
                 <strong className="detail-panel-title">{t('aircraftInformation')}</strong>
@@ -651,8 +687,9 @@ export default function Home() {
             <button className="primary-action" onClick={() => setFollowing(true)}>
               {t(following ? 'aircraftFollowing' : 'followOnMap')} <span>→</span>
             </button>
-          </aside>
-        )}
+            </>
+          )}
+        </aside>
       </section>
 
       <footer className="statusbar">
