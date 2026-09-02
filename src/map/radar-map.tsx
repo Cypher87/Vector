@@ -5,6 +5,7 @@ import { AttributionControl, Map as MapLibre, Marker } from 'maplibre-gl';
 import { createVectorIconElement, type VectorIconName } from '../components/vector-icon';
 import type { Aircraft, AircraftTracePoint, UnitSystem } from '../domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../domain/aircraft-kind';
+import { limitAircraftTracePeriod, type LegTracePeriod } from '../domain/aircraft-trace';
 import { loadActualRangeOutline, loadAircraftLegTrace, type ActualRangeOutline } from '../data/readsb';
 import { translate, type Language } from '../i18n';
 import { mapAltitudeLabel } from '../units';
@@ -24,6 +25,7 @@ type RadarMapProps = {
   historyOpen: boolean;
   labelsVisible: boolean;
   legTraceVisible: boolean;
+  legTracePeriod: LegTracePeriod;
   language: Language;
   mapStyleUrl: string;
   onActualRangeVisibleChange: (visible: boolean) => void;
@@ -236,6 +238,13 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
 
   const icon = createAircraftIconElement();
 
+  const favoriteTarget = document.createElement('span');
+  favoriteTarget.className = 'favorite-map-target';
+  favoriteTarget.setAttribute('aria-hidden', 'true');
+  for (let index = 0; index < 4; index += 1) {
+    favoriteTarget.appendChild(document.createElement('i'));
+  }
+
   const label = document.createElement('span');
   label.className = 'map-plane-label';
   const flight = document.createElement('strong');
@@ -243,6 +252,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   label.appendChild(flight);
   label.appendChild(altitude);
   element.appendChild(icon);
+  element.appendChild(favoriteTarget);
   element.appendChild(label);
 
   const marker = new Marker({
@@ -265,7 +275,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   };
 };
 
-export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, center, dataBaseUrl, favoriteIds, focusTarget, following, historyOpen, labelsVisible, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onDeselect, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, recordLiveTrace, selectedId, unitSystem }: RadarMapProps) {
+export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, center, dataBaseUrl, favoriteIds, focusTarget, following, historyOpen, labelsVisible, legTracePeriod, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onDeselect, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, recordLiveTrace, selectedId, unitSystem }: RadarMapProps) {
   const centerLongitude = center[0];
   const centerLatitude = center[1];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -773,16 +783,18 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
     const livePoints = liveTracesRef.current.get(selectedId) ?? [];
     const latestServerTimestamp = serverPoints.at(-1)?.timestamp ?? 0;
     const combined = [...serverPoints, ...livePoints.filter((point) => point.timestamp > latestServerTimestamp)];
-    if (combined.length === 0) {
+    const visiblePoints = limitAircraftTracePeriod(combined, legTracePeriod);
+    if (visiblePoints.length === 0) {
       renderTraceOverlay([]);
       traceSignatureRef.current = `${selectedId}:empty`;
       return;
     }
 
-    const lastPoint = combined.at(-1)!;
+    const lastPoint = visiblePoints.at(-1)!;
     const signature = [
       selectedId,
-      combined.length,
+      legTracePeriod,
+      visiblePoints.length,
       lastPoint.timestamp,
       lastPoint.latitude,
       lastPoint.longitude,
@@ -792,9 +804,9 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
     ].join(':');
     if (traceSignatureRef.current === signature) return;
 
-    renderTraceOverlay(combined);
+    renderTraceOverlay(visiblePoints);
     traceSignatureRef.current = signature;
-  }, [aircraft, legTraceVisible, ready, renderTraceOverlay, selectedId, selectedTrace]);
+  }, [aircraft, legTracePeriod, legTraceVisible, ready, renderTraceOverlay, selectedId, selectedTrace]);
 
   useEffect(() => {
     if (!ready || focusTarget?.latitude === undefined || focusTarget.longitude === undefined) return;

@@ -11,6 +11,7 @@ import { useAircraftHistory } from '../src/data/use-aircraft-history';
 import type { Aircraft, FeedStatus, UnitSystem } from '../src/domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../src/domain/aircraft-kind';
 import { mergeAircraftMetadata } from '../src/domain/aircraft-metadata';
+import { defaultLegTracePeriod, parseLegTracePeriod, type LegTracePeriod } from '../src/domain/aircraft-trace';
 import {
   favoriteAircraftStorageKey,
   parseFavoriteAircraftIds,
@@ -80,6 +81,7 @@ export default function Home() {
   const [following, setFollowing] = useState(false);
   const [labelsVisible, setLabelsVisible] = useState(true);
   const [legTraceVisible, setLegTraceVisible] = useState(true);
+  const [legTracePeriod, setLegTracePeriod] = useState<LegTracePeriod>(defaultLegTracePeriod);
   const [actualRangeVisible, setActualRangeVisible] = useState(false);
   const [technicalDataOpen, setTechnicalDataOpen] = useState(false);
   const [mobileDetailsExpanded, setMobileDetailsExpanded] = useState(false);
@@ -101,6 +103,7 @@ export default function Home() {
       }
       if (window.localStorage.getItem('vector.mapLabels') === 'false') setLabelsVisible(false);
       if (window.localStorage.getItem('vector.legTrace') === 'false') setLegTraceVisible(false);
+      setLegTracePeriod(parseLegTracePeriod(window.localStorage.getItem('vector.legTracePeriod')));
       if (window.localStorage.getItem('vector.actualRangeOutline') === 'true') setActualRangeVisible(true);
       if (window.localStorage.getItem('vector.autoHideDetails') === 'true') setAutoHideDetails(true);
       setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
@@ -175,6 +178,10 @@ export default function Home() {
   const changeLegTraceVisible = (visible: boolean) => {
     setLegTraceVisible(visible);
     window.localStorage.setItem('vector.legTrace', String(visible));
+  };
+  const changeLegTracePeriod = (period: LegTracePeriod) => {
+    setLegTracePeriod(period);
+    window.localStorage.setItem('vector.legTracePeriod', String(period));
   };
   const changeActualRangeVisible = (visible: boolean) => {
     setActualRangeVisible(visible);
@@ -361,6 +368,22 @@ export default function Home() {
                   <option value="no">{t('no')}</option>
                 </select>
               </label>
+              <label className="settings-field">
+                <span>{t('legTracePeriod')}</span>
+                <select
+                  aria-label={t('legTracePeriod')}
+                  value={String(legTracePeriod)}
+                  onChange={(event) => changeLegTracePeriod(parseLegTracePeriod(event.target.value))}
+                >
+                  <option value="30">{t('traceLast30Minutes')}</option>
+                  <option value="60">{t('traceLastHour')}</option>
+                  <option value="120">{t('traceLast2Hours')}</option>
+                  <option value="240">{t('traceLast4Hours')}</option>
+                  <option value="360">{t('traceLast6Hours')}</option>
+                  <option value="480">{t('traceLast8Hours')}</option>
+                  <option value="full">{t('traceFull')}</option>
+                </select>
+              </label>
             </div>
           </details>
         </div>
@@ -439,9 +462,10 @@ export default function Home() {
             {filteredAircraft.map((item) => {
               const reading = listReadingFor(item);
               const kind = aircraftKind(item);
+              const isFavorite = favoriteAircraftIdSet.has(item.id);
               return (
                 <button
-                  className={`aircraft-row ${selected?.id === item.id ? 'selected' : ''} ${favoriteAircraftIdSet.has(item.id) ? 'favorite' : ''}`}
+                  className={`aircraft-row ${selected?.id === item.id ? 'selected' : ''} ${isFavorite ? 'favorite' : ''}`}
                   key={item.id}
                   onClick={() => {
                     setSelectedId(item.id);
@@ -457,12 +481,15 @@ export default function Home() {
                       className="list-aircraft-icon"
                       rotation={aircraftIconRotation(kind, item.trackDeg)}
                       style={{
-                        color: selected?.id === item.id ? 'var(--cyan)' : altitudeColor(item),
+                        color: altitudeColor(item),
                       }}
                     />
                   </span>
                   <span className="aircraft-identity">
-                    <strong>{formatCallsign(item.flight)}</strong>
+                    <strong>
+                      {formatCallsign(item.flight)}
+                      {isFavorite && <VectorIcon className="favorite-list-icon" name="favorite" />}
+                    </strong>
                     <small>{typeLabel(item, language)}</small>
                   </span>
                   <span className="aircraft-reading">
@@ -491,6 +518,7 @@ export default function Home() {
             historyOpen={history.open}
             labelsVisible={labelsVisible}
             legTraceVisible={legTraceVisible && !history.open}
+            legTracePeriod={legTracePeriod}
             language={language}
             mapStyleUrl={feed.config.mapStyleUrl}
             onDeselect={clearAircraftSelection}
