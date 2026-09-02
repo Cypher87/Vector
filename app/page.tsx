@@ -538,10 +538,10 @@ export default function Home() {
             unitSystem={unitSystem}
           />
 
-          <div className="altitude-legend" aria-label={`${t('aircraftColorAltitude')} 0 ${t('to')} ${altitudeLegend.ticks.at(-1)} ${altitudeLegend.unit}`}>
+          <div className="altitude-legend" aria-label={`${t('aircraftColorAltitude')} 0 ${t('to')} ${altitudeLegend.ticks.at(-1)?.label} ${altitudeLegend.unit}`}>
             <span>{t('altitude')} <em>{altitudeLegend.unit}</em></span>
-            <div aria-hidden="true">{altitudeLegend.ticks.map((tick) => <i key={tick} />)}</div>
-            <small>{altitudeLegend.ticks.map((tick) => <span key={tick}>{tick}</span>)}</small>
+            <div aria-hidden="true">{altitudeLegend.ticks.map((tick) => <i key={tick.label} style={{ left: `${tick.position}%` }} />)}</div>
+            <small>{altitudeLegend.ticks.map((tick) => <span key={tick.label} style={{ left: `${tick.position}%` }}>{tick.label}</span>)}</small>
           </div>
 
           <HistoryControls
@@ -608,7 +608,7 @@ export default function Home() {
             <div className="detail-actions">
               <strong className="detail-panel-title">{t('aircraftInformation')}</strong>
               <div>
-                <button aria-label={t('closeDetails')} onClick={() => setDetailsOpen(false)}>
+                <button aria-label={t('closeDetails')} data-tooltip={t('closeDetails')} onClick={() => setDetailsOpen(false)}>
                   <VectorIcon name="close" />
                 </button>
               </div>
@@ -632,19 +632,20 @@ export default function Home() {
                   className={`favorite-action ${selectedIsFavorite ? 'active' : ''}`}
                   aria-label={t(selectedIsFavorite ? 'removeFromFavorites' : 'addToFavorites')}
                   aria-pressed={selectedIsFavorite}
-                  title={t(selectedIsFavorite ? 'removeFromFavorites' : 'addToFavorites')}
+                  data-tooltip={t(selectedIsFavorite ? 'removeFromFavorites' : 'addToFavorites')}
                   onClick={() => toggleFavoriteAircraft(selected.id)}
                 ><VectorIcon name="favorite" /></button>
                 <button
                   className={following ? 'active' : ''}
                   aria-label={t(following ? 'stopFollowing' : 'followAircraft')}
                   aria-pressed={following}
+                  data-tooltip={t(following ? 'stopFollowing' : 'followAircraft')}
                   onClick={() => setFollowing((value) => !value)}
                 ><VectorIcon name="follow" /></button>
-                <button className="mobile-details-collapse" aria-label={t('collapseDetails')} onClick={() => setMobileDetailsExpanded(false)}>
+                <button className="mobile-details-collapse" aria-label={t('collapseDetails')} data-tooltip={t('collapseDetails')} onClick={() => setMobileDetailsExpanded(false)}>
                   <VectorIcon name="chevronDown" />
                 </button>
-                <button className="desktop-details-close" aria-label={t('closeDetails')} onClick={() => setDetailsOpen(false)}>
+                <button className="desktop-details-close" aria-label={t('closeDetails')} data-tooltip={t('closeDetails')} onClick={() => setDetailsOpen(false)}>
                   <VectorIcon name="close" />
                 </button>
               </div>
@@ -696,30 +697,31 @@ export default function Home() {
                   <small>{selected.latitude === undefined ? t('noCurrentPosition') : `${selectedDistance?.value} ${selectedDistance?.unit} ${t('fromReceiver')}`} · {history.open ? '—' : formatNumber(selected.messages, language)} {t('messages')}{selected.messageRate === undefined || history.open ? '' : ` · ${seconds.format(selected.messageRate)} msg/s`}</small>
                 </span>
               </div>
+            </section>
+
+            <section className={`technical-card ${technicalDataOpen ? 'open' : ''}`}>
               <button
                 type="button"
-                className={technicalDataOpen ? 'active' : ''}
+                className="technical-toggle"
                 aria-controls="aircraft-technical-data"
                 aria-expanded={technicalDataOpen}
                 onClick={() => setTechnicalDataOpen((open) => !open)}
               >
-                {t('technicalData')} <span aria-hidden="true">›</span>
+                <strong>{t('technicalData')}</strong>
+                <VectorIcon className="technical-chevron" name="chevronDown" />
               </button>
+
+              {technicalDataOpen && (
+                <AircraftTechnicalData
+                  aircraft={selected}
+                  distanceKilometres={selectedDistanceKilometres}
+                  historyMode={history.open}
+                  language={language}
+                  unitSystem={unitSystem}
+                />
+              )}
             </section>
 
-            {technicalDataOpen && (
-              <AircraftTechnicalData
-                aircraft={selected}
-                distanceKilometres={selectedDistanceKilometres}
-                historyMode={history.open}
-                language={language}
-                unitSystem={unitSystem}
-              />
-            )}
-
-            <button className="primary-action" onClick={() => setFollowing(true)}>
-              {t(following ? 'aircraftFollowing' : 'followOnMap')} <span>→</span>
-            </button>
             </>
           )}
         </aside>

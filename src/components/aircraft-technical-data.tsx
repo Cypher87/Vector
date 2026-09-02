@@ -189,10 +189,6 @@ export function AircraftTechnicalData({
 
   return (
     <div className="technical-data" id="aircraft-technical-data">
-      <div className="technical-data-heading">
-        <h3>{translate(language, 'technicalData')}</h3>
-        <span>readsb · aircraft.json</span>
-      </div>
       <TechnicalSection language={language} rows={identityRows} title="identity" />
       <TechnicalSection language={language} rows={movementRows} title="movementAndPosition" />
       <TechnicalSection language={language} rows={navigationRows} title="navigation" />

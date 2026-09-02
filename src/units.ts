@@ -81,5 +81,23 @@ export function mapAltitudeLabel(aircraft: Aircraft, unitSystem: UnitSystem, lan
 }
 
 export const altitudeLegendScale = (unitSystem: UnitSystem) => unitSystem === 'metric'
-  ? { unit: 'km', ticks: ['0', '3', '6', '9', '12'] }
-  : { unit: 'k ft', ticks: ['0', '10', '20', '30', '40'] };
+  ? {
+      unit: 'km',
+      ticks: [
+        { label: '0', position: 0 },
+        { label: '3', position: 25 },
+        { label: '6', position: 50 },
+        { label: '9', position: 75 },
+        { label: '12', position: 100 },
+      ],
+    }
+  : {
+      unit: 'k ft',
+      ticks: [
+        { label: '0', position: 0 },
+        { label: '10', position: 25 },
+        { label: '20', position: 50 },
+        { label: '30', position: 75 },
+        { label: '40', position: 100 },
+      ],
+    };
