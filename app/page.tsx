@@ -5,6 +5,7 @@ import { AircraftPhoto } from '../src/components/aircraft-photo';
 import { AircraftRoute } from '../src/components/aircraft-route';
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
 import { HistoryControls } from '../src/components/history-controls';
+import { ReceiverDashboard } from '../src/components/receiver-dashboard';
 import { VectorIcon } from '../src/components/vector-icon';
 import { useAircraftFeed } from '../src/data/use-aircraft-feed';
 import { useAircraftHistory } from '../src/data/use-aircraft-history';
@@ -72,10 +73,12 @@ export default function Home() {
     receiverHaveReplay: feed.receiver?.haveReplay === true,
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const receiverDashboardRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [receiverDashboardOpen, setReceiverDashboardOpen] = useState(false);
   const [autoHideDetails, setAutoHideDetails] = useState(false);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [following, setFollowing] = useState(false);
@@ -83,6 +86,7 @@ export default function Home() {
   const [legTraceVisible, setLegTraceVisible] = useState(true);
   const [legTracePeriod, setLegTracePeriod] = useState<LegTracePeriod>(defaultLegTracePeriod);
   const [actualRangeVisible, setActualRangeVisible] = useState(false);
+  const [distanceRingsVisible, setDistanceRingsVisible] = useState(false);
   const [technicalDataOpen, setTechnicalDataOpen] = useState(false);
   const [mobileDetailsExpanded, setMobileDetailsExpanded] = useState(false);
   const [mapFocus, setMapFocus] = useState<{ latitude?: number; longitude?: number; request: number }>();
@@ -105,6 +109,7 @@ export default function Home() {
       if (window.localStorage.getItem('vector.legTrace') === 'false') setLegTraceVisible(false);
       setLegTracePeriod(parseLegTracePeriod(window.localStorage.getItem('vector.legTracePeriod')));
       if (window.localStorage.getItem('vector.actualRangeOutline') === 'true') setActualRangeVisible(true);
+      if (window.localStorage.getItem('vector.distanceRings') === 'true') setDistanceRingsVisible(true);
       if (window.localStorage.getItem('vector.autoHideDetails') === 'true') setAutoHideDetails(true);
       setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
       const savedSort = window.localStorage.getItem('vector.aircraftSort');
@@ -148,14 +153,17 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const closeSettingsOnOutsideClick = (event: MouseEvent) => {
+    const closeMenusOnOutsideClick = (event: MouseEvent) => {
       const menu = settingsMenuRef.current;
       const target = event.target;
       if (menu?.open && target instanceof Node && !menu.contains(target)) menu.open = false;
+      if (target instanceof Node && !receiverDashboardRef.current?.contains(target)) {
+        setReceiverDashboardOpen(false);
+      }
     };
 
-    document.addEventListener('click', closeSettingsOnOutsideClick);
-    return () => document.removeEventListener('click', closeSettingsOnOutsideClick);
+    document.addEventListener('click', closeMenusOnOutsideClick);
+    return () => document.removeEventListener('click', closeMenusOnOutsideClick);
   }, []);
 
   const unitSystem = unitOverride ?? feed.config.unitSystem;
@@ -186,6 +194,10 @@ export default function Home() {
   const changeActualRangeVisible = (visible: boolean) => {
     setActualRangeVisible(visible);
     window.localStorage.setItem('vector.actualRangeOutline', String(visible));
+  };
+  const changeDistanceRingsVisible = (visible: boolean) => {
+    setDistanceRingsVisible(visible);
+    window.localStorage.setItem('vector.distanceRings', String(visible));
   };
   const changeAutoHideDetails = (enabled: boolean) => {
     setAutoHideDetails(enabled);
@@ -328,6 +340,34 @@ export default function Home() {
         </div>
 
         <div className="top-actions">
+          <div className={`receiver-dashboard-menu ${receiverDashboardOpen ? 'open' : ''}`} ref={receiverDashboardRef}>
+            <button
+              className="settings-button receiver-dashboard-button"
+              type="button"
+              aria-expanded={receiverDashboardOpen}
+              aria-label={t('openReceiverDashboard')}
+              title={t('openReceiverDashboard')}
+              onClick={() => setReceiverDashboardOpen((current) => !current)}
+            >
+              <VectorIcon name="receiver" />
+            </button>
+            {receiverDashboardOpen && (
+              <ReceiverDashboard
+                aircraft={feed.aircraft}
+                lastUpdate={feed.lastUpdate}
+                language={language}
+                latitude={centerLat}
+                longitude={centerLon}
+                messageCount={feed.messageCount}
+                messageRate={feed.messageRate}
+                onClose={() => setReceiverDashboardOpen(false)}
+                receiver={feed.receiver}
+                receiverName={feed.config.receiverName}
+                status={feed.status}
+                statusLabel={t(statusText[feed.status])}
+              />
+            )}
+          </div>
           <details className="settings-menu" ref={settingsMenuRef}>
             <summary className="settings-button" aria-label={t('settings')} title={t('settings')}>
               <VectorIcon name="settings" />
@@ -512,6 +552,7 @@ export default function Home() {
             aircraft={mapAircraft}
             center={[centerLon, centerLat]}
             dataBaseUrl={feed.config.dataBaseUrl}
+            distanceRingsVisible={distanceRingsVisible}
             focusTarget={mapFocus}
             following={following}
             favoriteIds={favoriteAircraftIdSet}
@@ -523,6 +564,7 @@ export default function Home() {
             mapStyleUrl={feed.config.mapStyleUrl}
             onDeselect={clearAircraftSelection}
             onActualRangeVisibleChange={changeActualRangeVisible}
+            onDistanceRingsVisibleChange={changeDistanceRingsVisible}
             onHistoryToggle={() => {
               if (history.open) history.close();
               else {

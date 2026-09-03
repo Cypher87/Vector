@@ -9,10 +9,12 @@ export type VectorIconName =
   | 'follow'
   | 'history'
   | 'labels'
+  | 'layers'
   | 'list'
   | 'pause'
   | 'play'
   | 'range'
+  | 'rings'
   | 'receiver'
   | 'search'
   | 'settings'
@@ -35,10 +37,12 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
   follow: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z', 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z', 'M12 12h.01'],
   history: ['M3 3v5h5', 'M3.6 8A9 9 0 1 1 3 12', 'M12 7v5l3 2'],
   labels: ['M5 6.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 3v-3a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z', 'M8 11h8M8 14h5'],
+  layers: ['m12 3-9 5 9 5 9-5-9-5Z', 'm3 12 9 5 9-5', 'm3 16 9 5 9-5'],
   list: ['M9 6h11M9 12h11M9 18h11', 'M4 6h.01M4 12h.01M4 18h.01'],
   pause: ['M9 5v14M15 5v14'],
   play: ['M8 5v14l11-7Z'],
   range: ['M12 3 19 7l2 8-6 6-8-2-4-7 3-7 6-2Z', 'M12 12h.01'],
+  rings: ['M12 12h.01', 'M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z', 'M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z'],
   receiver: [
     'M12 12v9M9 21h6',
     'M9.2 9.2a4 4 0 0 0 0 5.6M14.8 9.2a4 4 0 0 1 0 5.6',

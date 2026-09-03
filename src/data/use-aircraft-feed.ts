@@ -12,6 +12,7 @@ type FeedState = {
   receiver?: Receiver;
   status: FeedStatus;
   lastUpdate?: number;
+  messageCount: number;
   messageRate: number;
   error?: 'liveDataUnavailable' | 'receiverUnavailable';
 };
@@ -54,6 +55,7 @@ export function useAircraftFeed(): FeedState {
     aircraft: [],
     config: DEFAULT_RUNTIME_CONFIG,
     status: 'connecting',
+    messageCount: 0,
     messageRate: 0,
   });
   const previous = useRef<{ messages: number; at: number } | undefined>(undefined);
@@ -123,6 +125,7 @@ export function useAircraftFeed(): FeedState {
             receiver,
             status: 'live',
             lastUpdate: at,
+            messageCount: snapshot.messages,
             messageRate: rate,
             error: undefined,
           }));
