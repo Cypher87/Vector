@@ -79,7 +79,7 @@ export function SyncMenu({
     device.name ? deviceMetadata(device) : '',
     device.current
       ? `${t('syncCurrentDevice')} · ${t('syncActiveNow')}`
-      : `${t('syncLastActive')} ${dateTime.format(device.lastSeenAt)}`,
+      : device.online ? t('syncActiveNow') : `${t('syncLastActive')} ${dateTime.format(device.lastSeenAt)}`,
   ].filter(Boolean).join(' · ');
 
   useEffect(() => {
@@ -182,7 +182,7 @@ export function SyncMenu({
                 <strong>{t('syncDevices')}</strong>
                 <div className="sync-device-list">
                   {devices.map((device) => (
-                    <article className={device.current ? 'current' : ''} key={device.id}>
+                    <article className={`${device.current ? 'current ' : ''}${device.online ? 'online' : ''}`.trim()} key={device.id}>
                       <span className="sync-device-icon"><VectorIcon name={deviceIcon(device)} /></span>
                       {editingDeviceId === device.id ? (
                         <form className="sync-device-name-form" onSubmit={(event) => saveDeviceName(event, device)}>

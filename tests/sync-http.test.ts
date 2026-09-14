@@ -109,6 +109,10 @@ test('a preference update is delivered live to another paired device', async () 
     assert.ok(reader);
     await reader.read();
 
+    const presenceSession = await sessionResponse(request('/api/sync/session', { headers: { cookie: firstCookie } }));
+    const presenceBody = await presenceSession.json() as { devices: { id: string; online?: boolean }[] };
+    assert.equal(presenceBody.devices.find((device) => device.id === pairedBody.deviceId)?.online, true);
+
     const saved = await savePreferencesResponse(request('/api/sync/preferences', {
       body: JSON.stringify({ patch: { favoriteAircraft: { add: ['abc123'] }, settings: { language: 'en' } } }),
       headers: { 'content-type': 'application/json', cookie: firstCookie },
@@ -153,6 +157,9 @@ test('a preference update is delivered live to another paired device', async () 
     assert.equal((await removedSession.json() as { connected: boolean }).connected, false);
     controller.abort();
     await reader.cancel().catch(() => undefined);
+    const offlineSession = await sessionResponse(request('/api/sync/session', { headers: { cookie: secondCookie } }));
+    const offlineBody = await offlineSession.json() as { deviceId: string; devices: { id: string; online?: boolean }[] };
+    assert.equal(offlineBody.devices.find((device) => device.id === offlineBody.deviceId)?.online, false);
   } finally {
     if (previousStore === undefined) delete process.env.VECTOR_SYNC_STORE;
     else process.env.VECTOR_SYNC_STORE = previousStore;

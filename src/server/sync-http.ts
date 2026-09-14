@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { publishSyncEvent, subscribeToSyncEvents } from './sync-events.ts';
+import { isSyncDeviceOnline, publishSyncEvent, subscribeToSyncEvents } from './sync-events.ts';
 import { SyncStore } from './sync-store.ts';
 import type { SyncDeviceMetadata, SyncDeviceSummary } from '../sync/devices.ts';
 
@@ -111,7 +111,10 @@ const publicSession = (result: {
 }) => ({
   connected: true,
   deviceId: result.deviceId,
-  devices: result.devices,
+  devices: result.devices.map((device) => ({
+    ...device,
+    online: isSyncDeviceOnline(result.profileId, device.id),
+  })),
   preferences: result.preferences,
   profileId: result.profileId,
   revision: result.revision,
@@ -162,7 +165,7 @@ export async function sessionResponse(request: Request) {
   try {
     const session = await requestSession(request);
     return Response.json(session
-      ? { connected: true, ...session }
+      ? publicSession(session)
       : { connected: false, preferences: {} }, { headers: noStoreHeaders });
   } catch (error) {
     return syncFailure(error);
@@ -173,7 +176,7 @@ export async function createProfileResponse(request: Request) {
   try {
     verifySameOrigin(request);
     const existing = await requestSession(request);
-    if (existing) return Response.json({ connected: true, ...existing }, { headers: noStoreHeaders });
+    if (existing) return Response.json(publicSession(existing), { headers: noStoreHeaders });
     assertWithinLimit(profileCreations, 100, 60 * 60 * 1_000);
     const input = await requestJson(request);
     const result = await syncStore().createProfile(input.preferences, identifySyncDevice(request));
@@ -262,7 +265,7 @@ export async function disconnectDeviceResponse(request: Request) {
     if (typeof input.deviceId !== 'string' || input.deviceId.length > 128) throw new Error('INVALID_REQUEST');
     const result = await syncStore().disconnectDevice(session.profileId, token, input.deviceId);
     publishSyncEvent(session.profileId, { actorDeviceId: session.deviceId, type: 'devices' });
-    return Response.json({ connected: true, ...result }, { headers: noStoreHeaders });
+    return Response.json(publicSession(result), { headers: noStoreHeaders });
   } catch (error) {
     return syncFailure(error);
   }
@@ -278,7 +281,7 @@ export async function renameDeviceResponse(request: Request) {
     if (typeof input.deviceId !== 'string' || input.deviceId.length > 128) throw new Error('INVALID_REQUEST');
     const result = await syncStore().renameDevice(session.profileId, token, input.deviceId, input.name);
     publishSyncEvent(session.profileId, { actorDeviceId: session.deviceId, type: 'devices' });
-    return Response.json({ connected: true, ...result }, { headers: noStoreHeaders });
+    return Response.json(publicSession(result), { headers: noStoreHeaders });
   } catch (error) {
     return syncFailure(error);
   }
@@ -317,7 +320,7 @@ export async function eventsResponse(request: Request) {
             stop();
           }
         };
-        const unsubscribe = subscribeToSyncEvents(session.profileId, send);
+        const subscription = subscribeToSyncEvents(session.profileId, session.deviceId, send);
         const heartbeat = setInterval(() => {
           if (closed) return;
           try {
@@ -330,7 +333,15 @@ export async function eventsResponse(request: Request) {
           if (closed) return;
           closed = true;
           clearInterval(heartbeat);
-          unsubscribe();
+          const becameOffline = subscription.unsubscribe();
+          if (becameOffline) {
+            void syncStore().touchDevice(session.profileId, session.deviceId).then((changed) => {
+              if (changed) publishSyncEvent(session.profileId, {
+                actorDeviceId: session.deviceId,
+                type: 'devices',
+              });
+            }).catch(() => undefined);
+          }
           request.signal.removeEventListener('abort', abort);
           try {
             controller.close();
@@ -341,6 +352,10 @@ export async function eventsResponse(request: Request) {
         stop = abort;
         request.signal.addEventListener('abort', abort, { once: true });
         send({ type: 'ready' });
+        if (subscription.becameOnline) publishSyncEvent(session.profileId, {
+          actorDeviceId: session.deviceId,
+          type: 'devices',
+        }, send);
         if (request.signal.aborted) abort();
       },
       cancel() {

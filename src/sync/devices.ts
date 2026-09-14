@@ -12,4 +12,5 @@ export type SyncDeviceSummary = SyncDeviceMetadata & {
   id: string;
   lastSeenAt: number;
   name?: string;
+  online?: boolean;
 };

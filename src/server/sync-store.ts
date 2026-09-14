@@ -276,6 +276,17 @@ export class SyncStore {
     });
   }
 
+  async touchDevice(profileId: string, deviceId: string) {
+    return this.mutate((database) => {
+      const device = database.devices.find((candidate) => (
+        candidate.profileId === profileId && candidate.id === deviceId
+      ));
+      if (!device) return false;
+      device.lastSeenAt = Date.now();
+      return true;
+    });
+  }
+
   async savePreferencePatch(profileId: string, value: SyncPreferencePatch | unknown) {
     const patch = normalizeSyncPreferencePatch(value);
     return this.mutate((database) => {
