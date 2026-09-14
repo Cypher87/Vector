@@ -25,7 +25,12 @@ import { altitudeColor } from '../src/map/altitude-color';
 import { AircraftIcon } from '../src/map/aircraft-icon';
 import { RadarMap } from '../src/map/radar-map';
 import { aircraftIconRotation } from '../src/map/heading';
-import { hasSyncPreferences, type SyncPreferences } from '../src/sync/preferences';
+import {
+  applySyncPreferencePatch,
+  createSyncPreferencePatch,
+  hasSyncPreferences,
+  type SyncPreferences,
+} from '../src/sync/preferences';
 import { useVectorSync } from '../src/sync/use-vector-sync';
 import { altitudeLegendScale, altitudeValue, distanceKilometres, distanceValue, formatNumber, speedValue, verticalRateValue } from '../src/units';
 
@@ -75,6 +80,7 @@ export default function Home() {
     loading: syncLoading,
     preferences: syncedPreferences,
     profileId: syncProfileId,
+    revision: syncRevision,
     savePreferences: saveSyncPreferences,
   } = vectorSync;
   const history = useAircraftHistory({
@@ -108,7 +114,9 @@ export default function Home() {
   const [favoriteAircraftIds, setFavoriteAircraftIds] = useState<string[]>([]);
   const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
   const syncPreferencesAppliedForRef = useRef<string | undefined>(undefined);
+  const syncPreferencesLastRemoteRef = useRef<SyncPreferences | undefined>(undefined);
   const syncPreferencesPendingForRef = useRef<string | undefined>(undefined);
+  const syncPreferencesReadyForRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -264,18 +272,24 @@ export default function Home() {
   useEffect(() => {
     if (!syncProfileId) {
       syncPreferencesAppliedForRef.current = undefined;
+      syncPreferencesLastRemoteRef.current = undefined;
       syncPreferencesPendingForRef.current = undefined;
+      syncPreferencesReadyForRef.current = undefined;
       return;
     }
+    const revisionKey = `${syncProfileId}:${syncRevision}`;
     if (
       !localPreferencesReady
       || syncLoading
-      || syncPreferencesAppliedForRef.current === syncProfileId
-      || syncPreferencesPendingForRef.current === syncProfileId
+      || syncPreferencesAppliedForRef.current === revisionKey
+      || syncPreferencesPendingForRef.current === revisionKey
     ) return;
 
-    const saved = syncedPreferences;
-    syncPreferencesPendingForRef.current = syncProfileId;
+    const previousRemote = syncPreferencesLastRemoteRef.current;
+    const saved = previousRemote
+      ? applySyncPreferencePatch(syncedPreferences, createSyncPreferencePatch(previousRemote, preferenceSnapshot))
+      : syncedPreferences;
+    syncPreferencesPendingForRef.current = revisionKey;
     const frame = window.requestAnimationFrame(() => {
       if (hasSyncPreferences(saved)) {
       if (saved.unitSystem) {
@@ -326,17 +340,19 @@ export default function Home() {
       } else {
         void saveSyncPreferences(preferenceSnapshot).catch(() => undefined);
       }
-      syncPreferencesAppliedForRef.current = syncProfileId;
+      syncPreferencesAppliedForRef.current = revisionKey;
+      syncPreferencesLastRemoteRef.current = syncedPreferences;
       syncPreferencesPendingForRef.current = undefined;
+      syncPreferencesReadyForRef.current = syncProfileId;
     });
     return () => {
       window.cancelAnimationFrame(frame);
-      if (syncPreferencesPendingForRef.current === syncProfileId) syncPreferencesPendingForRef.current = undefined;
+      if (syncPreferencesPendingForRef.current === revisionKey) syncPreferencesPendingForRef.current = undefined;
     };
-  }, [localPreferencesReady, preferenceSnapshot, saveSyncPreferences, syncedPreferences, syncLoading, syncProfileId]);
+  }, [localPreferencesReady, preferenceSnapshot, saveSyncPreferences, syncedPreferences, syncLoading, syncProfileId, syncRevision]);
 
   useEffect(() => {
-    if (!syncConnected || !syncProfileId || syncPreferencesAppliedForRef.current !== syncProfileId) return;
+    if (!syncConnected || !syncProfileId || syncPreferencesReadyForRef.current !== syncProfileId) return;
     const timeout = window.setTimeout(() => {
       void saveSyncPreferences(preferenceSnapshot).catch(() => undefined);
     }, 500);
@@ -453,6 +469,7 @@ export default function Home() {
         <div className="top-actions">
           <SyncMenu
             connected={vectorSync.connected}
+            devices={vectorSync.devices}
             error={vectorSync.error}
             language={language}
             loading={vectorSync.loading}
@@ -460,7 +477,9 @@ export default function Home() {
             onCreatePairingCode={vectorSync.createPairingCode}
             onDelete={vectorSync.deleteProfile}
             onDisconnect={vectorSync.disconnect}
+            onDisconnectDevice={vectorSync.disconnectDevice}
             onPair={vectorSync.pair}
+            onRenameDevice={vectorSync.renameDevice}
             onStart={() => vectorSync.start(preferenceSnapshot)}
           />
           <div className={`receiver-dashboard-menu ${receiverDashboardOpen ? 'open' : ''}`} ref={receiverDashboardRef}>

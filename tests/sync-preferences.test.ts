@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeSyncPreferences } from '../src/sync/preferences.ts';
+import {
+  applySyncPreferencePatch,
+  createSyncPreferencePatch,
+  normalizeSyncPreferencePatch,
+  normalizeSyncPreferences,
+} from '../src/sync/preferences.ts';
 
 test('synchronized preferences retain only supported values', () => {
   assert.deepEqual(normalizeSyncPreferences({
@@ -41,4 +46,44 @@ test('invalid preference values are discarded', () => {
     unitSystem: 'nautical',
   }), {});
   assert.deepEqual(normalizeSyncPreferences(null), {});
+});
+
+test('preference patches merge independent device changes and favorite operations', () => {
+  const original = {
+    aircraftFilters: { adsbOnly: false, airborneOnly: false, favoritesOnly: false, positionOnly: false },
+    favoriteAircraft: ['4840d6'],
+    language: 'nl' as const,
+    mapLabels: true,
+  };
+  const fromDeviceA = createSyncPreferencePatch(original, {
+    ...original,
+    favoriteAircraft: ['4840d6', 'abc123'],
+    language: 'en',
+  });
+  const fromDeviceB = createSyncPreferencePatch(original, {
+    ...original,
+    aircraftFilters: { ...original.aircraftFilters, favoritesOnly: true },
+    favoriteAircraft: [],
+    mapLabels: false,
+  });
+
+  const afterBoth = applySyncPreferencePatch(applySyncPreferencePatch(original, fromDeviceA), fromDeviceB);
+  assert.deepEqual(afterBoth, {
+    aircraftFilters: { adsbOnly: false, airborneOnly: false, favoritesOnly: true, positionOnly: false },
+    favoriteAircraft: ['abc123'],
+    language: 'en',
+    mapLabels: false,
+  });
+});
+
+test('preference patches discard unknown and invalid fields', () => {
+  assert.deepEqual(normalizeSyncPreferencePatch({
+    aircraftFilters: { adsbOnly: true, invalid: true },
+    favoriteAircraft: { add: ['ABC123', '../secret'], remove: '4840d6' },
+    settings: { language: 'de', mapLabels: true, unknown: true },
+  }), {
+    aircraftFilters: { adsbOnly: true },
+    favoriteAircraft: { add: ['abc123'], remove: [] },
+    settings: { mapLabels: true },
+  });
 });

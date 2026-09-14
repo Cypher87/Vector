@@ -39,7 +39,8 @@ flowchart LR
     V --> M[MapLibre-kaart]
     V --> UI[Lijst, filters en details]
     V --> LS[Lokale voorkeuren]
-    V -. gekoppeld .-> A[Synchronisatie-API]
+    V -. wijzigingen .-> A[Synchronisatie-API]
+    A -. live events .-> V
     A --> AS[/var/lib/vector/sync.json]
     V -. optioneel .-> EXT[Kaarttegels, routes en foto's]
 ```
@@ -108,7 +109,9 @@ De deploymentstandaard komt tijdens runtime uit serverenvironmentvariabelen. De 
 
 Zonder koppeling blijft `localStorage` de bron van gebruikersvoorkeuren. Een gebruiker kan vrijwillig een anoniem synchronisatieprofiel op de lokale Vector-server starten. Gevalideerde instellingen, filters, kaartlagen en favorieten worden dan in `/var/lib/vector/sync.json` opgeslagen en kunnen met een tijdelijke zes-tekenkoppelcode naar een ander apparaat worden overgenomen.
 
-De koppelcode is gehasht opgeslagen, één keer bruikbaar en tien minuten geldig. Na koppeling gebruikt ieder apparaat een afzonderlijke lange, willekeurige sleutel in een HTTP-only, same-site cookie. Ook die sleutel wordt server-side alleen als hash bewaard. Er worden geen namen, e-mailadressen, wachtwoorden of externe identiteiten verwerkt.
+De koppelcode is gehasht opgeslagen, één keer bruikbaar en tien minuten geldig. Na koppeling gebruikt ieder apparaat een afzonderlijke lange, willekeurige sleutel in een HTTP-only, same-site cookie. Ook die sleutel wordt server-side alleen als hash bewaard. Voor het apparatenoverzicht bewaart Vector uitsluitend de afgeleide apparaatklasse, browser, het besturingssysteem, activiteitsmomenten en eventueel een door de gebruiker gekozen apparaatnaam van maximaal 40 tekens; de volledige user-agent wordt niet opgeslagen. Er worden geen accountnamen, e-mailadressen, wachtwoorden of externe identiteiten verwerkt. Een apparaat kan alleen apparaten binnen zijn eigen synchronisatieprofiel hernoemen of ontkoppelen. Apparaatwijzigingen worden via hetzelfde live-events-kanaal doorgegeven.
+
+Voorkeurswijzigingen worden als veldpatches opgeslagen. Filters worden per filterveld samengevoegd en favorieten gebruiken afzonderlijke add/remove-operaties, zodat gelijktijdige wijzigingen op verschillende apparaten elkaar niet onnodig overschrijven. Iedere opslag verhoogt een profielrevisie. Een in-memory Server-Sent Events-kanaal meldt die revisie direct aan andere gekoppelde browsers, waarna zij de gevalideerde serverstatus ophalen. De standaard systemd-installatie gebruikt één Node-proces; voor een toekomstige multi-process- of clusterdeployment is een gedeelde eventbus nodig.
 
 ## Kaartarchitectuur
 

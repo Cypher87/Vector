@@ -1,5 +1,7 @@
 import { resolve } from 'node:path';
+import { publishSyncEvent, subscribeToSyncEvents } from './sync-events.ts';
 import { SyncStore } from './sync-store.ts';
+import type { SyncDeviceMetadata, SyncDeviceSummary } from '../sync/devices.ts';
 
 export const SYNC_COOKIE = 'vector_sync';
 const COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
@@ -96,7 +98,49 @@ function assertWithinLimit(window: AttemptWindow, maximum: number, duration: num
   window.count += 1;
 }
 
-const requestSession = (request: Request) => syncStore().session(parseCookies(request)[SYNC_COOKIE]);
+const requestSession = (request: Request) => syncStore().touchSession(
+  parseCookies(request)[SYNC_COOKIE],
+  identifySyncDevice(request),
+);
+const publicSession = (result: {
+  deviceId: string;
+  devices: SyncDeviceSummary[];
+  preferences: unknown;
+  profileId: string;
+  revision: number;
+}) => ({
+  connected: true,
+  deviceId: result.deviceId,
+  devices: result.devices,
+  preferences: result.preferences,
+  profileId: result.profileId,
+  revision: result.revision,
+});
+
+export function identifySyncDevice(request: Request): SyncDeviceMetadata {
+  const userAgent = (request.headers.get('user-agent') ?? '').slice(0, 512);
+  if (!userAgent) return { type: 'unknown' };
+
+  const browser = /Edg(?:A|iOS)?\//.test(userAgent) ? 'Edge'
+    : /OPR\//.test(userAgent) ? 'Opera'
+      : /SamsungBrowser\//.test(userAgent) ? 'Samsung Internet'
+        : /(?:Chrome|CriOS)\//.test(userAgent) ? 'Chrome'
+          : /(?:Firefox|FxiOS)\//.test(userAgent) ? 'Firefox'
+            : /Safari\//.test(userAgent) && /Version\//.test(userAgent) ? 'Safari'
+              : undefined;
+  const operatingSystem = /Windows NT/.test(userAgent) ? 'Windows'
+    : /Android/.test(userAgent) ? 'Android'
+      : /(?:iPhone|iPad|iPod)/.test(userAgent) ? 'iOS'
+        : /CrOS/.test(userAgent) ? 'ChromeOS'
+          : /Macintosh|Mac OS X/.test(userAgent) ? 'macOS'
+            : /Linux/.test(userAgent) ? 'Linux'
+              : undefined;
+  const type = /iPad|Tablet/.test(userAgent) || (/Android/.test(userAgent) && !/Mobile/.test(userAgent))
+    ? 'tablet'
+    : /Mobile|iPhone|iPod|Android/.test(userAgent) ? 'mobile'
+      : browser || operatingSystem ? 'desktop' : 'unknown';
+  return { browser, operatingSystem, type };
+}
 
 const syncFailure = (error: unknown) => {
   const code = error instanceof Error ? error.message : 'SYNC_FAILED';
@@ -104,6 +148,9 @@ const syncFailure = (error: unknown) => {
   if (code === 'SYNC_NOT_CONNECTED') return responseError(401, code);
   if (code === 'RATE_LIMITED') return responseError(429, code);
   if (code === 'DEVICE_LIMIT') return responseError(409, code);
+  if (code === 'DEVICE_NOT_FOUND') return responseError(404, code);
+  if (code === 'CURRENT_DEVICE') return responseError(400, code);
+  if (code === 'DEVICE_NAME_INVALID') return responseError(400, code);
   if (code === 'PAIRING_CODE_INVALID' || code === 'INVALID_REQUEST' || code === 'REQUEST_TOO_LARGE') {
     return responseError(400, code);
   }
@@ -129,9 +176,9 @@ export async function createProfileResponse(request: Request) {
     if (existing) return Response.json({ connected: true, ...existing }, { headers: noStoreHeaders });
     assertWithinLimit(profileCreations, 100, 60 * 60 * 1_000);
     const input = await requestJson(request);
-    const result = await syncStore().createProfile(input.preferences);
+    const result = await syncStore().createProfile(input.preferences, identifySyncDevice(request));
     return Response.json(
-      { connected: true, preferences: result.preferences, profileId: result.profileId },
+      publicSession(result),
       { headers: { ...noStoreHeaders, 'set-cookie': syncCookie(request, result.token) }, status: 201 },
     );
   } catch (error) {
@@ -145,8 +192,15 @@ export async function savePreferencesResponse(request: Request) {
     const session = await requestSession(request);
     if (!session) throw new Error('SYNC_NOT_CONNECTED');
     const input = await requestJson(request);
-    const preferences = await syncStore().savePreferences(session.profileId, input.preferences);
-    return Response.json({ preferences }, { headers: noStoreHeaders });
+    const result = await syncStore().savePreferencePatch(session.profileId, input.patch);
+    if (result.changed) {
+      publishSyncEvent(session.profileId, {
+        actorDeviceId: session.deviceId,
+        revision: result.revision,
+        type: 'preferences',
+      });
+    }
+    return Response.json(result, { headers: noStoreHeaders });
   } catch (error) {
     return syncFailure(error);
   }
@@ -168,9 +222,13 @@ export async function pairResponse(request: Request) {
     verifySameOrigin(request);
     assertWithinLimit(pairingAttempts, 50, 10 * 60 * 1_000);
     const input = await requestJson(request);
-    const result = await syncStore().pair(typeof input.code === 'string' ? input.code : '');
+    const result = await syncStore().pair(
+      typeof input.code === 'string' ? input.code : '',
+      identifySyncDevice(request),
+    );
+    publishSyncEvent(result.profileId, { actorDeviceId: result.deviceId, type: 'devices' });
     return Response.json(
-      { connected: true, preferences: result.preferences, profileId: result.profileId },
+      publicSession(result),
       { headers: { ...noStoreHeaders, 'set-cookie': syncCookie(request, result.token) } },
     );
   } catch (error) {
@@ -181,11 +239,46 @@ export async function pairResponse(request: Request) {
 export async function disconnectResponse(request: Request) {
   try {
     verifySameOrigin(request);
-    await syncStore().disconnect(parseCookies(request)[SYNC_COOKIE]);
+    const token = parseCookies(request)[SYNC_COOKIE];
+    const session = await requestSession(request);
+    const result = await syncStore().disconnect(token);
+    if (session && result) publishSyncEvent(session.profileId, { actorDeviceId: session.deviceId, type: 'devices' });
     return Response.json(
       { connected: false, preferences: {} },
       { headers: { ...noStoreHeaders, 'set-cookie': expiredSyncCookie(request) } },
     );
+  } catch (error) {
+    return syncFailure(error);
+  }
+}
+
+export async function disconnectDeviceResponse(request: Request) {
+  try {
+    verifySameOrigin(request);
+    const token = parseCookies(request)[SYNC_COOKIE];
+    const session = await requestSession(request);
+    if (!session) throw new Error('SYNC_NOT_CONNECTED');
+    const input = await requestJson(request);
+    if (typeof input.deviceId !== 'string' || input.deviceId.length > 128) throw new Error('INVALID_REQUEST');
+    const result = await syncStore().disconnectDevice(session.profileId, token, input.deviceId);
+    publishSyncEvent(session.profileId, { actorDeviceId: session.deviceId, type: 'devices' });
+    return Response.json({ connected: true, ...result }, { headers: noStoreHeaders });
+  } catch (error) {
+    return syncFailure(error);
+  }
+}
+
+export async function renameDeviceResponse(request: Request) {
+  try {
+    verifySameOrigin(request);
+    const token = parseCookies(request)[SYNC_COOKIE];
+    const session = await requestSession(request);
+    if (!session) throw new Error('SYNC_NOT_CONNECTED');
+    const input = await requestJson(request);
+    if (typeof input.deviceId !== 'string' || input.deviceId.length > 128) throw new Error('INVALID_REQUEST');
+    const result = await syncStore().renameDevice(session.profileId, token, input.deviceId, input.name);
+    publishSyncEvent(session.profileId, { actorDeviceId: session.deviceId, type: 'devices' });
+    return Response.json({ connected: true, ...result }, { headers: noStoreHeaders });
   } catch (error) {
     return syncFailure(error);
   }
@@ -197,10 +290,71 @@ export async function deleteProfileResponse(request: Request) {
     const session = await requestSession(request);
     if (!session) throw new Error('SYNC_NOT_CONNECTED');
     await syncStore().deleteProfile(session.profileId);
+    publishSyncEvent(session.profileId, { actorDeviceId: session.deviceId, type: 'deleted' });
     return Response.json(
       { connected: false, preferences: {} },
       { headers: { ...noStoreHeaders, 'set-cookie': expiredSyncCookie(request) } },
     );
+  } catch (error) {
+    return syncFailure(error);
+  }
+}
+
+export async function eventsResponse(request: Request) {
+  try {
+    const session = await requestSession(request);
+    if (!session) return responseError(401, 'SYNC_NOT_CONNECTED');
+    const encoder = new TextEncoder();
+    let stop: () => void = () => undefined;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        let closed = false;
+        const send = (event: unknown) => {
+          if (closed) return;
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+          } catch {
+            stop();
+          }
+        };
+        const unsubscribe = subscribeToSyncEvents(session.profileId, send);
+        const heartbeat = setInterval(() => {
+          if (closed) return;
+          try {
+            controller.enqueue(encoder.encode(': keep-alive\n\n'));
+          } catch {
+            stop();
+          }
+        }, 25_000);
+        const abort = () => {
+          if (closed) return;
+          closed = true;
+          clearInterval(heartbeat);
+          unsubscribe();
+          request.signal.removeEventListener('abort', abort);
+          try {
+            controller.close();
+          } catch {
+            // The client may already have closed the stream.
+          }
+        };
+        stop = abort;
+        request.signal.addEventListener('abort', abort, { once: true });
+        send({ type: 'ready' });
+        if (request.signal.aborted) abort();
+      },
+      cancel() {
+        stop();
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        ...noStoreHeaders,
+        connection: 'keep-alive',
+        'content-type': 'text/event-stream; charset=utf-8',
+        'x-accel-buffering': 'no',
+      },
+    });
   } catch (error) {
     return syncFailure(error);
   }
