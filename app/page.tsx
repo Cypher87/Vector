@@ -1,14 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { hasSyncedPreferences, type UserPreferences } from '../src/account/preferences';
-import { useVectorAccount } from '../src/account/use-vector-account';
-import { AccountMenu } from '../src/components/account-menu';
 import { AircraftPhoto } from '../src/components/aircraft-photo';
 import { AircraftRoute } from '../src/components/aircraft-route';
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
 import { HistoryControls } from '../src/components/history-controls';
 import { ReceiverDashboard } from '../src/components/receiver-dashboard';
+import { SyncMenu } from '../src/components/sync-menu';
 import { VectorIcon } from '../src/components/vector-icon';
 import { useAircraftFeed } from '../src/data/use-aircraft-feed';
 import { useAircraftHistory } from '../src/data/use-aircraft-history';
@@ -27,6 +25,8 @@ import { altitudeColor } from '../src/map/altitude-color';
 import { AircraftIcon } from '../src/map/aircraft-icon';
 import { RadarMap } from '../src/map/radar-map';
 import { aircraftIconRotation } from '../src/map/heading';
+import { hasSyncPreferences, type SyncPreferences } from '../src/sync/preferences';
+import { useVectorSync } from '../src/sync/use-vector-sync';
 import { altitudeLegendScale, altitudeValue, distanceKilometres, distanceValue, formatNumber, speedValue, verticalRateValue } from '../src/units';
 
 const formatCallsign = (value: string) => value.replace(/^([A-Z]{2,3})(\d.*)$/i, '$1 $2');
@@ -69,13 +69,14 @@ function LogoMark() {
 
 export default function Home() {
   const feed = useAircraftFeed();
-  const vectorAccount = useVectorAccount();
+  const vectorSync = useVectorSync();
   const {
-    account: userAccount,
-    loading: accountLoading,
+    connected: syncConnected,
+    loading: syncLoading,
     preferences: syncedPreferences,
-    savePreferences: saveSyncedPreferences,
-  } = vectorAccount;
+    profileId: syncProfileId,
+    savePreferences: saveSyncPreferences,
+  } = vectorSync;
   const history = useAircraftHistory({
     aircraft: feed.aircraft,
     historyBaseUrl: feed.config.historyBaseUrl,
@@ -106,8 +107,8 @@ export default function Home() {
   const [aircraftSort, setAircraftSort] = useState<AircraftSort>('altitude-desc');
   const [favoriteAircraftIds, setFavoriteAircraftIds] = useState<string[]>([]);
   const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
-  const preferencesAppliedForRef = useRef<string | undefined>(undefined);
-  const preferencesPendingForRef = useRef<string | undefined>(undefined);
+  const syncPreferencesAppliedForRef = useRef<string | undefined>(undefined);
+  const syncPreferencesPendingForRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -246,7 +247,7 @@ export default function Home() {
     });
   };
 
-  const preferenceSnapshot = useMemo<UserPreferences>(() => ({
+  const preferenceSnapshot = useMemo<SyncPreferences>(() => ({
     actualRangeOutline: actualRangeVisible,
     aircraftFilters,
     aircraftSort,
@@ -261,23 +262,22 @@ export default function Home() {
   }), [actualRangeVisible, aircraftFilters, aircraftSort, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, unitSystem]);
 
   useEffect(() => {
-    const accountId = userAccount?.id;
-    if (!accountId) {
-      preferencesAppliedForRef.current = undefined;
-      preferencesPendingForRef.current = undefined;
+    if (!syncProfileId) {
+      syncPreferencesAppliedForRef.current = undefined;
+      syncPreferencesPendingForRef.current = undefined;
       return;
     }
     if (
       !localPreferencesReady
-      || accountLoading
-      || preferencesAppliedForRef.current === accountId
-      || preferencesPendingForRef.current === accountId
+      || syncLoading
+      || syncPreferencesAppliedForRef.current === syncProfileId
+      || syncPreferencesPendingForRef.current === syncProfileId
     ) return;
 
     const saved = syncedPreferences;
-    preferencesPendingForRef.current = accountId;
+    syncPreferencesPendingForRef.current = syncProfileId;
     const frame = window.requestAnimationFrame(() => {
-      if (hasSyncedPreferences(saved)) {
+      if (hasSyncPreferences(saved)) {
       if (saved.unitSystem) {
         setUnitOverride(saved.unitSystem);
         window.localStorage.setItem('vector.unitSystem', saved.unitSystem);
@@ -324,24 +324,24 @@ export default function Home() {
         window.localStorage.setItem('vector.aircraftFilters', JSON.stringify(saved.aircraftFilters));
       }
       } else {
-        void saveSyncedPreferences(preferenceSnapshot).catch(() => undefined);
+        void saveSyncPreferences(preferenceSnapshot).catch(() => undefined);
       }
-      preferencesAppliedForRef.current = accountId;
-      preferencesPendingForRef.current = undefined;
+      syncPreferencesAppliedForRef.current = syncProfileId;
+      syncPreferencesPendingForRef.current = undefined;
     });
     return () => {
       window.cancelAnimationFrame(frame);
-      if (preferencesPendingForRef.current === accountId) preferencesPendingForRef.current = undefined;
+      if (syncPreferencesPendingForRef.current === syncProfileId) syncPreferencesPendingForRef.current = undefined;
     };
-  }, [accountLoading, localPreferencesReady, preferenceSnapshot, saveSyncedPreferences, syncedPreferences, userAccount?.id]);
+  }, [localPreferencesReady, preferenceSnapshot, saveSyncPreferences, syncedPreferences, syncLoading, syncProfileId]);
 
   useEffect(() => {
-    if (!userAccount || preferencesAppliedForRef.current !== userAccount.id) return;
+    if (!syncConnected || !syncProfileId || syncPreferencesAppliedForRef.current !== syncProfileId) return;
     const timeout = window.setTimeout(() => {
-      void saveSyncedPreferences(preferenceSnapshot).catch(() => undefined);
+      void saveSyncPreferences(preferenceSnapshot).catch(() => undefined);
     }, 500);
     return () => window.clearTimeout(timeout);
-  }, [preferenceSnapshot, saveSyncedPreferences, userAccount]);
+  }, [preferenceSnapshot, saveSyncPreferences, syncConnected, syncProfileId]);
 
   const centerLat = feed.config.receiverLatitude ?? feed.receiver?.latitude ?? 52.3086;
   const centerLon = feed.config.receiverLongitude ?? feed.receiver?.longitude ?? 4.7639;
@@ -451,16 +451,17 @@ export default function Home() {
         </div>
 
         <div className="top-actions">
-          <AccountMenu
-            account={vectorAccount.account}
-            authError={vectorAccount.authError}
+          <SyncMenu
+            connected={vectorSync.connected}
+            error={vectorSync.error}
             language={language}
-            loading={vectorAccount.loading}
-            onClearError={vectorAccount.clearAuthError}
-            onRegister={vectorAccount.registerLocal}
-            onSignIn={vectorAccount.signInLocal}
-            onSignOut={vectorAccount.signOut}
-            providers={vectorAccount.providers}
+            loading={vectorSync.loading}
+            onClearError={vectorSync.clearError}
+            onCreatePairingCode={vectorSync.createPairingCode}
+            onDelete={vectorSync.deleteProfile}
+            onDisconnect={vectorSync.disconnect}
+            onPair={vectorSync.pair}
+            onStart={() => vectorSync.start(preferenceSnapshot)}
           />
           <div className={`receiver-dashboard-menu ${receiverDashboardOpen ? 'open' : ''}`} ref={receiverDashboardRef}>
             <button

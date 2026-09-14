@@ -1,5 +1,4 @@
 export type VectorIconName =
-  | 'account'
   | 'back'
   | 'center'
   | 'chevronDown'
@@ -12,7 +11,6 @@ export type VectorIconName =
   | 'labels'
   | 'layers'
   | 'list'
-  | 'logout'
   | 'pause'
   | 'play'
   | 'range'
@@ -20,12 +18,14 @@ export type VectorIconName =
   | 'receiver'
   | 'search'
   | 'settings'
+  | 'sync'
   | 'trace'
+  | 'trash'
+  | 'unlink'
   | 'zoomIn'
   | 'zoomOut';
 
 const iconPaths: Record<VectorIconName, readonly string[]> = {
-  account: ['M20 21a8 8 0 0 0-16 0', 'M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z'],
   back: ['M19 12H5', 'm11 5-7 7 7 7'],
   center: [
     'M12 3v3M12 18v3M3 12h3M18 12h3',
@@ -42,7 +42,6 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
   labels: ['M5 6.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 3v-3a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z', 'M8 11h8M8 14h5'],
   layers: ['m12 3-9 5 9 5 9-5-9-5Z', 'm3 12 9 5 9-5', 'm3 16 9 5 9-5'],
   list: ['M9 6h11M9 12h11M9 18h11', 'M4 6h.01M4 12h.01M4 18h.01'],
-  logout: ['M10 17l5-5-5-5', 'M15 12H3', 'M15 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4'],
   pause: ['M9 5v14M15 5v14'],
   play: ['M8 5v14l11-7Z'],
   range: ['M12 3 19 7l2 8-6 6-8-2-4-7 3-7 6-2Z', 'M12 12h.01'],
@@ -58,7 +57,10 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
     'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37a1.724 1.724 0 0 0 2.572-1.065Z',
     'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
   ],
+  sync: ['M20 7h-5V2', 'M4 17h5v5', 'M19.1 12a7 7 0 0 0-11.9-5L5 10', 'M4.9 12a7 7 0 0 0 11.9 5L19 14'],
   trace: ['M6 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z', 'M18 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z', 'M7.8 14.6c1.1-3.4 4-5.3 8.4-5.2'],
+  trash: ['M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14', 'M10 11v6M14 11v6'],
+  unlink: ['m9.5 14.5-2 2a3 3 0 0 1-4.2-4.2l3-3a3 3 0 0 1 4.2 0', 'm14.5 9.5 2-2a3 3 0 0 1 4.2 4.2l-3 3a3 3 0 0 1-4.2 0', 'm8 16 8-8', 'M4 4l16 16'],
   zoomIn: ['M12 5v14M5 12h14'],
   zoomOut: ['M5 12h14'],
 };

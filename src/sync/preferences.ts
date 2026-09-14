@@ -1,6 +1,6 @@
 import type { UnitSystem } from '../domain/aircraft.ts';
-import { normalizeFavoriteAircraftIds } from '../domain/favorite-aircraft.ts';
 import { legTracePeriods, type LegTracePeriod } from '../domain/aircraft-trace.ts';
+import { normalizeFavoriteAircraftIds } from '../domain/favorite-aircraft.ts';
 import type { Language } from '../i18n.ts';
 
 export type SyncedAircraftFilters = {
@@ -12,7 +12,7 @@ export type SyncedAircraftFilters = {
 
 export type SyncedAircraftSort = 'altitude-desc' | 'callsign-asc' | 'distance-asc' | 'seen-asc';
 
-export type UserPreferences = {
+export type SyncPreferences = {
   actualRangeOutline?: boolean;
   aircraftFilters?: SyncedAircraftFilters;
   aircraftSort?: SyncedAircraftSort;
@@ -30,11 +30,9 @@ const isObject = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 
-const booleanValue = (value: unknown) => typeof value === 'boolean' ? value : undefined;
-
-export function normalizeUserPreferences(value: unknown): UserPreferences {
+export function normalizeSyncPreferences(value: unknown): SyncPreferences {
   if (!isObject(value)) return {};
-  const preferences: UserPreferences = {};
+  const preferences: SyncPreferences = {};
 
   if (value.unitSystem === 'metric' || value.unitSystem === 'aeronautical' || value.unitSystem === 'imperial') {
     preferences.unitSystem = value.unitSystem;
@@ -42,8 +40,7 @@ export function normalizeUserPreferences(value: unknown): UserPreferences {
   if (value.language === 'nl' || value.language === 'en') preferences.language = value.language;
 
   for (const key of ['actualRangeOutline', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
-    const normalized = booleanValue(value[key]);
-    if (normalized !== undefined) preferences[key] = normalized;
+    if (typeof value[key] === 'boolean') preferences[key] = value[key];
   }
 
   if (legTracePeriods.includes(value.legTracePeriod as LegTracePeriod)) {
@@ -75,4 +72,4 @@ export function normalizeUserPreferences(value: unknown): UserPreferences {
   return preferences;
 }
 
-export const hasSyncedPreferences = (preferences: UserPreferences) => Object.keys(preferences).length > 0;
+export const hasSyncPreferences = (preferences: SyncPreferences) => Object.keys(preferences).length > 0;

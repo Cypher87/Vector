@@ -1,4 +1,4 @@
-import { sessionResponse } from '../../../../src/server/account-http';
+import { sessionResponse } from '../../../../src/server/sync-http';
 
 export const dynamic = 'force-dynamic';
 export const GET = sessionResponse;

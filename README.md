@@ -12,7 +12,7 @@ Vector is a modern frontend for [readsb](https://github.com/wiedehopf/readsb) an
 - Configurable map layers with labels, actual range outline, solid distance rings, and adjustable leg-trace periods.
 - Receiver dashboard with connection, message, source, position, version, and history information.
 - Configurable unit systems: metric, aeronautical, or imperial.
-- Optional accounts that synchronize preferences and favorites across devices, with local, Google, and Apple sign-in.
+- Optional anonymous synchronization of preferences and favorites between devices using a temporary pairing code.
 - External server configuration for readsb, the site name, and receiver title.
 - Responsive interface for desktop and smaller screens.
 
@@ -69,8 +69,7 @@ VECTOR_SITE_NAME=Vector
 VECTOR_RECEIVER_TITLE="Local readsb receiver"
 VECTOR_UNIT_SYSTEM=metric
 VECTOR_MAP_STYLE_URL=/map-style.json
-VECTOR_ACCOUNT_STORE=/var/lib/vector/accounts.json
-VECTOR_LOCAL_REGISTRATION=first-user
+VECTOR_SYNC_STORE=/var/lib/vector/sync.json
 # Optional: configure both values together when receiver.json has no position
 # VECTOR_RECEIVER_LATITUDE=52.000000
 # VECTOR_RECEIVER_LONGITUDE=5.000000
@@ -86,70 +85,29 @@ The upstream URLs remain on the server. The browser only receives relative proxy
 
 Vector does not use `public/config.json`. The server generates `/api/config` exclusively from the environment configuration and safe defaults. For local development, use a `.env.local` file that is ignored by Git; the Pi installation uses only `/etc/vector/vector.env`.
 
-### Accounts and preference synchronization
+### Preference synchronization
 
-Accounts are optional. Without signing in, Vector continues to store preferences in the current browser. After signing in, the server synchronizes the unit system, language, detail-panel behavior, map layers, leg-trace period, aircraft filters and sorting, and favorite aircraft. The existing browser preferences initialize a newly created account; an existing account's saved preferences take precedence on another device.
+Synchronization is optional and does not require an account, email address, password, public domain, Google, or Apple configuration. Without synchronization, Vector continues to store preferences in the current browser.
 
-Local accounts work directly at `http://<pi-address>:3000`. Passwords are never stored in plain text: Vector uses a salted `scrypt` hash. Sessions use random HTTP-only, same-site cookies. Account records, password hashes, sessions, preferences, and favorites are stored in `/var/lib/vector/accounts.json`, outside the Git checkout. The file is created with mode `0600` and is preserved by normal updates and uninstallations without `--purge`.
+Open the synchronization button in the top bar and choose **Start synchronization**. Vector stores the current unit system, language, detail-panel behavior, map layers, leg-trace period, aircraft filters and sorting, and favorite aircraft on this Vector server. To add another browser or device:
 
-The default `VECTOR_LOCAL_REGISTRATION=first-user` lets the first local account be created from the account menu and then closes registration. Use `always` to allow additional local accounts, or `disabled` to prevent new local registrations:
+1. On an already connected device, choose **Connect a new device**.
+2. Enter the displayed six-character code on the new device.
+3. The code expires after ten minutes and can be used only once.
 
-```ini
-VECTOR_ACCOUNT_STORE=/var/lib/vector/accounts.json
-VECTOR_LOCAL_REGISTRATION=first-user
-```
+The short code is only a temporary pairing key. Each browser receives a long random device token in an HTTP-only, same-site cookie. Tokens and pairing codes are stored only as hashes in `/var/lib/vector/sync.json`; the file is created with mode `0600` outside the Git checkout. Pairing attempts are rate limited. This works directly through `http://<pi-address>:3000`, although HTTPS is still recommended when exposing Vector beyond a trusted local network.
 
-Back up the account database as sensitive data:
+There is deliberately no account recovery. Keep at least one device connected; generate a fresh code there before replacing or clearing another browser. **Disconnect this device** removes only the current browser, while **Delete all synchronization data** invalidates every connected device and removes the synchronized profile.
+
+Back up the synchronization database as sensitive data:
 
 ```bash
 sudo systemctl stop vector
-sudo cp --preserve=mode,ownership /var/lib/vector/accounts.json /secure/backup/location/
+sudo cp --preserve=mode,ownership /var/lib/vector/sync.json /secure/backup/location/
 sudo systemctl start vector
 ```
 
-#### Google sign-in
-
-Google sign-in requires an OAuth 2.0 Web application and a public HTTPS URL. `http://localhost` is supported for development, but a private IP address is not suitable for production OAuth. Register this exact authorized redirect URI in Google Cloud:
-
-```text
-https://radar.example.com/api/auth/oauth/google/callback
-```
-
-Then configure:
-
-```ini
-VECTOR_PUBLIC_URL=https://radar.example.com
-VECTOR_GOOGLE_CLIENT_ID=your-client-id
-VECTOR_GOOGLE_CLIENT_SECRET=your-client-secret
-```
-
-#### Sign in with Apple
-
-Apple requires Apple Developer Program membership, a Sign in with Apple-enabled primary App ID, a Services ID, a registered domain and return URL, and a private key. Apple explicitly does not accept an IP address or `localhost` as a web return URL. Register:
-
-```text
-https://radar.example.com/api/auth/oauth/apple/callback
-```
-
-Install the downloaded `.p8` key so only root and the Vector service group can read it:
-
-```bash
-sudo install -o root -g vector -m 0640 AuthKey_KEYID.p8 /etc/vector/apple-private-key.p8
-```
-
-Then configure:
-
-```ini
-VECTOR_PUBLIC_URL=https://radar.example.com
-VECTOR_APPLE_CLIENT_ID=com.example.vector.web
-VECTOR_APPLE_TEAM_ID=YOURTEAMID
-VECTOR_APPLE_KEY_ID=YOURKEYID
-VECTOR_APPLE_PRIVATE_KEY_FILE=/etc/vector/apple-private-key.p8
-```
-
-Restart Vector after changing provider configuration. Provider secrets and Apple private keys remain server-side and are never included in `/api/config` or browser responses.
-
-Google and Apple identities are currently stored as separate Vector accounts. Sign in with the same provider on each device to retrieve the same preferences. Account linking, password recovery, and email delivery are deliberately not part of the local single-receiver deployment.
+Vector versions that predate anonymous pairing used `/var/lib/vector/accounts.json`. That legacy file is no longer read. After confirming that the new synchronization works and that no old account data is needed, it can be removed manually with `sudo rm -- /var/lib/vector/accounts.json`.
 
 ### Accessing Vector
 
@@ -224,7 +182,7 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-During local development, account data defaults to the ignored `.vector/accounts.json` file. Set `VECTOR_ACCOUNT_STORE` in `.env.local` when a different development location is required. Never reuse or commit the production account database.
+During local development, synchronization data defaults to the ignored `.vector/sync.json` file. Set `VECTOR_SYNC_STORE` in `.env.local` when a different development location is required. Never reuse or commit the production synchronization database.
 
 Quality checks:
 
