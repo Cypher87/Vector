@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { hasSyncedPreferences, type UserPreferences } from '../src/account/preferences';
+import { useVectorAccount } from '../src/account/use-vector-account';
+import { AccountMenu } from '../src/components/account-menu';
 import { AircraftPhoto } from '../src/components/aircraft-photo';
 import { AircraftRoute } from '../src/components/aircraft-route';
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
@@ -66,6 +69,13 @@ function LogoMark() {
 
 export default function Home() {
   const feed = useAircraftFeed();
+  const vectorAccount = useVectorAccount();
+  const {
+    account: userAccount,
+    loading: accountLoading,
+    preferences: syncedPreferences,
+    savePreferences: saveSyncedPreferences,
+  } = vectorAccount;
   const history = useAircraftHistory({
     aircraft: feed.aircraft,
     historyBaseUrl: feed.config.historyBaseUrl,
@@ -95,6 +105,9 @@ export default function Home() {
   const [aircraftFilters, setAircraftFilters] = useState<AircraftFilters>(emptyFilters);
   const [aircraftSort, setAircraftSort] = useState<AircraftSort>('altitude-desc');
   const [favoriteAircraftIds, setFavoriteAircraftIds] = useState<string[]>([]);
+  const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
+  const preferencesAppliedForRef = useRef<string | undefined>(undefined);
+  const preferencesPendingForRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -127,6 +140,7 @@ export default function Home() {
       } catch {
         setAircraftFilters(emptyFilters);
       }
+      setLocalPreferencesReady(true);
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -231,6 +245,103 @@ export default function Home() {
       return next;
     });
   };
+
+  const preferenceSnapshot = useMemo<UserPreferences>(() => ({
+    actualRangeOutline: actualRangeVisible,
+    aircraftFilters,
+    aircraftSort,
+    autoHideDetails,
+    distanceRings: distanceRingsVisible,
+    favoriteAircraft: favoriteAircraftIds,
+    language,
+    legTrace: legTraceVisible,
+    legTracePeriod,
+    mapLabels: labelsVisible,
+    unitSystem,
+  }), [actualRangeVisible, aircraftFilters, aircraftSort, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, unitSystem]);
+
+  useEffect(() => {
+    const accountId = userAccount?.id;
+    if (!accountId) {
+      preferencesAppliedForRef.current = undefined;
+      preferencesPendingForRef.current = undefined;
+      return;
+    }
+    if (
+      !localPreferencesReady
+      || accountLoading
+      || preferencesAppliedForRef.current === accountId
+      || preferencesPendingForRef.current === accountId
+    ) return;
+
+    const saved = syncedPreferences;
+    preferencesPendingForRef.current = accountId;
+    const frame = window.requestAnimationFrame(() => {
+      if (hasSyncedPreferences(saved)) {
+      if (saved.unitSystem) {
+        setUnitOverride(saved.unitSystem);
+        window.localStorage.setItem('vector.unitSystem', saved.unitSystem);
+      }
+      if (saved.language) {
+        setLanguage(saved.language);
+        document.documentElement.lang = saved.language;
+        window.localStorage.setItem('vector.language', saved.language);
+      }
+      if (saved.mapLabels !== undefined) {
+        setLabelsVisible(saved.mapLabels);
+        window.localStorage.setItem('vector.mapLabels', String(saved.mapLabels));
+      }
+      if (saved.legTrace !== undefined) {
+        setLegTraceVisible(saved.legTrace);
+        window.localStorage.setItem('vector.legTrace', String(saved.legTrace));
+      }
+      if (saved.legTracePeriod !== undefined) {
+        setLegTracePeriod(saved.legTracePeriod);
+        window.localStorage.setItem('vector.legTracePeriod', String(saved.legTracePeriod));
+      }
+      if (saved.actualRangeOutline !== undefined) {
+        setActualRangeVisible(saved.actualRangeOutline);
+        window.localStorage.setItem('vector.actualRangeOutline', String(saved.actualRangeOutline));
+      }
+      if (saved.distanceRings !== undefined) {
+        setDistanceRingsVisible(saved.distanceRings);
+        window.localStorage.setItem('vector.distanceRings', String(saved.distanceRings));
+      }
+      if (saved.autoHideDetails !== undefined) {
+        setAutoHideDetails(saved.autoHideDetails);
+        window.localStorage.setItem('vector.autoHideDetails', String(saved.autoHideDetails));
+      }
+      if (saved.favoriteAircraft) {
+        setFavoriteAircraftIds(saved.favoriteAircraft);
+        window.localStorage.setItem(favoriteAircraftStorageKey, JSON.stringify(saved.favoriteAircraft));
+      }
+      if (saved.aircraftSort) {
+        setAircraftSort(saved.aircraftSort);
+        window.localStorage.setItem('vector.aircraftSort', saved.aircraftSort);
+      }
+      if (saved.aircraftFilters) {
+        setAircraftFilters(saved.aircraftFilters);
+        window.localStorage.setItem('vector.aircraftFilters', JSON.stringify(saved.aircraftFilters));
+      }
+      } else {
+        void saveSyncedPreferences(preferenceSnapshot).catch(() => undefined);
+      }
+      preferencesAppliedForRef.current = accountId;
+      preferencesPendingForRef.current = undefined;
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (preferencesPendingForRef.current === accountId) preferencesPendingForRef.current = undefined;
+    };
+  }, [accountLoading, localPreferencesReady, preferenceSnapshot, saveSyncedPreferences, syncedPreferences, userAccount?.id]);
+
+  useEffect(() => {
+    if (!userAccount || preferencesAppliedForRef.current !== userAccount.id) return;
+    const timeout = window.setTimeout(() => {
+      void saveSyncedPreferences(preferenceSnapshot).catch(() => undefined);
+    }, 500);
+    return () => window.clearTimeout(timeout);
+  }, [preferenceSnapshot, saveSyncedPreferences, userAccount]);
 
   const centerLat = feed.config.receiverLatitude ?? feed.receiver?.latitude ?? 52.3086;
   const centerLon = feed.config.receiverLongitude ?? feed.receiver?.longitude ?? 4.7639;
@@ -340,6 +451,17 @@ export default function Home() {
         </div>
 
         <div className="top-actions">
+          <AccountMenu
+            account={vectorAccount.account}
+            authError={vectorAccount.authError}
+            language={language}
+            loading={vectorAccount.loading}
+            onClearError={vectorAccount.clearAuthError}
+            onRegister={vectorAccount.registerLocal}
+            onSignIn={vectorAccount.signInLocal}
+            onSignOut={vectorAccount.signOut}
+            providers={vectorAccount.providers}
+          />
           <div className={`receiver-dashboard-menu ${receiverDashboardOpen ? 'open' : ''}`} ref={receiverDashboardRef}>
             <button
               className="settings-button receiver-dashboard-button"

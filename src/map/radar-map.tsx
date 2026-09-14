@@ -372,7 +372,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, c
   const traceElementsRef = useRef<{ segments: TraceSegmentElements[]; start?: SVGCircleElement }>({ segments: [] });
   const traceOverlayRef = useRef<SVGSVGElement | null>(null);
   const tracePointsRef = useRef<AircraftTracePoint[]>([]);
-  const traceSignatureRef = useRef<string>();
+  const traceSignatureRef = useRef<string | undefined>(undefined);
   const historyOpenRef = useRef(historyOpen);
   const actualRangeAvailableRef = useRef(actualRangeAvailable);
   const actualRangeVisibleRef = useRef(actualRangeVisible);

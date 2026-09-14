@@ -1,7 +1,7 @@
 # Architectuur — Vector ADS-B Radar
 
 Status: huidige implementatie en groeirichting
-Datum: 24 augustus 2026
+Datum: 14 september 2026
 
 ## Doel
 
@@ -10,7 +10,7 @@ Vector is een zelfstandig draaiende webinterface boven op readsb/tar1090. readsb
 Belangrijke uitgangspunten:
 
 - lokaal te draaien naast een bestaande readsb-installatie;
-- geen eigen database; een kleine Node-serverruntime verzorgt configuratie en proxying;
+- een kleine Node-serverruntime verzorgt configuratie, proxying en optionele accounts;
 - configuratie zonder broncodewijziging;
 - bruikbaar met onvolledige of tijdelijk verouderde receiverdata;
 - online kaart-, route- en fotobronnen zijn toegestaan;
@@ -25,7 +25,8 @@ Belangrijke uitgangspunten:
 | Kaart | MapLibre GL JS |
 | Databron | readsb JSON via servergeconfigureerde, begrensde proxy |
 | Styling | globale CSS met responsive layout en CSS-variabelen |
-| Voorkeuren | browseropslag voor eenheden en labelinstellingen |
+| Voorkeuren | browseropslag voor gasten, serveropslag voor ingelogde gebruikers |
+| Accounts | lokale scrypt-authenticatie en optionele Google/Apple OIDC |
 
 ## Systeemcontext
 
@@ -38,6 +39,8 @@ flowchart LR
     V --> M[MapLibre-kaart]
     V --> UI[Lijst, filters en details]
     V --> LS[Lokale voorkeuren]
+    V -. ingelogd .-> A[Account-API]
+    A --> AS[/var/lib/vector/accounts.json]
     V -. optioneel .-> EXT[Kaarttegels, routes en foto's]
 ```
 
@@ -47,20 +50,22 @@ De frontend behandelt de readsb-databron als een externe systeemgrens. Ruwe veld
 
 ```text
 app/
+  api/account/           opslag van gevalideerde accountvoorkeuren
+  api/auth/              sessies en lokale/Google/Apple-authenticatie
   api/config/            publieke runtimeconfiguratie zonder upstream-URLs
   api/readsb/            begrensde proxy voor receiverdata
   globals.css            designsysteem en responsieve layout
   page.tsx               applicatiecompositie en UI-state
 public/
-  config.json            veilige fallback voor previews zonder serverconfiguratie
   map-style.json         MapLibre-kaartstijl
   data/                   lokale voorbeelddata
 src/
+  account/               gedeelde voorkeurstypen en account-client
   components/            detailcomponenten voor foto en route
   data/                  readsb-, foto- en route-adapters
   domain/                genormaliseerde vliegtuigmodellen
   map/                   kaart, iconen, heading en hoogtekleuren
-  server/                externe configuratie en proxyvalidatie
+  server/                configuratie, accounts en proxyvalidatie
   units.ts               conversie en formattering
 scripts/
   install-debian.sh      herhaalbare Debian 13-installatie en updates
@@ -78,6 +83,8 @@ flowchart TD
     F --> P[/api/readsb met relatieve resourcepaden]
     E[/etc/vector/vector.env] --> C
     E --> P
+    E --> A[Account-API]
+    A --> AS[/var/lib/vector/accounts.json]
     P --> N[Normalisatie]
     N --> S[React state]
     S --> L[Vliegtuiglijst]
@@ -99,6 +106,10 @@ Het model bewaart bronwaarden die geschikt zijn voor conversie. `src/units.ts` f
 - `imperial`: voet, mijl per uur en mijl.
 
 De deploymentstandaard komt tijdens runtime uit serverenvironmentvariabelen. De gebruikerskeuze blijft lokaal in de browser bewaard en kan de deploymentstandaard overschrijven.
+
+Voor gasten blijft `localStorage` de bron van gebruikersvoorkeuren. Bij een ingelogde gebruiker worden dezelfde gevalideerde voorkeuren via de account-API in `/var/lib/vector/accounts.json` opgeslagen. Hierdoor volgen instellingen, filters, kaartlagen en favorieten het account naar een ander apparaat. Accountstatus wordt uitsluitend via een willekeurige HTTP-only sessiecookie vastgesteld; de browser ontvangt geen wachtwoordhash, providersleutel of upstreamsecret.
+
+Lokale wachtwoorden worden met een unieke salt en `scrypt` opgeslagen. Google en Apple gebruiken de Authorization Code-flow met state en nonce; Google gebruikt daarnaast PKCE. ID-tokens worden tegen de vaste JWKS-origin, issuer, audience, vervaltijd en nonce gevalideerd. OAuth-providers worden alleen zichtbaar als hun volledige serverconfiguratie aanwezig is.
 
 ## Kaartarchitectuur
 
@@ -133,6 +144,8 @@ READSB_HISTORY_URL=http://127.0.0.1/tar1090/globe_history/
 VECTOR_SITE_NAME=Vector
 VECTOR_RECEIVER_TITLE="Local readsb receiver"
 VECTOR_UNIT_SYSTEM=metric
+VECTOR_ACCOUNT_STORE=/var/lib/vector/accounts.json
+VECTOR_LOCAL_REGISTRATION=first-user
 # Optioneel, beide waarden samen instellen in decimale graden:
 # VECTOR_RECEIVER_LATITUDE=52.000000
 # VECTOR_RECEIVER_LONGITUDE=5.000000
@@ -151,6 +164,7 @@ De Debian-installatie bewaart deze waarden in `/etc/vector/vector.env`, buiten d
 - onbekende en ontbrekende JSON-velden veroorzaken geen volledige UI-fout;
 - netwerk-, stale- en lege toestanden worden afzonderlijk weergegeven;
 - geheimen horen niet in de frontend of in `config.json`;
+- OAuth-geheimen blijven in `/etc/vector`, accountdata blijft in `/var/lib/vector` en beide vallen buiten de Git-checkout;
 - externe verrijking is best-effort en staat los van de live vliegtuigfeed;
 - gegenereerde builds, dependencies en lokale cachebestanden worden niet gecommit.
 
@@ -175,4 +189,5 @@ Een release is bruikbaar wanneer een gebruiker met één configuratiebestand:
 - details, route, foto en trace ziet wanneer die beschikbaar zijn;
 - metrische, luchtvaart- of imperialeenheden kan kiezen;
 - zonder layoutsprongen labels en het detailpaneel kan bedienen;
+- optioneel met een lokaal, Google- of Apple-account voorkeuren en favorieten tussen apparaten kan synchroniseren;
 - na een tijdelijke netwerkfout automatisch actuele data terugkrijgt.

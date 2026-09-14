@@ -1,4 +1,5 @@
 export type VectorIconName =
+  | 'account'
   | 'back'
   | 'center'
   | 'chevronDown'
@@ -11,6 +12,7 @@ export type VectorIconName =
   | 'labels'
   | 'layers'
   | 'list'
+  | 'logout'
   | 'pause'
   | 'play'
   | 'range'
@@ -23,6 +25,7 @@ export type VectorIconName =
   | 'zoomOut';
 
 const iconPaths: Record<VectorIconName, readonly string[]> = {
+  account: ['M20 21a8 8 0 0 0-16 0', 'M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z'],
   back: ['M19 12H5', 'm11 5-7 7 7 7'],
   center: [
     'M12 3v3M12 18v3M3 12h3M18 12h3',
@@ -39,6 +42,7 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
   labels: ['M5 6.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 3v-3a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z', 'M8 11h8M8 14h5'],
   layers: ['m12 3-9 5 9 5 9-5-9-5Z', 'm3 12 9 5 9-5', 'm3 16 9 5 9-5'],
   list: ['M9 6h11M9 12h11M9 18h11', 'M4 6h.01M4 12h.01M4 18h.01'],
+  logout: ['M10 17l5-5-5-5', 'M15 12H3', 'M15 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4'],
   pause: ['M9 5v14M15 5v14'],
   play: ['M8 5v14l11-7Z'],
   range: ['M12 3 19 7l2 8-6 6-8-2-4-7 3-7 6-2Z', 'M12 12h.01'],

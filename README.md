@@ -5,11 +5,14 @@ Vector is a modern frontend for [readsb](https://github.com/wiedehopf/readsb) an
 ## Features
 
 - Live aircraft map with heading, type-specific tar1090 icons, and altitude-based colors.
-- Searchable, sortable, and filterable aircraft list.
+- Searchable, sortable, and filterable aircraft list with synchronized favorites.
 - Detail panel with flight information, route, full airport names, and an aircraft photo.
 - Altitude-colored leg traces for the selected aircraft.
 - History replay with a timeline, playback speed controls, and an option to return to live data.
-- Configurable labels and unit systems: metric, aeronautical, or imperial.
+- Configurable map layers with labels, actual range outline, solid distance rings, and adjustable leg-trace periods.
+- Receiver dashboard with connection, message, source, position, version, and history information.
+- Configurable unit systems: metric, aeronautical, or imperial.
+- Optional accounts that synchronize preferences and favorites across devices, with local, Google, and Apple sign-in.
 - External server configuration for readsb, the site name, and receiver title.
 - Responsive interface for desktop and smaller screens.
 
@@ -66,6 +69,8 @@ VECTOR_SITE_NAME=Vector
 VECTOR_RECEIVER_TITLE="Local readsb receiver"
 VECTOR_UNIT_SYSTEM=metric
 VECTOR_MAP_STYLE_URL=/map-style.json
+VECTOR_ACCOUNT_STORE=/var/lib/vector/accounts.json
+VECTOR_LOCAL_REGISTRATION=first-user
 # Optional: configure both values together when receiver.json has no position
 # VECTOR_RECEIVER_LATITUDE=52.000000
 # VECTOR_RECEIVER_LONGITUDE=5.000000
@@ -80,6 +85,71 @@ Set `VECTOR_RECEIVER_LATITUDE` and `VECTOR_RECEIVER_LONGITUDE` to the receiver p
 The upstream URLs remain on the server. The browser only receives relative proxy resources and cannot direct the proxy to another host. HTTP redirects, credentials in upstream URLs, path traversal, and unknown files are rejected.
 
 Vector does not use `public/config.json`. The server generates `/api/config` exclusively from the environment configuration and safe defaults. For local development, use a `.env.local` file that is ignored by Git; the Pi installation uses only `/etc/vector/vector.env`.
+
+### Accounts and preference synchronization
+
+Accounts are optional. Without signing in, Vector continues to store preferences in the current browser. After signing in, the server synchronizes the unit system, language, detail-panel behavior, map layers, leg-trace period, aircraft filters and sorting, and favorite aircraft. The existing browser preferences initialize a newly created account; an existing account's saved preferences take precedence on another device.
+
+Local accounts work directly at `http://<pi-address>:3000`. Passwords are never stored in plain text: Vector uses a salted `scrypt` hash. Sessions use random HTTP-only, same-site cookies. Account records, password hashes, sessions, preferences, and favorites are stored in `/var/lib/vector/accounts.json`, outside the Git checkout. The file is created with mode `0600` and is preserved by normal updates and uninstallations without `--purge`.
+
+The default `VECTOR_LOCAL_REGISTRATION=first-user` lets the first local account be created from the account menu and then closes registration. Use `always` to allow additional local accounts, or `disabled` to prevent new local registrations:
+
+```ini
+VECTOR_ACCOUNT_STORE=/var/lib/vector/accounts.json
+VECTOR_LOCAL_REGISTRATION=first-user
+```
+
+Back up the account database as sensitive data:
+
+```bash
+sudo systemctl stop vector
+sudo cp --preserve=mode,ownership /var/lib/vector/accounts.json /secure/backup/location/
+sudo systemctl start vector
+```
+
+#### Google sign-in
+
+Google sign-in requires an OAuth 2.0 Web application and a public HTTPS URL. `http://localhost` is supported for development, but a private IP address is not suitable for production OAuth. Register this exact authorized redirect URI in Google Cloud:
+
+```text
+https://radar.example.com/api/auth/oauth/google/callback
+```
+
+Then configure:
+
+```ini
+VECTOR_PUBLIC_URL=https://radar.example.com
+VECTOR_GOOGLE_CLIENT_ID=your-client-id
+VECTOR_GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+#### Sign in with Apple
+
+Apple requires Apple Developer Program membership, a Sign in with Apple-enabled primary App ID, a Services ID, a registered domain and return URL, and a private key. Apple explicitly does not accept an IP address or `localhost` as a web return URL. Register:
+
+```text
+https://radar.example.com/api/auth/oauth/apple/callback
+```
+
+Install the downloaded `.p8` key so only root and the Vector service group can read it:
+
+```bash
+sudo install -o root -g vector -m 0640 AuthKey_KEYID.p8 /etc/vector/apple-private-key.p8
+```
+
+Then configure:
+
+```ini
+VECTOR_PUBLIC_URL=https://radar.example.com
+VECTOR_APPLE_CLIENT_ID=com.example.vector.web
+VECTOR_APPLE_TEAM_ID=YOURTEAMID
+VECTOR_APPLE_KEY_ID=YOURKEYID
+VECTOR_APPLE_PRIVATE_KEY_FILE=/etc/vector/apple-private-key.p8
+```
+
+Restart Vector after changing provider configuration. Provider secrets and Apple private keys remain server-side and are never included in `/api/config` or browser responses.
+
+Google and Apple identities are currently stored as separate Vector accounts. Sign in with the same provider on each device to retrieve the same preferences. Account linking, password recovery, and email delivery are deliberately not part of the local single-receiver deployment.
 
 ### Accessing Vector
 
@@ -153,6 +223,8 @@ pnpm dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+During local development, account data defaults to the ignored `.vector/accounts.json` file. Set `VECTOR_ACCOUNT_STORE` in `.env.local` when a different development location is required. Never reuse or commit the production account database.
 
 Quality checks:
 
