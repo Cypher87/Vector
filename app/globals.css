@@ -211,4 +211,5 @@ button { color: inherit; }
 
 @media (max-width: 720px) {
   .aircraft-panel.mobile-open .filter-popover { max-height: min(520px, calc(100svh - 76px)); }
+  .detail-panel.mobile-expanded > .detail-actions { position: sticky; z-index: 8; top: -18px; margin: -18px -18px 16px; padding: 18px 18px 12px; align-items: center; border-radius: 15px 15px 0 0; background: rgba(14,24,28,.98); box-shadow: 0 1px 0 var(--line), 0 9px 18px rgba(0,0,0,.18); backdrop-filter: blur(12px); }
 }
