@@ -1,24 +1,28 @@
 import type { UnitSystem } from '../domain/aircraft.ts';
+import {
+  normalizeAircraftFilterPresetIds,
+  normalizeAircraftFilterPresets,
+  normalizeAircraftFilters,
+  type AircraftFilterPreset,
+  type AircraftFilters,
+  type AircraftSort,
+} from '../domain/aircraft-filter-preset.ts';
 import { legTracePeriods, type LegTracePeriod } from '../domain/aircraft-trace.ts';
 import { normalizeFavoriteAircraftIds } from '../domain/favorite-aircraft.ts';
 import type { Language } from '../i18n.ts';
 
-export type SyncedAircraftFilters = {
-  adsbOnly: boolean;
-  airborneOnly: boolean;
-  favoritesOnly: boolean;
-  positionOnly: boolean;
-};
-
-export type SyncedAircraftSort = 'altitude-desc' | 'callsign-asc' | 'distance-asc' | 'seen-asc';
+export type SyncedAircraftFilters = AircraftFilters;
+export type SyncedAircraftSort = AircraftSort;
 
 export type SyncPreferences = {
   actualRangeOutline?: boolean;
+  aircraftShadows?: boolean;
   aircraftFilters?: SyncedAircraftFilters;
   aircraftSort?: SyncedAircraftSort;
   autoHideDetails?: boolean;
   distanceRings?: boolean;
   favoriteAircraft?: string[];
+  filterPresets?: AircraftFilterPreset[];
   language?: Language;
   legTrace?: boolean;
   legTracePeriod?: LegTracePeriod;
@@ -26,13 +30,17 @@ export type SyncPreferences = {
   unitSystem?: UnitSystem;
 };
 
-type ScalarSyncPreferences = Omit<SyncPreferences, 'aircraftFilters' | 'favoriteAircraft'>;
+type ScalarSyncPreferences = Omit<SyncPreferences, 'aircraftFilters' | 'favoriteAircraft' | 'filterPresets'>;
 
 export type SyncPreferencePatch = {
   aircraftFilters?: Partial<SyncedAircraftFilters>;
   favoriteAircraft?: {
     add?: string[];
     remove?: string[];
+  };
+  filterPresets?: {
+    remove?: string[];
+    upsert?: AircraftFilterPreset[];
   };
   settings?: Partial<ScalarSyncPreferences>;
 };
@@ -50,7 +58,7 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
   }
   if (value.language === 'nl' || value.language === 'en') preferences.language = value.language;
 
-  for (const key of ['actualRangeOutline', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
+  for (const key of ['actualRangeOutline', 'aircraftShadows', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
     if (typeof value[key] === 'boolean') preferences[key] = value[key];
   }
 
@@ -68,16 +76,15 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
   }
 
   if (isObject(value.aircraftFilters)) {
-    preferences.aircraftFilters = {
-      adsbOnly: value.aircraftFilters.adsbOnly === true,
-      airborneOnly: value.aircraftFilters.airborneOnly === true,
-      favoritesOnly: value.aircraftFilters.favoritesOnly === true,
-      positionOnly: value.aircraftFilters.positionOnly === true,
-    };
+    preferences.aircraftFilters = normalizeAircraftFilters(value.aircraftFilters);
   }
 
   if (Array.isArray(value.favoriteAircraft)) {
     preferences.favoriteAircraft = normalizeFavoriteAircraftIds(value.favoriteAircraft).slice(0, 2_000);
+  }
+
+  if (Array.isArray(value.filterPresets)) {
+    preferences.filterPresets = normalizeAircraftFilterPresets(value.filterPresets);
   }
 
   return preferences;
@@ -87,6 +94,7 @@ export const hasSyncPreferences = (preferences: SyncPreferences) => Object.keys(
 
 const scalarPreferenceKeys = [
   'actualRangeOutline',
+  'aircraftShadows',
   'aircraftSort',
   'autoHideDetails',
   'distanceRings',
@@ -131,6 +139,12 @@ export function normalizeSyncPreferencePatch(value: unknown): SyncPreferencePatc
     if (add.length > 0 || remove.length > 0) patch.favoriteAircraft = { add, remove };
   }
 
+  if (isObject(value.filterPresets)) {
+    const remove = normalizeAircraftFilterPresetIds(value.filterPresets.remove);
+    const upsert = normalizeAircraftFilterPresets(value.filterPresets.upsert);
+    if (remove.length > 0 || upsert.length > 0) patch.filterPresets = { remove, upsert };
+  }
+
   return patch;
 }
 
@@ -154,6 +168,17 @@ export function applySyncPreferencePatch(currentValue: unknown, patchValue: unkn
     for (const aircraftId of patch.favoriteAircraft.remove ?? []) favorites.delete(aircraftId);
     for (const aircraftId of patch.favoriteAircraft.add ?? []) favorites.add(aircraftId);
     next.favoriteAircraft = normalizeFavoriteAircraftIds([...favorites]).slice(0, 2_000);
+  }
+
+  if (patch.filterPresets) {
+    const removed = new Set(patch.filterPresets.remove ?? []);
+    const presets = (current.filterPresets ?? []).filter((preset) => !removed.has(preset.id));
+    for (const preset of patch.filterPresets.upsert ?? []) {
+      const index = presets.findIndex((candidate) => candidate.id === preset.id);
+      if (index === -1) presets.push(preset);
+      else presets[index] = preset;
+    }
+    next.filterPresets = normalizeAircraftFilterPresets(presets);
   }
 
   return normalizeSyncPreferences(next);
@@ -187,6 +212,12 @@ export function createSyncPreferencePatch(previousValue: unknown, nextValue: unk
   const add = [...nextFavorites].filter((aircraftId) => !previousFavorites.has(aircraftId));
   const remove = [...previousFavorites].filter((aircraftId) => !nextFavorites.has(aircraftId));
   if (add.length > 0 || remove.length > 0) patch.favoriteAircraft = { add, remove };
+
+  const previousPresets = new Map((previous.filterPresets ?? []).map((preset) => [preset.id, preset]));
+  const nextPresets = new Map((next.filterPresets ?? []).map((preset) => [preset.id, preset]));
+  const upsert = [...nextPresets.values()].filter((preset) => !equalPreferenceValue(previousPresets.get(preset.id), preset));
+  const removePresets = [...previousPresets.keys()].filter((presetId) => !nextPresets.has(presetId));
+  if (upsert.length > 0 || removePresets.length > 0) patch.filterPresets = { remove: removePresets, upsert };
 
   return patch;
 }

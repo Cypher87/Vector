@@ -74,6 +74,11 @@ button { color: inherit; }
 .map-loading, .map-error { position: absolute; z-index: 5; left: 50%; top: 50%; display: grid; gap: 4px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 9px; background: rgba(9,17,20,.9); color: var(--muted-strong); font-size: 10.8px; transform: translate(-50%, -50%); backdrop-filter: blur(8px); }
 .map-error strong { color: #efb45c; font-size: var(--heading-section); font-weight: var(--heading-weight); }.map-error span { max-width: 260px; color: var(--muted); }
 .receiver-map-marker { z-index: 1; width: 24px; height: 24px; display: grid; place-items: center; border: 0; background: transparent; color: var(--receiver-accent); pointer-events: none; }.receiver-map-marker .receiver-map-icon { width: 19px; height: 19px; opacity: 1; stroke-width: 2.1; filter: drop-shadow(0 1px 1px rgba(4,10,12,.9)); transform: translateY(-1px); }
+.aircraft-altitude-shadow-marker { z-index: 0; width: 32px; height: 34px; overflow: visible; pointer-events: none; }
+.aircraft-altitude-shadow-projection { position: absolute; left: 50%; top: 50%; width: 32.4px; height: 36px; color: #020709; opacity: var(--aircraft-shadow-opacity, .22); filter: blur(var(--aircraft-shadow-blur, 1.4px)); transform: translate(calc(-50% + var(--aircraft-shadow-offset-x, -6px)), calc(-50% + var(--aircraft-shadow-offset-y, 6px))) scale(var(--aircraft-shadow-scale, .82)); transform-origin: center; }
+.aircraft-altitude-shadow-icon { width: 32.4px; height: 36px; color: #020709; }
+.aircraft-altitude-shadow-icon .aircraft-icon-main { fill: currentColor; stroke: rgba(2,7,9,.72); }
+.aircraft-altitude-shadow-icon .aircraft-icon-accent { display: none; }
 .aircraft-map-marker { --aircraft-color: #d5e1e4; position: absolute; width: 32px; height: 34px; padding: 0; display: grid; place-items: center; overflow: visible; border: 0; background: transparent; color: #d5e1e4; cursor: pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,.8)); backface-visibility: hidden; will-change: transform; }
 .aircraft-icon-svg { display: block; overflow: visible; color: inherit; transform-origin: 50% 50%; }
 .list-aircraft-icon, .detail-aircraft-icon { transition: transform .24s linear; }
@@ -163,3 +168,47 @@ button { color: inherit; }
 .sync-device-name-form input { width: 100%; height: 31px; padding: 0 8px; border: 1px solid rgba(79,228,211,.32); border-radius: 7px; outline: 0; background: #0d181c; color: var(--ink); font-size: 10.8px; }
 .sync-device-name-form input:focus { box-shadow: 0 0 0 3px rgba(79,228,211,.07); }
 @keyframes photo-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+.filter-popover { width: 286px; max-height: min(610px, calc(100svh - 106px)); overflow: hidden auto; scrollbar-color: rgba(132,151,158,.5) transparent; scrollbar-width: thin; }
+.filter-presets { padding: 10px; display: grid; gap: 8px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.012); }
+.filter-presets-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.filter-presets-heading > strong { color: var(--muted-strong); font-size: 9.6px; font-weight: 700; letter-spacing: .055em; text-transform: uppercase; }
+.filter-presets-heading > button { min-height: 27px; padding: 0 7px; display: flex; align-items: center; gap: 5px; border: 1px solid rgba(79,228,211,.18); border-radius: 7px; background: var(--cyan-soft); color: var(--cyan); font-size: 9.6px; font-weight: 650; cursor: pointer; }
+.filter-presets-heading > button:hover { border-color: rgba(79,228,211,.34); background: rgba(79,228,211,.17); }
+.filter-presets-heading > button:disabled { cursor: not-allowed; opacity: .45; }
+.filter-presets-heading > button .vector-icon { width: 13px; height: 13px; }
+.filter-presets > p { margin: 1px 0 2px; color: var(--muted); font-size: 9.6px; line-height: 1.4; }
+.filter-preset-list { max-height: 190px; display: grid; overflow: hidden auto; border: 1px solid rgba(187,217,224,.09); border-radius: 8px; scrollbar-color: rgba(132,151,158,.45) transparent; scrollbar-width: thin; }
+.filter-preset-row { min-height: 48px; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; border-bottom: 1px solid rgba(187,217,224,.07); background: rgba(4,13,16,.22); }
+.filter-preset-row:last-child { border-bottom: 0; }
+.filter-preset-row.active { background: rgba(79,228,211,.055); box-shadow: inset 2px 0 var(--cyan); }
+.filter-preset-apply { min-width: 0; min-height: 47px; padding: 6px 8px; display: grid; grid-template-columns: 17px minmax(0,1fr); align-items: center; gap: 7px; border: 0; background: transparent; color: var(--muted); text-align: left; cursor: pointer; }
+.filter-preset-apply:hover { color: var(--cyan); }
+.filter-preset-apply > .vector-icon { width: 15px; height: 15px; }
+.filter-preset-apply > span { min-width: 0; display: grid; gap: 2px; }
+.filter-preset-apply strong, .filter-preset-apply small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filter-preset-apply strong { color: var(--muted-strong); font-size: 10.8px; font-weight: 650; }
+.filter-preset-row.active .filter-preset-apply strong { color: var(--ink); }
+.filter-preset-apply small { color: var(--muted); font-size: 8.8px; }
+.filter-preset-row.active .filter-preset-apply small { color: var(--cyan); }
+.filter-preset-actions { padding-right: 4px; display: flex; gap: 1px; }
+.filter-preset-actions button, .filter-preset-form button { width: 27px; height: 27px; padding: 0; display: grid; place-items: center; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.filter-preset-actions button:hover, .filter-preset-form button:hover { border-color: rgba(79,228,211,.2); background: var(--cyan-soft); color: var(--cyan); }
+.filter-preset-actions button:last-child:hover { border-color: rgba(239,120,92,.22); background: rgba(239,120,92,.07); color: #f09a86; }
+.filter-preset-actions .vector-icon, .filter-preset-form button .vector-icon { width: 13px; height: 13px; }
+.filter-preset-form { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) 27px 27px; align-items: center; gap: 4px; }
+.filter-preset-list > .filter-preset-form { min-height: 48px; padding: 8px; background: rgba(4,13,16,.22); }
+.filter-preset-form input { width: 100%; height: 31px; min-width: 0; padding: 0 8px; border: 1px solid rgba(79,228,211,.3); border-radius: 7px; outline: 0; background: #0d181c; color: var(--ink); font-size: 10.8px; }
+.filter-preset-form input:focus { box-shadow: 0 0 0 3px rgba(79,228,211,.07); }
+.filter-preset-form button:disabled { cursor: not-allowed; opacity: .4; }
+.filter-options > label { min-height: 54px; padding: 9px 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid rgba(187,217,224,.08); cursor: pointer; }
+.filter-options > label:last-child { border-bottom: 0; }
+.filter-options > label:hover { background: rgba(79,228,211,.045); }
+.filter-options > label > span { display: grid; gap: 2px; }
+.filter-options > label strong { color: var(--muted-strong); font-size: 10.8px; }
+.filter-options > label small { color: var(--muted); font-size: 8.8px; line-height: 1.25; }
+.filter-options > label input { width: 16px; height: 16px; flex: 0 0 auto; accent-color: var(--cyan); cursor: pointer; }
+
+@media (max-width: 720px) {
+  .aircraft-panel.mobile-open .filter-popover { max-height: min(520px, calc(100svh - 76px)); }
+}

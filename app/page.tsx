@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AircraftPhoto } from '../src/components/aircraft-photo';
+import { AircraftFilterMenu } from '../src/components/aircraft-filter-menu';
 import { AircraftRoute } from '../src/components/aircraft-route';
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
 import { HistoryControls } from '../src/components/history-controls';
@@ -12,6 +13,16 @@ import { useAircraftFeed } from '../src/data/use-aircraft-feed';
 import { useAircraftHistory } from '../src/data/use-aircraft-history';
 import type { Aircraft, FeedStatus, UnitSystem } from '../src/domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../src/domain/aircraft-kind';
+import {
+  aircraftFilterPresetStorageKey,
+  emptyAircraftFilters,
+  normalizeAircraftFilterPresets,
+  parseAircraftFilterPresets,
+  type AircraftFilterKey,
+  type AircraftFilterPreset,
+  type AircraftFilters,
+  type AircraftSort,
+} from '../src/domain/aircraft-filter-preset';
 import { mergeAircraftMetadata } from '../src/domain/aircraft-metadata';
 import { defaultLegTracePeriod, parseLegTracePeriod, type LegTracePeriod } from '../src/domain/aircraft-trace';
 import {
@@ -56,11 +67,8 @@ const statusText: Record<FeedStatus, TranslationKey> = {
   stale: 'dataDelayed',
   offline: 'receiverOffline',
 };
-type AircraftFilterKey = 'adsbOnly' | 'airborneOnly' | 'favoritesOnly' | 'positionOnly';
-type AircraftFilters = Record<AircraftFilterKey, boolean>;
-type AircraftSort = 'altitude-desc' | 'callsign-asc' | 'distance-asc' | 'seen-asc';
-const emptyFilters: AircraftFilters = { adsbOnly: false, airborneOnly: false, favoritesOnly: false, positionOnly: false };
 const signalBarLevels: Exclude<SignalStrengthLevel, 0>[] = [1, 2, 3, 4];
+const createAircraftFilterPresetId = () => `preset_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 
 function LogoMark() {
   return (
@@ -100,6 +108,7 @@ export default function Home() {
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [following, setFollowing] = useState(false);
   const [labelsVisible, setLabelsVisible] = useState(true);
+  const [aircraftShadowsVisible, setAircraftShadowsVisible] = useState(true);
   const [legTraceVisible, setLegTraceVisible] = useState(true);
   const [legTracePeriod, setLegTracePeriod] = useState<LegTracePeriod>(defaultLegTracePeriod);
   const [actualRangeVisible, setActualRangeVisible] = useState(false);
@@ -109,8 +118,9 @@ export default function Home() {
   const [mapFocus, setMapFocus] = useState<{ latitude?: number; longitude?: number; request: number }>();
   const [unitOverride, setUnitOverride] = useState<UnitSystem>();
   const [language, setLanguage] = useState<Language>('nl');
-  const [aircraftFilters, setAircraftFilters] = useState<AircraftFilters>(emptyFilters);
+  const [aircraftFilters, setAircraftFilters] = useState<AircraftFilters>(emptyAircraftFilters);
   const [aircraftSort, setAircraftSort] = useState<AircraftSort>('altitude-desc');
+  const [aircraftFilterPresets, setAircraftFilterPresets] = useState<AircraftFilterPreset[]>([]);
   const [favoriteAircraftIds, setFavoriteAircraftIds] = useState<string[]>([]);
   const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
   const syncPreferencesAppliedForRef = useRef<string | undefined>(undefined);
@@ -128,12 +138,14 @@ export default function Home() {
         document.documentElement.lang = savedLanguage;
       }
       if (window.localStorage.getItem('vector.mapLabels') === 'false') setLabelsVisible(false);
+      if (window.localStorage.getItem('vector.aircraftShadows') === 'false') setAircraftShadowsVisible(false);
       if (window.localStorage.getItem('vector.legTrace') === 'false') setLegTraceVisible(false);
       setLegTracePeriod(parseLegTracePeriod(window.localStorage.getItem('vector.legTracePeriod')));
       if (window.localStorage.getItem('vector.actualRangeOutline') === 'true') setActualRangeVisible(true);
       if (window.localStorage.getItem('vector.distanceRings') === 'true') setDistanceRingsVisible(true);
       if (window.localStorage.getItem('vector.autoHideDetails') === 'true') setAutoHideDetails(true);
       setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
+      setAircraftFilterPresets(parseAircraftFilterPresets(window.localStorage.getItem(aircraftFilterPresetStorageKey)));
       const savedSort = window.localStorage.getItem('vector.aircraftSort');
       if (savedSort === 'altitude-desc' || savedSort === 'callsign-asc' || savedSort === 'distance-asc' || savedSort === 'seen-asc') {
         setAircraftSort(savedSort);
@@ -147,7 +159,7 @@ export default function Home() {
           positionOnly: savedFilters.positionOnly === true,
         });
       } catch {
-        setAircraftFilters(emptyFilters);
+        setAircraftFilters(emptyAircraftFilters);
       }
       setLocalPreferencesReady(true);
     });
@@ -206,6 +218,10 @@ export default function Home() {
     setLabelsVisible(visible);
     window.localStorage.setItem('vector.mapLabels', String(visible));
   };
+  const changeAircraftShadowsVisible = (visible: boolean) => {
+    setAircraftShadowsVisible(visible);
+    window.localStorage.setItem('vector.aircraftShadows', String(visible));
+  };
   const changeLegTraceVisible = (visible: boolean) => {
     setLegTraceVisible(visible);
     window.localStorage.setItem('vector.legTrace', String(visible));
@@ -240,12 +256,42 @@ export default function Home() {
     });
   };
   const resetAircraftFilters = () => {
-    setAircraftFilters(emptyFilters);
+    setAircraftFilters(emptyAircraftFilters);
     window.localStorage.removeItem('vector.aircraftFilters');
   };
   const changeAircraftSort = (value: AircraftSort) => {
     setAircraftSort(value);
     window.localStorage.setItem('vector.aircraftSort', value);
+  };
+  const applyAircraftFilterPreset = (preset: AircraftFilterPreset) => {
+    setAircraftFilters(preset.filters);
+    setAircraftSort(preset.sort);
+    window.localStorage.setItem('vector.aircraftFilters', JSON.stringify(preset.filters));
+    window.localStorage.setItem('vector.aircraftSort', preset.sort);
+  };
+  const saveAircraftFilterPreset = (name: string) => {
+    setAircraftFilterPresets((current) => {
+      const next = normalizeAircraftFilterPresets([
+        ...current,
+        { id: createAircraftFilterPresetId(), name, filters: aircraftFilters, sort: aircraftSort },
+      ]);
+      window.localStorage.setItem(aircraftFilterPresetStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
+  const renameAircraftFilterPreset = (presetId: string, name: string) => {
+    setAircraftFilterPresets((current) => {
+      const next = normalizeAircraftFilterPresets(current.map((preset) => preset.id === presetId ? { ...preset, name } : preset));
+      window.localStorage.setItem(aircraftFilterPresetStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
+  const deleteAircraftFilterPreset = (presetId: string) => {
+    setAircraftFilterPresets((current) => {
+      const next = current.filter((preset) => preset.id !== presetId);
+      window.localStorage.setItem(aircraftFilterPresetStorageKey, JSON.stringify(next));
+      return next;
+    });
   };
   const toggleFavoriteAircraft = (aircraftId: string) => {
     setFavoriteAircraftIds((current) => {
@@ -257,17 +303,19 @@ export default function Home() {
 
   const preferenceSnapshot = useMemo<SyncPreferences>(() => ({
     actualRangeOutline: actualRangeVisible,
+    aircraftShadows: aircraftShadowsVisible,
     aircraftFilters,
     aircraftSort,
     autoHideDetails,
     distanceRings: distanceRingsVisible,
     favoriteAircraft: favoriteAircraftIds,
+    filterPresets: aircraftFilterPresets,
     language,
     legTrace: legTraceVisible,
     legTracePeriod,
     mapLabels: labelsVisible,
     unitSystem,
-  }), [actualRangeVisible, aircraftFilters, aircraftSort, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, unitSystem]);
+  }), [actualRangeVisible, aircraftFilterPresets, aircraftFilters, aircraftShadowsVisible, aircraftSort, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, unitSystem]);
 
   useEffect(() => {
     if (!syncProfileId) {
@@ -305,6 +353,10 @@ export default function Home() {
         setLabelsVisible(saved.mapLabels);
         window.localStorage.setItem('vector.mapLabels', String(saved.mapLabels));
       }
+      if (saved.aircraftShadows !== undefined) {
+        setAircraftShadowsVisible(saved.aircraftShadows);
+        window.localStorage.setItem('vector.aircraftShadows', String(saved.aircraftShadows));
+      }
       if (saved.legTrace !== undefined) {
         setLegTraceVisible(saved.legTrace);
         window.localStorage.setItem('vector.legTrace', String(saved.legTrace));
@@ -336,6 +388,10 @@ export default function Home() {
       if (saved.aircraftFilters) {
         setAircraftFilters(saved.aircraftFilters);
         window.localStorage.setItem('vector.aircraftFilters', JSON.stringify(saved.aircraftFilters));
+      }
+      if (saved.filterPresets !== undefined) {
+        setAircraftFilterPresets(saved.filterPresets);
+        window.localStorage.setItem(aircraftFilterPresetStorageKey, JSON.stringify(saved.filterPresets));
       }
       } else {
         void saveSyncPreferences(preferenceSnapshot).catch(() => undefined);
@@ -578,34 +634,19 @@ export default function Home() {
               <h1>{t('aircraftListTitle')}</h1>
             </div>
             <div className="panel-buttons">
-              <details className="filter-menu">
-                <summary className="filter-button" aria-label={`${activeFilterCount} ${t('activeFilters')}`}>
-                  {t('filter')} {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
-                  <VectorIcon className="filter-chevron" name="chevronDown" />
-                </summary>
-                <div className="filter-popover">
-                  <div className="filter-popover-heading">
-                    <strong>{t('filterAircraft')}</strong>
-                    <button type="button" disabled={activeFilterCount === 0} onClick={resetAircraftFilters}>{t('clear')}</button>
-                  </div>
-                  <label>
-                    <span><strong>{t('favoritesOnly')}</strong><small>{t('favoritesOnlyHelp')}</small></span>
-                    <input type="checkbox" checked={aircraftFilters.favoritesOnly} onChange={(event) => changeAircraftFilter('favoritesOnly', event.target.checked)} />
-                  </label>
-                  <label>
-                    <span><strong>{t('positionAvailable')}</strong><small>{t('positionAvailableHelp')}</small></span>
-                    <input type="checkbox" checked={aircraftFilters.positionOnly} onChange={(event) => changeAircraftFilter('positionOnly', event.target.checked)} />
-                  </label>
-                  <label>
-                    <span><strong>{t('airborne')}</strong><small>{t('airborneHelp')}</small></span>
-                    <input type="checkbox" checked={aircraftFilters.airborneOnly} onChange={(event) => changeAircraftFilter('airborneOnly', event.target.checked)} />
-                  </label>
-                  <label>
-                    <span><strong>{t('adsbDirect')}</strong><small>{t('adsbDirectHelp')}</small></span>
-                    <input type="checkbox" checked={aircraftFilters.adsbOnly} onChange={(event) => changeAircraftFilter('adsbOnly', event.target.checked)} />
-                  </label>
-                </div>
-              </details>
+              <AircraftFilterMenu
+                activeFilterCount={activeFilterCount}
+                filters={aircraftFilters}
+                language={language}
+                presets={aircraftFilterPresets}
+                sort={aircraftSort}
+                onApplyPreset={applyAircraftFilterPreset}
+                onChangeFilter={changeAircraftFilter}
+                onDeletePreset={deleteAircraftFilterPreset}
+                onRenamePreset={renameAircraftFilterPreset}
+                onReset={resetAircraftFilters}
+                onSavePreset={saveAircraftFilterPreset}
+              />
               <button className="mobile-sheet-close" aria-label={t('closeList')} onClick={() => setMobileListOpen(false)} type="button">
                 <VectorIcon name="close" />
               </button>
@@ -692,6 +733,7 @@ export default function Home() {
             actualRangeAvailable={feed.receiver?.outlineJson === true}
             actualRangeVisible={actualRangeVisible}
             aircraft={mapAircraft}
+            aircraftShadowsVisible={aircraftShadowsVisible}
             center={[centerLon, centerLat]}
             dataBaseUrl={feed.config.dataBaseUrl}
             distanceRingsVisible={distanceRingsVisible}
@@ -706,6 +748,7 @@ export default function Home() {
             mapStyleUrl={feed.config.mapStyleUrl}
             onDeselect={clearAircraftSelection}
             onActualRangeVisibleChange={changeActualRangeVisible}
+            onAircraftShadowsVisibleChange={changeAircraftShadowsVisible}
             onDistanceRingsVisibleChange={changeDistanceRingsVisible}
             onHistoryToggle={() => {
               if (history.open) history.close();
@@ -719,6 +762,7 @@ export default function Home() {
             onSelect={(id) => { setSelectedId(id); setDetailsOpen(true); setMobileDetailsExpanded(false); }}
             recordLiveTrace={!history.open}
             selectedId={selected?.id}
+            shadowTimestamp={history.open ? history.currentSnapshot?.timestamp : feed.lastUpdate ? feed.lastUpdate / 1_000 : undefined}
             unitSystem={unitSystem}
           />
 

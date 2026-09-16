@@ -10,6 +10,7 @@ import {
 test('synchronized preferences retain only supported values', () => {
   assert.deepEqual(normalizeSyncPreferences({
     actualRangeOutline: true,
+    aircraftShadows: false,
     aircraftFilters: { adsbOnly: true, airborneOnly: false, favoritesOnly: true, positionOnly: true, unexpected: true },
     aircraftSort: 'callsign-asc',
     autoHideDetails: false,
@@ -23,6 +24,7 @@ test('synchronized preferences retain only supported values', () => {
     unknown: 'discarded',
   }), {
     actualRangeOutline: true,
+    aircraftShadows: false,
     aircraftFilters: { adsbOnly: true, airborneOnly: false, favoritesOnly: true, positionOnly: true },
     aircraftSort: 'callsign-asc',
     autoHideDetails: false,
@@ -85,5 +87,41 @@ test('preference patches discard unknown and invalid fields', () => {
     aircraftFilters: { adsbOnly: true },
     favoriteAircraft: { add: ['abc123'], remove: [] },
     settings: { mapLabels: true },
+  });
+});
+
+test('filter preset patches preserve independent changes from multiple devices', () => {
+  const favoritePreset = {
+    id: 'preset_favorites',
+    name: 'Favorieten',
+    filters: { adsbOnly: false, airborneOnly: false, favoritesOnly: true, positionOnly: false },
+    sort: 'distance-asc' as const,
+  };
+  const original = { filterPresets: [favoritePreset] };
+  const fromDeviceA = createSyncPreferencePatch(original, {
+    filterPresets: [
+      favoritePreset,
+      {
+        id: 'preset_airborne',
+        name: 'In de lucht',
+        filters: { adsbOnly: false, airborneOnly: true, favoritesOnly: false, positionOnly: false },
+        sort: 'altitude-desc',
+      },
+    ],
+  });
+  const fromDeviceB = createSyncPreferencePatch(original, {
+    filterPresets: [{ ...favoritePreset, name: 'Mijn favorieten' }],
+  });
+
+  assert.deepEqual(applySyncPreferencePatch(applySyncPreferencePatch(original, fromDeviceA), fromDeviceB), {
+    filterPresets: [
+      { ...favoritePreset, name: 'Mijn favorieten' },
+      {
+        id: 'preset_airborne',
+        name: 'In de lucht',
+        filters: { adsbOnly: false, airborneOnly: true, favoritesOnly: false, positionOnly: false },
+        sort: 'altitude-desc',
+      },
+    ],
   });
 });
