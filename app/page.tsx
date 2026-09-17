@@ -32,10 +32,11 @@ import {
 } from '../src/domain/favorite-aircraft';
 import { signalStrengthLevel, type SignalStrengthLevel } from '../src/domain/signal-strength';
 import { localeForLanguage, translate, type Language, type TranslationKey } from '../src/i18n';
-import { altitudeColor } from '../src/map/altitude-color';
+import { altitudeColor, altitudeLegendGradient } from '../src/map/altitude-color';
 import { AircraftIcon } from '../src/map/aircraft-icon';
 import { RadarMap } from '../src/map/radar-map';
 import { aircraftIconRotation } from '../src/map/heading';
+import { defaultMapTheme, parseMapTheme, type MapTheme } from '../src/map/map-theme';
 import {
   applySyncPreferencePatch,
   createSyncPreferencePatch,
@@ -43,6 +44,7 @@ import {
   type SyncPreferences,
 } from '../src/sync/preferences';
 import { useVectorSync } from '../src/sync/use-vector-sync';
+import { defaultTheme, parseTheme, type Theme } from '../src/theme';
 import { altitudeLegendScale, altitudeValue, distanceKilometres, distanceValue, formatNumber, speedValue, verticalRateValue } from '../src/units';
 
 const formatCallsign = (value: string) => value.replace(/^([A-Z]{2,3})(\d.*)$/i, '$1 $2');
@@ -118,6 +120,8 @@ export default function Home() {
   const [mapFocus, setMapFocus] = useState<{ latitude?: number; longitude?: number; request: number }>();
   const [unitOverride, setUnitOverride] = useState<UnitSystem>();
   const [language, setLanguage] = useState<Language>('nl');
+  const [theme, setTheme] = useState<Theme>(defaultTheme);
+  const [mapTheme, setMapTheme] = useState<MapTheme>(defaultMapTheme);
   const [aircraftFilters, setAircraftFilters] = useState<AircraftFilters>(emptyAircraftFilters);
   const [aircraftSort, setAircraftSort] = useState<AircraftSort>('altitude-desc');
   const [aircraftFilterPresets, setAircraftFilterPresets] = useState<AircraftFilterPreset[]>([]);
@@ -137,6 +141,10 @@ export default function Home() {
         setLanguage(savedLanguage);
         document.documentElement.lang = savedLanguage;
       }
+      const savedTheme = parseTheme(window.localStorage.getItem('vector.theme'));
+      setTheme(savedTheme);
+      document.documentElement.dataset.theme = savedTheme;
+      setMapTheme(parseMapTheme(window.localStorage.getItem('vector.mapTheme')));
       if (window.localStorage.getItem('vector.mapLabels') === 'false') setLabelsVisible(false);
       if (window.localStorage.getItem('vector.aircraftShadows') === 'false') setAircraftShadowsVisible(false);
       if (window.localStorage.getItem('vector.legTrace') === 'false') setLegTraceVisible(false);
@@ -213,6 +221,15 @@ export default function Home() {
     setLanguage(value);
     document.documentElement.lang = value;
     window.localStorage.setItem('vector.language', value);
+  };
+  const changeTheme = (value: Theme) => {
+    setTheme(value);
+    document.documentElement.dataset.theme = value;
+    window.localStorage.setItem('vector.theme', value);
+  };
+  const changeMapTheme = (value: MapTheme) => {
+    setMapTheme(value);
+    window.localStorage.setItem('vector.mapTheme', value);
   };
   const changeLabelsVisible = (visible: boolean) => {
     setLabelsVisible(visible);
@@ -314,8 +331,10 @@ export default function Home() {
     legTrace: legTraceVisible,
     legTracePeriod,
     mapLabels: labelsVisible,
+    mapTheme,
+    theme,
     unitSystem,
-  }), [actualRangeVisible, aircraftFilterPresets, aircraftFilters, aircraftShadowsVisible, aircraftSort, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, unitSystem]);
+  }), [actualRangeVisible, aircraftFilterPresets, aircraftFilters, aircraftShadowsVisible, aircraftSort, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, mapTheme, theme, unitSystem]);
 
   useEffect(() => {
     if (!syncProfileId) {
@@ -348,6 +367,15 @@ export default function Home() {
         setLanguage(saved.language);
         document.documentElement.lang = saved.language;
         window.localStorage.setItem('vector.language', saved.language);
+      }
+      if (saved.theme) {
+        setTheme(saved.theme);
+        document.documentElement.dataset.theme = saved.theme;
+        window.localStorage.setItem('vector.theme', saved.theme);
+      }
+      if (saved.mapTheme) {
+        setMapTheme(saved.mapTheme);
+        window.localStorage.setItem('vector.mapTheme', saved.mapTheme);
       }
       if (saved.mapLabels !== undefined) {
         setLabelsVisible(saved.mapLabels);
@@ -573,6 +601,34 @@ export default function Home() {
             <div className="settings-popover">
               <strong>{t('settings')}</strong>
               <label className="settings-field">
+                <span>{t('theme')}</span>
+                <select
+                  aria-label={t('theme')}
+                  value={theme}
+                  onChange={(event) => changeTheme(event.target.value as Theme)}
+                >
+                  <option value="vector">{t('themeVector')}</option>
+                  <option value="midnight">{t('themeMidnight')}</option>
+                  <option value="radar">{t('themeRadar')}</option>
+                  <option value="amber">{t('themeAmber')}</option>
+                  <option value="daylight">{t('themeDaylight')}</option>
+                </select>
+              </label>
+              <label className="settings-field">
+                <span>{t('mapTheme')}</span>
+                <select
+                  aria-label={t('mapTheme')}
+                  value={mapTheme}
+                  onChange={(event) => changeMapTheme(event.target.value as MapTheme)}
+                >
+                  <option value="vector">{t('mapThemeVector')}</option>
+                  <option value="standard">{t('mapThemeStandard')}</option>
+                  <option value="light">{t('mapThemeLight')}</option>
+                  <option value="dark">{t('mapThemeDark')}</option>
+                  <option value="contrast">{t('mapThemeContrast')}</option>
+                </select>
+              </label>
+              <label className="settings-field">
                 <span>{t('units')}</span>
                 <select
                   aria-label={t('unitSystem')}
@@ -704,7 +760,7 @@ export default function Home() {
                       className="list-aircraft-icon"
                       rotation={aircraftIconRotation(kind, item.trackDeg)}
                       style={{
-                        color: altitudeColor(item),
+                        color: altitudeColor(item, theme),
                       }}
                     />
                   </span>
@@ -746,6 +802,7 @@ export default function Home() {
             legTracePeriod={legTracePeriod}
             language={language}
             mapStyleUrl={feed.config.mapStyleUrl}
+            mapTheme={mapTheme}
             onDeselect={clearAircraftSelection}
             onActualRangeVisibleChange={changeActualRangeVisible}
             onAircraftShadowsVisibleChange={changeAircraftShadowsVisible}
@@ -763,12 +820,13 @@ export default function Home() {
             recordLiveTrace={!history.open}
             selectedId={selected?.id}
             shadowTimestamp={history.open ? history.currentSnapshot?.timestamp : feed.lastUpdate ? feed.lastUpdate / 1_000 : undefined}
+            theme={theme}
             unitSystem={unitSystem}
           />
 
           <div className="altitude-legend" aria-label={`${t('aircraftColorAltitude')} 0 ${t('to')} ${altitudeLegend.ticks.at(-1)?.label} ${altitudeLegend.unit}`}>
             <span>{t('altitude')} <em>{altitudeLegend.unit}</em></span>
-            <div aria-hidden="true">{altitudeLegend.ticks.map((tick) => <i key={tick.label} style={{ left: `${tick.position}%` }} />)}</div>
+            <div aria-hidden="true" style={{ background: altitudeLegendGradient(theme) }}>{altitudeLegend.ticks.map((tick) => <i key={tick.label} style={{ left: `${tick.position}%` }} />)}</div>
             <small>{altitudeLegend.ticks.map((tick) => <span key={tick.label} style={{ left: `${tick.position}%` }}>{tick.label}</span>)}</small>
           </div>
 
@@ -800,7 +858,7 @@ export default function Home() {
                 <AircraftIcon
                   aircraft={selected}
                   rotation={aircraftIconRotation(selectedKind ?? 'unknown', selected.trackDeg)}
-                  style={{ color: altitudeColor(selected) }}
+                  style={{ color: altitudeColor(selected, theme) }}
                 />
               </span>
               <span className="mobile-summary-copy">

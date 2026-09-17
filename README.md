@@ -4,12 +4,14 @@ Vector is a modern frontend for [readsb](https://github.com/wiedehopf/readsb) an
 
 ## Features
 
-- Live aircraft map with heading, type-specific tar1090 icons, and altitude-based colors.
+- Live aircraft map with heading, type-specific tar1090 icons, and a continuous altitude-color scale.
 - Searchable, sortable, and filterable aircraft list with synchronized favorites.
 - Detail panel with flight information, route, full airport names, and an aircraft photo.
 - Altitude-colored leg traces for the selected aircraft.
 - History replay with a timeline, playback speed controls, and an option to return to live data.
 - Configurable map layers with labels, actual range outline, solid distance rings, and adjustable leg-trace periods.
+- Five interface themes with matching altitude colors for the legend, aircraft icons, and leg traces.
+- Five live-switchable OpenStreetMap display styles: Default, Original, Light, Dark, and High contrast.
 - Receiver dashboard with connection, message, source, position, version, and history information.
 - Configurable unit systems: metric, aeronautical, or imperial.
 - Optional anonymous synchronization of preferences and favorites between devices using a temporary pairing code.
@@ -89,7 +91,7 @@ Vector does not use `public/config.json`. The server generates `/api/config` exc
 
 Synchronization is optional and does not require an account, email address, password, public domain, Google, or Apple configuration. Without synchronization, Vector continues to store preferences in the current browser.
 
-Open the synchronization button in the top bar and choose **Start synchronization**. Vector stores the current unit system, language, detail-panel behavior, map layers, leg-trace period, aircraft filters and sorting, and favorite aircraft on this Vector server. To add another browser or device:
+Open the synchronization button in the top bar and choose **Start synchronization**. Vector stores the current interface theme, OpenStreetMap display style, unit system, language, detail-panel behavior, map layers, leg-trace period, aircraft filters and sorting, and favorite aircraft on this Vector server. To add another browser or device:
 
 1. On an already connected device, choose **Connect a new device**.
 2. Enter the displayed six-character code on the new device.
@@ -186,6 +188,10 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
+The settings menu offers five interface themes: **Vector**, **Midnight**, **Radar**, **Amber**, and **Daylight**. Each theme has its own continuous altitude palette. The altitude legend, aircraft icons, and altitude-colored leg traces always use the same palette, so the legend remains an accurate reference.
+
+The separate **Map style** setting changes the presentation of the included OpenStreetMap raster layer without reloading or moving the map. **Default** is Vector's muted presentation; **Original**, **Light**, **Dark**, and **High contrast** provide alternative renderings of the same OpenStreetMap tiles. The configured `VECTOR_MAP_STYLE_URL` remains the source of the MapLibre style. These display adjustments are applied to the included raster layer named `openstreetmap`; a custom style without that layer remains unchanged.
+
 During local development, synchronization data defaults to the ignored `.vector/sync.json` file. Set `VECTOR_SYNC_STORE` in `.env.local` when a different development location is required. Never reuse or commit the production synchronization database.
 
 Quality checks:
@@ -207,7 +213,7 @@ pnpm build
 HOST=0.0.0.0 PORT=3000 pnpm start
 ```
 
-The included map style uses online map tiles. Route and photo data are also retrieved from external services when that information is available.
+The included map style and all five of its display variants use online OpenStreetMap tiles. Route and photo data are also retrieved from external services when that information is available.
 
 ## Architecture
 

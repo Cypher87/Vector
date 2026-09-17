@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   aircraftFilterPresetMatches,
   maxAircraftFilterPresetNameLength,
@@ -40,8 +40,21 @@ export function AircraftFilterMenu({
   onSavePreset,
 }: AircraftFilterMenuProps) {
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+  const menuRef = useRef<HTMLDetailsElement>(null);
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
+
+  useEffect(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const menu = menuRef.current;
+      if (!menu?.open || !(event.target instanceof Node) || menu.contains(event.target)) return;
+      menu.open = false;
+      setEditingPresetId(null);
+      setDraftName('');
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, []);
 
   const stopEditing = () => {
     setEditingPresetId(null);
@@ -68,7 +81,7 @@ export function AircraftFilterMenu({
   };
 
   return (
-    <details className="filter-menu">
+    <details className="filter-menu" ref={menuRef}>
       <summary className="filter-button" aria-label={`${activeFilterCount} ${t('activeFilters')}`}>
         {t('filter')} {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
         <VectorIcon className="filter-chevron" name="chevronDown" />

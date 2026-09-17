@@ -8,12 +8,14 @@ import { aircraftKind, aircraftKindLabel } from '../domain/aircraft-kind';
 import { limitAircraftTracePeriod, type LegTracePeriod } from '../domain/aircraft-trace';
 import { loadActualRangeOutline, loadAircraftLegTrace, type ActualRangeOutline } from '../data/readsb';
 import { translate, type Language } from '../i18n';
+import type { Theme } from '../theme';
 import { mapAltitudeLabel } from '../units';
 import { altitudeColor, altitudeColorForValue } from './altitude-color';
 import { applyAltitudeShadowProjection } from './altitude-shadow';
 import { createAircraftIconElement, updateAircraftIconElement } from './aircraft-icon';
 import { createDistanceRings, type DistanceRing } from './distance-rings';
 import { aircraftIconRotation } from './heading';
+import { mapThemePaint, openStreetMapRasterLayerId, type MapTheme } from './map-theme';
 
 type RadarMapProps = {
   actualRangeAvailable: boolean;
@@ -32,6 +34,7 @@ type RadarMapProps = {
   legTracePeriod: LegTracePeriod;
   language: Language;
   mapStyleUrl: string;
+  mapTheme: MapTheme;
   onActualRangeVisibleChange: (visible: boolean) => void;
   onAircraftShadowsVisibleChange: (visible: boolean) => void;
   onDeselect: () => void;
@@ -43,6 +46,7 @@ type RadarMapProps = {
   recordLiveTrace: boolean;
   selectedId?: string;
   shadowTimestamp?: number;
+  theme: Theme;
   unitSystem: UnitSystem;
 };
 
@@ -392,7 +396,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   };
 };
 
-export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftShadowsVisible, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, legTracePeriod, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, recordLiveTrace, selectedId, shadowTimestamp, unitSystem }: RadarMapProps) {
+export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftShadowsVisible, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, legTracePeriod, legTraceVisible, language, mapStyleUrl, mapTheme, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, recordLiveTrace, selectedId, shadowTimestamp, theme, unitSystem }: RadarMapProps) {
   const centerLongitude = center[0];
   const centerLatitude = center[1];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -650,7 +654,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       const stale = previous.stale || current.stale;
       const color = stale
         ? '#91a4aa'
-        : altitudeColorForValue(current.altitudeFt ?? previous.altitudeFt, current.onGround);
+        : altitudeColorForValue(current.altitudeFt ?? previous.altitudeFt, current.onGround, theme);
       let glow: SVGLineElement | undefined;
       if (!stale) {
         glow = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -676,14 +680,14 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       start = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       start.setAttribute('fill', '#0b1316');
       start.setAttribute('r', '3.5');
-      start.setAttribute('stroke', altitudeColorForValue(firstPoint.altitudeFt, firstPoint.onGround));
+      start.setAttribute('stroke', altitudeColorForValue(firstPoint.altitudeFt, firstPoint.onGround, theme));
       start.setAttribute('stroke-opacity', '0.7');
       start.setAttribute('stroke-width', '1.5');
       overlay.appendChild(start);
     }
     traceElementsRef.current = { segments, start };
     updateTraceOverlayPositions();
-  }, [updateTraceOverlayPositions]);
+  }, [theme, updateTraceOverlayPositions]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -864,6 +868,18 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   }, [centerLatitude, centerLongitude, mapStyleUrl, updateActualRangeOverlayPositions, updateDistanceRingOverlayPositions, updateTraceOverlayPositions]);
 
   useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+
+    const rasterLayerId = openStreetMapRasterLayerId(map.getStyle());
+    if (!rasterLayerId) return;
+
+    for (const [property, value] of Object.entries(mapThemePaint(mapTheme))) {
+      map.setPaintProperty(rasterLayerId, property, value);
+    }
+  }, [mapTheme, ready]);
+
+  useEffect(() => {
     const overlay = distanceRingOverlayRef.current;
     if (!overlay || !ready) return;
 
@@ -996,7 +1012,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
           startMarkerAnimation();
         }
       }
-      aircraftMarker.element.style.setProperty('--aircraft-color', altitudeColor(item));
+      aircraftMarker.element.style.setProperty('--aircraft-color', altitudeColor(item, theme));
       aircraftMarker.shadowElement.style.display = aircraftShadowsVisible ? '' : 'none';
       applyAltitudeShadowProjection(
         aircraftMarker.shadowElement,
@@ -1027,7 +1043,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     });
 
     updateLabelVisibilityRef.current();
-  }, [aircraft, aircraftShadowsVisible, favoriteIds, labelsVisible, language, ready, recordLiveTrace, selectedId, shadowTimestamp, startMarkerAnimation, unitSystem]);
+  }, [aircraft, aircraftShadowsVisible, favoriteIds, labelsVisible, language, ready, recordLiveTrace, selectedId, shadowTimestamp, startMarkerAnimation, theme, unitSystem]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1067,11 +1083,11 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       lastPoint.onGround,
       lastPoint.stale,
     ].join(':');
-    if (traceSignatureRef.current === signature) return;
+    if (traceSignatureRef.current === `${signature}:${theme}`) return;
 
     renderTraceOverlay(visiblePoints);
-    traceSignatureRef.current = signature;
-  }, [aircraft, legTracePeriod, legTraceVisible, ready, renderTraceOverlay, selectedId, selectedTrace]);
+    traceSignatureRef.current = `${signature}:${theme}`;
+  }, [aircraft, legTracePeriod, legTraceVisible, ready, renderTraceOverlay, selectedId, selectedTrace, theme]);
 
   useEffect(() => {
     if (!ready || focusTarget?.latitude === undefined || focusTarget.longitude === undefined) return;

@@ -20,6 +20,8 @@ test('synchronized preferences retain only supported values', () => {
     legTrace: true,
     legTracePeriod: 240,
     mapLabels: false,
+    mapTheme: 'dark',
+    theme: 'midnight',
     unitSystem: 'metric',
     unknown: 'discarded',
   }), {
@@ -34,6 +36,8 @@ test('synchronized preferences retain only supported values', () => {
     legTrace: true,
     legTracePeriod: 240,
     mapLabels: false,
+    mapTheme: 'dark',
+    theme: 'midnight',
     unitSystem: 'metric',
   });
 });

@@ -10,6 +10,8 @@ import {
 import { legTracePeriods, type LegTracePeriod } from '../domain/aircraft-trace.ts';
 import { normalizeFavoriteAircraftIds } from '../domain/favorite-aircraft.ts';
 import type { Language } from '../i18n.ts';
+import { mapThemes, type MapTheme } from '../map/map-theme.ts';
+import { themes, type Theme } from '../theme.ts';
 
 export type SyncedAircraftFilters = AircraftFilters;
 export type SyncedAircraftSort = AircraftSort;
@@ -27,6 +29,8 @@ export type SyncPreferences = {
   legTrace?: boolean;
   legTracePeriod?: LegTracePeriod;
   mapLabels?: boolean;
+  mapTheme?: MapTheme;
+  theme?: Theme;
   unitSystem?: UnitSystem;
 };
 
@@ -57,6 +61,8 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
     preferences.unitSystem = value.unitSystem;
   }
   if (value.language === 'nl' || value.language === 'en') preferences.language = value.language;
+  if (themes.includes(value.theme as Theme)) preferences.theme = value.theme as Theme;
+  if (mapThemes.includes(value.mapTheme as MapTheme)) preferences.mapTheme = value.mapTheme as MapTheme;
 
   for (const key of ['actualRangeOutline', 'aircraftShadows', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
     if (typeof value[key] === 'boolean') preferences[key] = value[key];
@@ -102,6 +108,8 @@ const scalarPreferenceKeys = [
   'legTrace',
   'legTracePeriod',
   'mapLabels',
+  'mapTheme',
+  'theme',
   'unitSystem',
 ] as const satisfies readonly (keyof ScalarSyncPreferences)[];
 
