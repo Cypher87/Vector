@@ -10,6 +10,7 @@ import {
 test('synchronized preferences retain only supported values', () => {
   assert.deepEqual(normalizeSyncPreferences({
     actualRangeOutline: true,
+    aircraftMotion: false,
     aircraftShadows: false,
     aircraftFilters: { adsbOnly: true, airborneOnly: false, favoritesOnly: true, positionOnly: true, unexpected: true },
     aircraftSort: 'callsign-asc',
@@ -21,11 +22,13 @@ test('synchronized preferences retain only supported values', () => {
     legTracePeriod: 240,
     mapLabels: false,
     mapTheme: 'dark',
+    radarEventPreferences: { emergency: true, favorite: false, receiver: true },
     theme: 'midnight',
     unitSystem: 'metric',
     unknown: 'discarded',
   }), {
     actualRangeOutline: true,
+    aircraftMotion: false,
     aircraftShadows: false,
     aircraftFilters: { adsbOnly: true, airborneOnly: false, favoritesOnly: true, positionOnly: true },
     aircraftSort: 'callsign-asc',
@@ -37,6 +40,7 @@ test('synchronized preferences retain only supported values', () => {
     legTracePeriod: 240,
     mapLabels: false,
     mapTheme: 'dark',
+    radarEventPreferences: { emergency: true, favorite: false, receiver: true },
     theme: 'midnight',
     unitSystem: 'metric',
   });

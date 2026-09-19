@@ -5,6 +5,7 @@ import { AircraftPhoto } from '../src/components/aircraft-photo';
 import { AircraftFilterMenu } from '../src/components/aircraft-filter-menu';
 import { AircraftRoute } from '../src/components/aircraft-route';
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
+import { EventCenter } from '../src/components/event-center';
 import { HistoryControls } from '../src/components/history-controls';
 import { ReceiverDashboard } from '../src/components/receiver-dashboard';
 import { SyncMenu } from '../src/components/sync-menu';
@@ -30,6 +31,15 @@ import {
   parseFavoriteAircraftIds,
   toggleFavoriteAircraftId,
 } from '../src/domain/favorite-aircraft';
+import {
+  defaultRadarEventPreferences,
+  normalizeRadarEventPreferences,
+  parseRadarEventPreferences,
+  radarEventPreferencesStorageKey,
+  type RadarEventPreferenceKey,
+  type RadarEventPreferences,
+} from '../src/domain/radar-event';
+import { useRadarEvents } from '../src/events/use-radar-events';
 import { signalStrengthLevel, type SignalStrengthLevel } from '../src/domain/signal-strength';
 import { localeForLanguage, translate, type Language, type TranslationKey } from '../src/i18n';
 import { altitudeColor, altitudeLegendGradient } from '../src/map/altitude-color';
@@ -110,6 +120,7 @@ export default function Home() {
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [following, setFollowing] = useState(false);
   const [labelsVisible, setLabelsVisible] = useState(true);
+  const [aircraftMotionEnabled, setAircraftMotionEnabled] = useState(true);
   const [aircraftShadowsVisible, setAircraftShadowsVisible] = useState(true);
   const [legTraceVisible, setLegTraceVisible] = useState(true);
   const [legTracePeriod, setLegTracePeriod] = useState<LegTracePeriod>(defaultLegTracePeriod);
@@ -122,6 +133,7 @@ export default function Home() {
   const [language, setLanguage] = useState<Language>('nl');
   const [theme, setTheme] = useState<Theme>(defaultTheme);
   const [mapTheme, setMapTheme] = useState<MapTheme>(defaultMapTheme);
+  const [radarEventPreferences, setRadarEventPreferences] = useState<RadarEventPreferences>(defaultRadarEventPreferences);
   const [aircraftFilters, setAircraftFilters] = useState<AircraftFilters>(emptyAircraftFilters);
   const [aircraftSort, setAircraftSort] = useState<AircraftSort>('altitude-desc');
   const [aircraftFilterPresets, setAircraftFilterPresets] = useState<AircraftFilterPreset[]>([]);
@@ -145,7 +157,9 @@ export default function Home() {
       setTheme(savedTheme);
       document.documentElement.dataset.theme = savedTheme;
       setMapTheme(parseMapTheme(window.localStorage.getItem('vector.mapTheme')));
+      setRadarEventPreferences(parseRadarEventPreferences(window.localStorage.getItem(radarEventPreferencesStorageKey)));
       if (window.localStorage.getItem('vector.mapLabels') === 'false') setLabelsVisible(false);
+      if (window.localStorage.getItem('vector.aircraftMotion') === 'false') setAircraftMotionEnabled(false);
       if (window.localStorage.getItem('vector.aircraftShadows') === 'false') setAircraftShadowsVisible(false);
       if (window.localStorage.getItem('vector.legTrace') === 'false') setLegTraceVisible(false);
       setLegTracePeriod(parseLegTracePeriod(window.localStorage.getItem('vector.legTracePeriod')));
@@ -231,9 +245,20 @@ export default function Home() {
     setMapTheme(value);
     window.localStorage.setItem('vector.mapTheme', value);
   };
+  const changeRadarEventPreference = (key: RadarEventPreferenceKey, enabled: boolean) => {
+    setRadarEventPreferences((current) => {
+      const next = { ...current, [key]: enabled };
+      window.localStorage.setItem(radarEventPreferencesStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
   const changeLabelsVisible = (visible: boolean) => {
     setLabelsVisible(visible);
     window.localStorage.setItem('vector.mapLabels', String(visible));
+  };
+  const changeAircraftMotionEnabled = (enabled: boolean) => {
+    setAircraftMotionEnabled(enabled);
+    window.localStorage.setItem('vector.aircraftMotion', String(enabled));
   };
   const changeAircraftShadowsVisible = (visible: boolean) => {
     setAircraftShadowsVisible(visible);
@@ -320,6 +345,7 @@ export default function Home() {
 
   const preferenceSnapshot = useMemo<SyncPreferences>(() => ({
     actualRangeOutline: actualRangeVisible,
+    aircraftMotion: aircraftMotionEnabled,
     aircraftShadows: aircraftShadowsVisible,
     aircraftFilters,
     aircraftSort,
@@ -327,6 +353,7 @@ export default function Home() {
     distanceRings: distanceRingsVisible,
     favoriteAircraft: favoriteAircraftIds,
     filterPresets: aircraftFilterPresets,
+    radarEventPreferences,
     language,
     legTrace: legTraceVisible,
     legTracePeriod,
@@ -334,7 +361,7 @@ export default function Home() {
     mapTheme,
     theme,
     unitSystem,
-  }), [actualRangeVisible, aircraftFilterPresets, aircraftFilters, aircraftShadowsVisible, aircraftSort, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, mapTheme, theme, unitSystem]);
+  }), [actualRangeVisible, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, mapTheme, radarEventPreferences, theme, unitSystem]);
 
   useEffect(() => {
     if (!syncProfileId) {
@@ -377,9 +404,18 @@ export default function Home() {
         setMapTheme(saved.mapTheme);
         window.localStorage.setItem('vector.mapTheme', saved.mapTheme);
       }
+      if (saved.radarEventPreferences) {
+        const normalized = normalizeRadarEventPreferences(saved.radarEventPreferences);
+        setRadarEventPreferences(normalized);
+        window.localStorage.setItem(radarEventPreferencesStorageKey, JSON.stringify(normalized));
+      }
       if (saved.mapLabels !== undefined) {
         setLabelsVisible(saved.mapLabels);
         window.localStorage.setItem('vector.mapLabels', String(saved.mapLabels));
+      }
+      if (saved.aircraftMotion !== undefined) {
+        setAircraftMotionEnabled(saved.aircraftMotion);
+        window.localStorage.setItem('vector.aircraftMotion', String(saved.aircraftMotion));
       }
       if (saved.aircraftShadows !== undefined) {
         setAircraftShadowsVisible(saved.aircraftShadows);
@@ -456,6 +492,22 @@ export default function Home() {
   }, [feed.aircraft, history.currentSnapshot, history.open]);
 
   const favoriteAircraftIdSet = useMemo(() => new Set(favoriteAircraftIds), [favoriteAircraftIds]);
+  const radarEvents = useRadarEvents({
+    aircraft: feed.aircraft,
+    enabled: !history.open,
+    favoriteIds: favoriteAircraftIdSet,
+    preferences: radarEventPreferences,
+    status: feed.status,
+  });
+
+  const selectAircraftFromEvent = (aircraftId: string) => {
+    const aircraft = feed.aircraft.find((item) => item.id === aircraftId);
+    if (!aircraft) return;
+    setSelectedId(aircraftId);
+    setDetailsOpen(true);
+    setMobileDetailsExpanded(false);
+    setMapFocus({ latitude: aircraft.latitude, longitude: aircraft.longitude, request: Date.now() });
+  };
 
   const filterMatchedAircraft = useMemo(() => displayedAircraft.filter((item) => {
     if (aircraftFilters.positionOnly && (item.latitude === undefined || item.longitude === undefined)) return false;
@@ -551,6 +603,16 @@ export default function Home() {
         </div>
 
         <div className="top-actions">
+          <EventCenter
+            events={radarEvents.events}
+            language={language}
+            onClear={radarEvents.clear}
+            onMarkAllRead={radarEvents.markAllRead}
+            onPreferenceChange={changeRadarEventPreference}
+            onSelectAircraft={selectAircraftFromEvent}
+            preferences={radarEventPreferences}
+            unreadCount={radarEvents.unreadCount}
+          />
           <SyncMenu
             connected={vectorSync.connected}
             devices={vectorSync.devices}
@@ -657,6 +719,17 @@ export default function Home() {
                   aria-label={t('autoHideDetails')}
                   value={autoHideDetails ? 'yes' : 'no'}
                   onChange={(event) => changeAutoHideDetails(event.target.value === 'yes')}
+                >
+                  <option value="yes">{t('yes')}</option>
+                  <option value="no">{t('no')}</option>
+                </select>
+              </label>
+              <label className="settings-field">
+                <span>{t('aircraftPositionAnimation')}</span>
+                <select
+                  aria-label={t('aircraftPositionAnimation')}
+                  value={aircraftMotionEnabled ? 'yes' : 'no'}
+                  onChange={(event) => changeAircraftMotionEnabled(event.target.value === 'yes')}
                 >
                   <option value="yes">{t('yes')}</option>
                   <option value="no">{t('no')}</option>
@@ -789,6 +862,7 @@ export default function Home() {
             actualRangeAvailable={feed.receiver?.outlineJson === true}
             actualRangeVisible={actualRangeVisible}
             aircraft={mapAircraft}
+            aircraftMotionEnabled={aircraftMotionEnabled}
             aircraftShadowsVisible={aircraftShadowsVisible}
             center={[centerLon, centerLat]}
             dataBaseUrl={feed.config.dataBaseUrl}
@@ -854,12 +928,15 @@ export default function Home() {
 
           {selected && !mobileDetailsExpanded && (
             <aside className="mobile-aircraft-summary" aria-label={`${formatCallsign(selected.flight)} ${t('details')}`}>
-              <span className="mobile-summary-icon" title={selectedKind ? aircraftKindLabel(selectedKind, language) : undefined}>
-                <AircraftIcon
-                  aircraft={selected}
-                  rotation={aircraftIconRotation(selectedKind ?? 'unknown', selected.trackDeg)}
-                  style={{ color: altitudeColor(selected, theme) }}
-                />
+              <span className="mobile-summary-media" title={selectedKind ? aircraftKindLabel(selectedKind, language) : undefined}>
+                <span className="mobile-summary-icon">
+                  <AircraftIcon
+                    aircraft={selected}
+                    rotation={aircraftIconRotation(selectedKind ?? 'unknown', selected.trackDeg)}
+                    style={{ color: altitudeColor(selected, theme) }}
+                  />
+                </span>
+                <AircraftPhoto aircraft={selected} compact language={language} />
               </span>
               <span className="mobile-summary-copy">
                 <strong>{formatCallsign(selected.flight)}</strong>

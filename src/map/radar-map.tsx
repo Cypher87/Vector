@@ -13,6 +13,15 @@ import { mapAltitudeLabel } from '../units';
 import { altitudeColor, altitudeColorForValue } from './altitude-color';
 import { applyAltitudeShadowProjection } from './altitude-shadow';
 import { createAircraftIconElement, updateAircraftIconElement } from './aircraft-icon';
+import {
+  aircraftMotionEnabled as canAnimateAircraftMotion,
+  aircraftPositionDistanceMetres,
+  interpolateAircraftPosition,
+  maximumAircraftProjectionSeconds,
+  maximumSmoothCorrectionMetres,
+  projectAircraftPosition,
+  type AircraftPosition,
+} from './aircraft-motion';
 import { createDistanceRings, type DistanceRing } from './distance-rings';
 import { aircraftIconRotation } from './heading';
 import { mapThemePaint, openStreetMapRasterLayerId, type MapTheme } from './map-theme';
@@ -21,6 +30,7 @@ type RadarMapProps = {
   actualRangeAvailable: boolean;
   actualRangeVisible: boolean;
   aircraft: Aircraft[];
+  aircraftMotionEnabled: boolean;
   aircraftShadowsVisible: boolean;
   center: [longitude: number, latitude: number];
   dataBaseUrl: string;
@@ -53,6 +63,9 @@ type RadarMapProps = {
 type AircraftMarker = {
   aircraft?: Aircraft;
   altitude: HTMLSpanElement;
+  correctionFrom?: AircraftPosition;
+  correctionStartedAt?: number;
+  displayedPosition?: AircraftPosition;
   displayedTrackDeg: number;
   element: HTMLButtonElement;
   favorite: boolean;
@@ -60,12 +73,13 @@ type AircraftMarker = {
   icon: SVGSVGElement;
   label: HTMLSpanElement;
   marker: Marker;
+  motionReceivedAt?: number;
   priority: number;
   selected: boolean;
   shadowElement: HTMLSpanElement;
   shadowIcon: SVGSVGElement;
   shadowMarker: Marker;
-  targetPosition?: [longitude: number, latitude: number];
+  targetPosition?: AircraftPosition;
   targetTrackDeg: number;
 };
 
@@ -86,19 +100,8 @@ const normalizeAngle = (value: number) => ((value % 360) + 360) % 360;
 const aircraftMarkerZIndex = (aircraft: Aircraft, selected: boolean) =>
   selected ? 100_000 : 10 + Math.max(0, Math.round(aircraft.altitudeFt ?? 0));
 const receiverAccentColor = '#e3ad5b';
-const markerDistanceMetres = (
-  from: [longitude: number, latitude: number],
-  to: [longitude: number, latitude: number],
-) => {
-  const radians = (degrees: number) => degrees * Math.PI / 180;
-  const deltaLatitude = radians(to[1] - from[1]);
-  const deltaLongitude = radians(to[0] - from[0]);
-  const originLatitude = radians(from[1]);
-  const destinationLatitude = radians(to[1]);
-  const haversine = Math.sin(deltaLatitude / 2) ** 2
-    + Math.cos(originLatitude) * Math.cos(destinationLatitude) * Math.sin(deltaLongitude / 2) ** 2;
-  return 6_371_000 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-};
+const markerCorrectionDurationMs = 320;
+const minimumMarkerMovementMetres = 0.35;
 
 const mapControlLabels = (
   language: Language,
@@ -396,7 +399,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   };
 };
 
-export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftShadowsVisible, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, legTracePeriod, legTraceVisible, language, mapStyleUrl, mapTheme, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, recordLiveTrace, selectedId, shadowTimestamp, theme, unitSystem }: RadarMapProps) {
+export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, legTracePeriod, legTraceVisible, language, mapStyleUrl, mapTheme, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, recordLiveTrace, selectedId, shadowTimestamp, theme, unitSystem }: RadarMapProps) {
   const centerLongitude = center[0];
   const centerLatitude = center[1];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -417,6 +420,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const tracePointsRef = useRef<AircraftTracePoint[]>([]);
   const traceSignatureRef = useRef<string | undefined>(undefined);
   const historyOpenRef = useRef(historyOpen);
+  const aircraftMotionEnabledRef = useRef(aircraftMotionEnabled);
   const actualRangeAvailableRef = useRef(actualRangeAvailable);
   const actualRangeVisibleRef = useRef(actualRangeVisible);
   const aircraftShadowsVisibleRef = useRef(aircraftShadowsVisible);
@@ -442,6 +446,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   useEffect(() => {
     actualRangeAvailableRef.current = actualRangeAvailable;
     actualRangeVisibleRef.current = actualRangeVisible;
+    aircraftMotionEnabledRef.current = aircraftMotionEnabled;
     aircraftShadowsVisibleRef.current = aircraftShadowsVisible;
     distanceRingsVisibleRef.current = distanceRingsVisible;
     onActualRangeVisibleChangeRef.current = onActualRangeVisibleChange;
@@ -455,7 +460,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     historyOpenRef.current = historyOpen;
     labelsVisibleRef.current = labelsVisible;
     legTraceVisibleRef.current = legTraceVisible;
-  }, [actualRangeAvailable, actualRangeVisible, aircraftShadowsVisible, distanceRingsVisible, historyOpen, labelsVisible, legTraceVisible, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect]);
+  }, [actualRangeAvailable, actualRangeVisible, aircraftMotionEnabled, aircraftShadowsVisible, distanceRingsVisible, historyOpen, labelsVisible, legTraceVisible, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect]);
 
   useEffect(() => {
     languageRef.current = language;
@@ -479,12 +484,57 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       return;
     }
 
-    const previousFrame = lastAnimationFrameRef.current ?? now;
-    const elapsed = Math.min(64, Math.max(0, now - previousFrame));
+    const previousFrame = lastAnimationFrameRef.current;
+    if (previousFrame !== undefined && now - previousFrame < 32) {
+      animationFrameRef.current = requestAnimationFrame(animateMarkerFrame);
+      return;
+    }
+    const elapsed = Math.min(64, Math.max(0, now - (previousFrame ?? now)));
     lastAnimationFrameRef.current = now;
     let keepAnimating = false;
 
     markersRef.current.forEach((aircraftMarker) => {
+      const motionAircraft = aircraftMarker.aircraft;
+      if (
+        aircraftMotionEnabledRef.current
+        && !historyOpenRef.current
+        && motionAircraft
+        && aircraftMarker.motionReceivedAt !== undefined
+        && canAnimateAircraftMotion(motionAircraft)
+      ) {
+        const secondsSinceSnapshot = Math.max(0, (now - aircraftMarker.motionReceivedAt) / 1_000);
+        const projectedPosition = projectAircraftPosition(motionAircraft, secondsSinceSnapshot);
+        if (projectedPosition) {
+          let nextPosition = projectedPosition;
+          if (aircraftMarker.correctionFrom && aircraftMarker.correctionStartedAt !== undefined) {
+            const progress = Math.min(1, Math.max(0, (now - aircraftMarker.correctionStartedAt) / markerCorrectionDurationMs));
+            const easedProgress = progress * progress * (3 - 2 * progress);
+            nextPosition = interpolateAircraftPosition(
+              aircraftMarker.correctionFrom,
+              projectedPosition,
+              easedProgress,
+            );
+            if (progress >= 1) {
+              aircraftMarker.correctionFrom = undefined;
+              aircraftMarker.correctionStartedAt = undefined;
+            }
+          }
+          if (
+            !aircraftMarker.displayedPosition
+            || aircraftPositionDistanceMetres(aircraftMarker.displayedPosition, nextPosition) >= minimumMarkerMovementMetres
+          ) {
+            aircraftMarker.marker.setLngLat(nextPosition);
+            aircraftMarker.shadowMarker.setLngLat(nextPosition);
+            aircraftMarker.displayedPosition = nextPosition;
+          }
+          const positionAge = Math.max(0, motionAircraft.positionSeenSeconds ?? motionAircraft.seenSeconds);
+          if (
+            aircraftMarker.correctionFrom
+            || positionAge + secondsSinceSnapshot < maximumAircraftProjectionSeconds
+          ) keepAnimating = true;
+        }
+      }
+
       const headingDelta = shortestAngleDifference(aircraftMarker.displayedTrackDeg, aircraftMarker.targetTrackDeg);
       if (Math.abs(headingDelta) > 0.08) {
         const headingProgress = Math.min(1, elapsed / 240);
@@ -519,7 +569,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
 
   const startMarkerAnimation = useCallback(() => {
     if (animationFrameRef.current !== undefined) return;
-    lastAnimationFrameRef.current = performance.now();
+    lastAnimationFrameRef.current = undefined;
     animationFrameRef.current = requestAnimationFrame(animateMarkers);
   }, [animateMarkers]);
 
@@ -932,6 +982,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     const map = mapRef.current;
     if (!map || !ready) return;
     const projectionTimestamp = shadowTimestamp ?? Date.now() / 1_000;
+    const motionNow = performance.now();
 
     const positionedAircraft = aircraft.filter(
       (item) => item.latitude !== undefined && item.longitude !== undefined,
@@ -967,7 +1018,10 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       }
 
       let aircraftMarker = markersRef.current.get(item.id);
-      const targetPosition: [number, number] = [item.longitude!, item.latitude!];
+      const targetPosition: AircraftPosition = [item.longitude!, item.latitude!];
+      const nextPosition = historyOpen || !aircraftMotionEnabled
+        ? targetPosition
+        : projectAircraftPosition(item, 0) ?? targetPosition;
       if (aircraftMarker && (!aircraftMarker.shadowElement || !aircraftMarker.shadowIcon || !aircraftMarker.shadowMarker)) {
         aircraftMarker.marker.remove();
         markersRef.current.delete(item.id);
@@ -975,22 +1029,38 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       }
       if (!aircraftMarker) {
         aircraftMarker = createAircraftMarker(() => onSelectRef.current(item.id));
-        aircraftMarker.marker.setLngLat(targetPosition);
-        aircraftMarker.shadowMarker.setLngLat(targetPosition);
+        aircraftMarker.marker.setLngLat(nextPosition);
+        aircraftMarker.shadowMarker.setLngLat(nextPosition);
         aircraftMarker.shadowMarker.addTo(map);
         aircraftMarker.marker.addTo(map);
+        aircraftMarker.displayedPosition = nextPosition;
+        aircraftMarker.motionReceivedAt = motionNow;
         aircraftMarker.targetPosition = targetPosition;
         aircraftMarker.displayedTrackDeg = item.trackDeg ?? 0;
         aircraftMarker.targetTrackDeg = item.trackDeg ?? 0;
         markersRef.current.set(item.id, aircraftMarker);
-      } else if (
-        !aircraftMarker.targetPosition
-        || aircraftMarker.targetPosition[0] !== targetPosition[0]
-        || aircraftMarker.targetPosition[1] !== targetPosition[1]
-      ) {
+      } else {
+        const currentLngLat = aircraftMarker.marker.getLngLat();
+        const currentPosition = aircraftMarker.displayedPosition
+          ?? [currentLngLat.lng, currentLngLat.lat] as AircraftPosition;
+        const correctionDistance = aircraftPositionDistanceMetres(currentPosition, nextPosition);
         aircraftMarker.targetPosition = targetPosition;
-        aircraftMarker.marker.setLngLat(targetPosition);
-        aircraftMarker.shadowMarker.setLngLat(targetPosition);
+        aircraftMarker.motionReceivedAt = motionNow;
+        if (
+          historyOpen
+          || !aircraftMotionEnabled
+          || !canAnimateAircraftMotion(item)
+          || correctionDistance > maximumSmoothCorrectionMetres
+        ) {
+          aircraftMarker.marker.setLngLat(nextPosition);
+          aircraftMarker.shadowMarker.setLngLat(nextPosition);
+          aircraftMarker.displayedPosition = nextPosition;
+          aircraftMarker.correctionFrom = undefined;
+          aircraftMarker.correctionStartedAt = undefined;
+        } else if (correctionDistance >= minimumMarkerMovementMetres) {
+          aircraftMarker.correctionFrom = currentPosition;
+          aircraftMarker.correctionStartedAt = motionNow;
+        }
       }
       // Also updates markers that survived a development hot reload.
       aircraftMarker.marker.setSubpixelPositioning(true);
@@ -1032,6 +1102,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       updateAircraftIconElement(aircraftMarker.shadowIcon, item, rotation);
       aircraftMarker.element.classList.toggle('selected', aircraftMarker.selected);
       aircraftMarker.element.classList.toggle('favorite', aircraftMarker.favorite);
+      aircraftMarker.element.classList.toggle('helicopter', kind === 'helicopter' && !item.onGround);
       aircraftMarker.element.classList.toggle('mlat', item.source === 'mlat');
       aircraftMarker.element.style.zIndex = String(aircraftMarkerZIndex(item, aircraftMarker.selected));
       aircraftMarker.element.setAttribute('aria-label', [
@@ -1040,10 +1111,11 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
         `${translate(language, 'altitude').toLowerCase()} ${altitude}`,
         aircraftMarker.favorite ? translate(language, 'favoriteAircraft') : undefined,
       ].filter(Boolean).join(', '));
+      if (aircraftMotionEnabled && !historyOpen && canAnimateAircraftMotion(item)) startMarkerAnimation();
     });
 
     updateLabelVisibilityRef.current();
-  }, [aircraft, aircraftShadowsVisible, favoriteIds, labelsVisible, language, ready, recordLiveTrace, selectedId, shadowTimestamp, startMarkerAnimation, theme, unitSystem]);
+  }, [aircraft, aircraftMotionEnabled, aircraftShadowsVisible, favoriteIds, historyOpen, labelsVisible, language, ready, recordLiveTrace, selectedId, shadowTimestamp, startMarkerAnimation, theme, unitSystem]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1109,7 +1181,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     if (selected?.latitude === undefined || selected.longitude === undefined) return;
     const nextTarget: [number, number] = [selected.longitude, selected.latitude];
     const previousTarget = followTargetRef.current;
-    if (previousTarget && markerDistanceMetres(previousTarget, nextTarget) < 8) return;
+    if (previousTarget && aircraftPositionDistanceMetres(previousTarget, nextTarget) < 8) return;
     followTargetRef.current = nextTarget;
     mapRef.current?.jumpTo({ center: nextTarget });
   }, [aircraft, following, selectedId]);

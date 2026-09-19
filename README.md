@@ -4,7 +4,7 @@ Vector is a modern frontend for [readsb](https://github.com/wiedehopf/readsb) an
 
 ## Features
 
-- Live aircraft map with heading, type-specific tar1090 icons, and a continuous altitude-color scale.
+- Live aircraft map with heading, type-specific tar1090 icons, optional smooth speed-based motion (enabled by default), animated helicopter rotors, and a continuous altitude-color scale.
 - Searchable, sortable, and filterable aircraft list with synchronized favorites.
 - Detail panel with flight information, route, full airport names, and an aircraft photo.
 - Altitude-colored leg traces for the selected aircraft.
@@ -13,6 +13,7 @@ Vector is a modern frontend for [readsb](https://github.com/wiedehopf/readsb) an
 - Five interface themes with matching altitude colors for the legend, aircraft icons, and leg traces.
 - Five live-switchable OpenStreetMap display styles: Default, Original, Light, Dark, and High contrast.
 - Receiver dashboard with connection, message, source, position, version, and history information.
+- Local event center for favorite arrivals, emergency squawks, and receiver offline/recovery events.
 - Configurable unit systems: metric, aeronautical, or imperial.
 - Optional anonymous synchronization of preferences and favorites between devices using a temporary pairing code.
 - External server configuration for readsb, the site name, and receiver title.
@@ -98,6 +99,8 @@ Open the synchronization button in the top bar and choose **Start synchronizatio
 3. The code expires after ten minutes and can be used only once.
 
 Connected browsers receive preference and favorite changes live, normally within a second. Vector sends field-level updates, so simultaneous changes to different settings do not overwrite one another. Favorite additions and removals are merged separately. When two devices change the exact same setting at the same time, the last server-processed change wins.
+
+Event-type preferences are synchronized with the other settings. The event log and its read state remain local to each browser, are limited to the latest one hundred entries, and can be cleared from the event center. Opening Vector does not generate arrival notifications for every favorite that is already in range.
 
 The synchronization panel lists every connected device with its device class, browser, operating system, presence, last activity, and an indication of the current device. **Active now** is based on an open live synchronization connection, not merely a recent timestamp; after that connection closes, Vector shows the recorded last-active time. Devices can be given a custom name, such as `Living room tablet`; clearing that name restores the automatic browser and operating-system label. Any other device can be disconnected individually; its session is invalidated immediately. Names, presence, and device-list changes are synchronized live.
 

@@ -9,6 +9,7 @@ import {
 } from '../domain/aircraft-filter-preset.ts';
 import { legTracePeriods, type LegTracePeriod } from '../domain/aircraft-trace.ts';
 import { normalizeFavoriteAircraftIds } from '../domain/favorite-aircraft.ts';
+import { normalizeRadarEventPreferences, type RadarEventPreferences } from '../domain/radar-event.ts';
 import type { Language } from '../i18n.ts';
 import { mapThemes, type MapTheme } from '../map/map-theme.ts';
 import { themes, type Theme } from '../theme.ts';
@@ -18,6 +19,7 @@ export type SyncedAircraftSort = AircraftSort;
 
 export type SyncPreferences = {
   actualRangeOutline?: boolean;
+  aircraftMotion?: boolean;
   aircraftShadows?: boolean;
   aircraftFilters?: SyncedAircraftFilters;
   aircraftSort?: SyncedAircraftSort;
@@ -30,6 +32,7 @@ export type SyncPreferences = {
   legTracePeriod?: LegTracePeriod;
   mapLabels?: boolean;
   mapTheme?: MapTheme;
+  radarEventPreferences?: RadarEventPreferences;
   theme?: Theme;
   unitSystem?: UnitSystem;
 };
@@ -63,8 +66,11 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
   if (value.language === 'nl' || value.language === 'en') preferences.language = value.language;
   if (themes.includes(value.theme as Theme)) preferences.theme = value.theme as Theme;
   if (mapThemes.includes(value.mapTheme as MapTheme)) preferences.mapTheme = value.mapTheme as MapTheme;
+  if (isObject(value.radarEventPreferences)) {
+    preferences.radarEventPreferences = normalizeRadarEventPreferences(value.radarEventPreferences);
+  }
 
-  for (const key of ['actualRangeOutline', 'aircraftShadows', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
+  for (const key of ['actualRangeOutline', 'aircraftMotion', 'aircraftShadows', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
     if (typeof value[key] === 'boolean') preferences[key] = value[key];
   }
 
@@ -100,6 +106,7 @@ export const hasSyncPreferences = (preferences: SyncPreferences) => Object.keys(
 
 const scalarPreferenceKeys = [
   'actualRangeOutline',
+  'aircraftMotion',
   'aircraftShadows',
   'aircraftSort',
   'autoHideDetails',
@@ -109,6 +116,7 @@ const scalarPreferenceKeys = [
   'legTracePeriod',
   'mapLabels',
   'mapTheme',
+  'radarEventPreferences',
   'theme',
   'unitSystem',
 ] as const satisfies readonly (keyof ScalarSyncPreferences)[];

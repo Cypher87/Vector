@@ -7,10 +7,11 @@ import { translate, type Language } from '../i18n';
 
 type AircraftPhotoProps = {
   aircraft: Aircraft;
+  compact?: boolean;
   language: Language;
 };
 
-export function AircraftPhoto({ aircraft, language }: AircraftPhotoProps) {
+export function AircraftPhoto({ aircraft, compact = false, language }: AircraftPhotoProps) {
   const photoKey = [aircraft.id, aircraft.registration ?? '', aircraft.aircraftType ?? ''].join(':');
   const [photoResult, setPhotoResult] = useState<{ key: string; photo: AircraftPhotoData | null }>();
   const [failedPhotoKey, setFailedPhotoKey] = useState<string>();
@@ -35,6 +36,7 @@ export function AircraftPhoto({ aircraft, language }: AircraftPhotoProps) {
   }, [aircraft.aircraftType, aircraft.id, aircraft.registration, photoKey]);
 
   if (photo === undefined) {
+    if (compact) return null;
     return (
       <div className="aircraft-photo aircraft-photo-loading" aria-label={translate(language, 'aircraftPhotoLoading')}>
         <span />
@@ -43,6 +45,7 @@ export function AircraftPhoto({ aircraft, language }: AircraftPhotoProps) {
   }
 
   if (!photo || imageFailed) {
+    if (compact) return null;
     return (
       <div className="aircraft-photo aircraft-photo-empty">
         <span aria-hidden="true">▱</span>
@@ -52,6 +55,21 @@ export function AircraftPhoto({ aircraft, language }: AircraftPhotoProps) {
   }
 
   const identity = aircraft.registration ?? (aircraft.flight.trim() || aircraft.id.toUpperCase());
+  if (compact) {
+    return (
+      <span className="aircraft-photo-thumbnail">
+        {/* External attribution image; preserving the provider URL is intentional. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={photo.src}
+          width={photo.width}
+          height={photo.height}
+          alt={`${identity}, ${translate(language, 'aircraftPhotoAlt')}`}
+          onError={() => setFailedPhotoKey(photoKey)}
+        />
+      </span>
+    );
+  }
   return (
     <figure className="aircraft-photo aircraft-photo-result">
       <a href={photo.link} target="_blank" rel="noreferrer" title={translate(language, 'photoOnPlanespotters')}>

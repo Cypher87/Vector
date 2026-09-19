@@ -15,6 +15,7 @@ export type VectorIconName =
   | 'layers'
   | 'list'
   | 'mobile'
+  | 'notifications'
   | 'pause'
   | 'play'
   | 'range'
@@ -29,6 +30,7 @@ export type VectorIconName =
   | 'trace'
   | 'trash'
   | 'unlink'
+  | 'warning'
   | 'zoomIn'
   | 'zoomOut';
 
@@ -53,6 +55,7 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
   layers: ['m12 3-9 5 9 5 9-5-9-5Z', 'm3 12 9 5 9-5', 'm3 16 9 5 9-5'],
   list: ['M9 6h11M9 12h11M9 18h11', 'M4 6h.01M4 12h.01M4 18h.01'],
   mobile: ['M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z', 'M11 18h2'],
+  notifications: ['M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9', 'M10 21h4'],
   pause: ['M9 5v14M15 5v14'],
   play: ['M8 5v14l11-7Z'],
   range: ['M12 3 19 7l2 8-6 6-8-2-4-7 3-7 6-2Z', 'M12 12h.01'],
@@ -75,6 +78,7 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
   trace: ['M6 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z', 'M18 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z', 'M7.8 14.6c1.1-3.4 4-5.3 8.4-5.2'],
   trash: ['M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14', 'M10 11v6M14 11v6'],
   unlink: ['m9.5 14.5-2 2a3 3 0 0 1-4.2-4.2l3-3a3 3 0 0 1 4.2 0', 'm14.5 9.5 2-2a3 3 0 0 1 4.2 4.2l-3 3a3 3 0 0 1-4.2 0', 'm8 16 8-8', 'M4 4l16 16'],
+  warning: ['M12 3 2.5 20h19L12 3Z', 'M12 9v5M12 17h.01'],
   zoomIn: ['M12 5v14M5 12h14'],
   zoomOut: ['M5 12h14'],
 };
