@@ -421,6 +421,8 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const traceSignatureRef = useRef<string | undefined>(undefined);
   const historyOpenRef = useRef(historyOpen);
   const aircraftMotionEnabledRef = useRef(aircraftMotionEnabled);
+  const followingRef = useRef(following);
+  const selectedIdRef = useRef(selectedId);
   const actualRangeAvailableRef = useRef(actualRangeAvailable);
   const actualRangeVisibleRef = useRef(actualRangeVisible);
   const aircraftShadowsVisibleRef = useRef(aircraftShadowsVisible);
@@ -447,6 +449,8 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     actualRangeAvailableRef.current = actualRangeAvailable;
     actualRangeVisibleRef.current = actualRangeVisible;
     aircraftMotionEnabledRef.current = aircraftMotionEnabled;
+    followingRef.current = following;
+    selectedIdRef.current = selectedId;
     aircraftShadowsVisibleRef.current = aircraftShadowsVisible;
     distanceRingsVisibleRef.current = distanceRingsVisible;
     onActualRangeVisibleChangeRef.current = onActualRangeVisibleChange;
@@ -460,7 +464,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     historyOpenRef.current = historyOpen;
     labelsVisibleRef.current = labelsVisible;
     legTraceVisibleRef.current = legTraceVisible;
-  }, [actualRangeAvailable, actualRangeVisible, aircraftMotionEnabled, aircraftShadowsVisible, distanceRingsVisible, historyOpen, labelsVisible, legTraceVisible, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect]);
+  }, [actualRangeAvailable, actualRangeVisible, aircraftMotionEnabled, aircraftShadowsVisible, distanceRingsVisible, following, historyOpen, labelsVisible, legTraceVisible, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId]);
 
   useEffect(() => {
     languageRef.current = language;
@@ -526,6 +530,16 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
             aircraftMarker.marker.setLngLat(nextPosition);
             aircraftMarker.shadowMarker.setLngLat(nextPosition);
             aircraftMarker.displayedPosition = nextPosition;
+          }
+          if (followingRef.current && selectedIdRef.current === motionAircraft.id) {
+            const previousFollowTarget = followTargetRef.current;
+            if (
+              !previousFollowTarget
+              || aircraftPositionDistanceMetres(previousFollowTarget, nextPosition) >= minimumMarkerMovementMetres
+            ) {
+              followTargetRef.current = nextPosition;
+              map.jumpTo({ center: nextPosition });
+            }
           }
           const positionAge = Math.max(0, motionAircraft.positionSeenSeconds ?? motionAircraft.seenSeconds);
           if (
@@ -1179,12 +1193,16 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     }
     const selected = aircraft.find((item) => item.id === selectedId);
     if (selected?.latitude === undefined || selected.longitude === undefined) return;
-    const nextTarget: [number, number] = [selected.longitude, selected.latitude];
+    const displayedPosition = aircraftMotionEnabled
+      ? markersRef.current.get(selectedId)?.displayedPosition
+      : undefined;
+    const nextTarget: AircraftPosition = displayedPosition ?? [selected.longitude, selected.latitude];
     const previousTarget = followTargetRef.current;
     if (previousTarget && aircraftPositionDistanceMetres(previousTarget, nextTarget) < 8) return;
     followTargetRef.current = nextTarget;
     mapRef.current?.jumpTo({ center: nextTarget });
-  }, [aircraft, following, selectedId]);
+    if (aircraftMotionEnabled && canAnimateAircraftMotion(selected)) startMarkerAnimation();
+  }, [aircraft, aircraftMotionEnabled, following, selectedId, startMarkerAnimation]);
 
   return (
     <>
