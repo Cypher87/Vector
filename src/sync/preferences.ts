@@ -1,4 +1,5 @@
 import type { UnitSystem } from '../domain/aircraft.ts';
+import { aircraftFilterKeys, emptyAircraftFilters, normalizeAircraftFilterPatch } from '../domain/aircraft-filters.ts';
 import {
   normalizeAircraftFilterPresetIds,
   normalizeAircraftFilterPresets,
@@ -121,13 +122,6 @@ const scalarPreferenceKeys = [
   'unitSystem',
 ] as const satisfies readonly (keyof ScalarSyncPreferences)[];
 
-const aircraftFilterKeys = [
-  'adsbOnly',
-  'airborneOnly',
-  'favoritesOnly',
-  'positionOnly',
-] as const satisfies readonly (keyof SyncedAircraftFilters)[];
-
 export function normalizeSyncPreferencePatch(value: unknown): SyncPreferencePatch {
   if (!isObject(value)) return {};
   const patch: SyncPreferencePatch = {};
@@ -142,10 +136,7 @@ export function normalizeSyncPreferencePatch(value: unknown): SyncPreferencePatc
   }
 
   if (isObject(value.aircraftFilters)) {
-    const filters: Partial<SyncedAircraftFilters> = {};
-    for (const key of aircraftFilterKeys) {
-      if (typeof value.aircraftFilters[key] === 'boolean') filters[key] = value.aircraftFilters[key];
-    }
+    const filters = normalizeAircraftFilterPatch(value.aircraftFilters);
     if (Object.keys(filters).length > 0) patch.aircraftFilters = filters;
   }
 
@@ -171,10 +162,8 @@ export function applySyncPreferencePatch(currentValue: unknown, patchValue: unkn
 
   if (patch.aircraftFilters) {
     next.aircraftFilters = {
-      adsbOnly: current.aircraftFilters?.adsbOnly ?? false,
-      airborneOnly: current.aircraftFilters?.airborneOnly ?? false,
-      favoritesOnly: current.aircraftFilters?.favoritesOnly ?? false,
-      positionOnly: current.aircraftFilters?.positionOnly ?? false,
+      ...emptyAircraftFilters,
+      ...current.aircraftFilters,
       ...patch.aircraftFilters,
     };
   }
@@ -217,9 +206,9 @@ export function createSyncPreferencePatch(previousValue: unknown, nextValue: unk
 
   const filters: Partial<SyncedAircraftFilters> = {};
   for (const key of aircraftFilterKeys) {
-    const previousValueForKey = previous.aircraftFilters?.[key] ?? false;
-    const nextValueForKey = next.aircraftFilters?.[key] ?? false;
-    if (previousValueForKey !== nextValueForKey) filters[key] = nextValueForKey;
+    const previousValueForKey = previous.aircraftFilters?.[key] ?? emptyAircraftFilters[key];
+    const nextValueForKey = next.aircraftFilters?.[key] ?? emptyAircraftFilters[key];
+    if (!equalPreferenceValue(previousValueForKey, nextValueForKey)) Object.assign(filters, { [key]: nextValueForKey });
   }
   if (Object.keys(filters).length > 0) patch.aircraftFilters = filters;
 

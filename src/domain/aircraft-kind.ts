@@ -17,6 +17,7 @@ const gliderTypes = new Set([
 ]);
 
 const balloonTypes = new Set(['BALL', 'SHIP']);
+const unknownTypes = new Set(['ZZZZ', 'UNKN', 'UNKNOWN', 'N/A', '?']);
 
 const heavyTypes = new Set(['C17', 'C5M', 'MD11']);
 const heavyPrefixes = ['A33', 'A34', 'A35', 'A38', 'B74', 'B76', 'B77', 'B78', 'IL76'];
@@ -31,9 +32,9 @@ const turbopropPrefixes = [
 ];
 
 export function aircraftKind(aircraft: Aircraft): AircraftKind {
-  const type = aircraft.aircraftType?.toUpperCase() ?? '';
-  const description = aircraft.description?.toUpperCase() ?? '';
-  const category = aircraft.category?.toUpperCase() ?? '';
+  const type = aircraft.aircraftType?.trim().toUpperCase() ?? '';
+  const description = aircraft.description?.trim().toUpperCase() ?? '';
+  const category = aircraft.category?.trim().toUpperCase() ?? '';
   const typeDescription = /^[A-Z][1-9][A-Z]$/.test(description) ? description : '';
 
   if (helicopterTypes.has(type) || description.includes('HELICOPTER') || category === 'A7') return 'helicopter';
@@ -51,7 +52,7 @@ export function aircraftKind(aircraft: Aircraft): AircraftKind {
   if (category === 'A2') return 'small';
   if (category === 'A1') return 'light';
   if (/^(A2|A3|B3|B6|B7|B8|BCS|CRJ|E1|E2|E7|E9)/.test(type)) return 'airliner';
-  if (type) return 'light';
+  if (type && !unknownTypes.has(type)) return 'light';
   return 'unknown';
 }
 

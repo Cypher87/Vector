@@ -6,7 +6,9 @@ Vector is a modern frontend for [readsb](https://github.com/wiedehopf/readsb) an
 
 - Live aircraft map with heading, type-specific tar1090 icons, optional smooth speed-based motion (enabled by default), animated helicopter rotors, and a continuous altitude-color scale.
 - Searchable, sortable, and filterable aircraft list with synchronized favorites.
-- Detail panel with flight information, route, full airport names, and an aircraft photo.
+- Active filters stay visible below the search field and can be removed individually without opening the filter menu.
+- Detail panel with current flight metrics, an interactive altitude/ground-speed profile, aircraft photo, and route with full airport names. Unknown routes use a compact note.
+- Collision-aware map labels with selection/favorite priority, alternative label positions, and compact callsigns when zoomed out.
 - Altitude-colored leg traces for the selected aircraft.
 - History replay with a timeline, playback speed controls, and an option to return to live data.
 - Configurable map layers with labels, actual range outline, solid distance rings, and adjustable leg-trace periods.
@@ -18,6 +20,32 @@ Vector is a modern frontend for [readsb](https://github.com/wiedehopf/readsb) an
 - Optional anonymous synchronization of preferences and favorites between devices using a temporary pairing code.
 - External server configuration for readsb, the site name, and receiver title.
 - Responsive interface for desktop and smaller screens.
+
+## Map labels and flight profiles
+
+Map labels choose an available position around their aircraft and avoid overlapping other labels or map controls. Selected aircraft, keyboard-focused/hovered aircraft, and favorites take priority. Ordinary labels show only the callsign below zoom level 7, and disappear below level 5; the aircraft icons remain visible. The **Aircraft labels** layer switch still hides all labels. Label placement never changes the aircraft's map position.
+
+Contacts with no identifiable type or category use a small filled circle on the map, in the list, and in the details. It keeps the altitude color and thin dark outline of the other icons, without a question mark or projected shadow, and does not imply an airplane or helicopter. Known categories retain their silhouettes even without an exact type code; newly received metadata updates the icon automatically.
+
+The detail panel keeps current flight metrics, the aircraft photo, and the full route together. The **Flight profile** below them starts collapsed; expand it to plot reported altitude and ground speed from the same trace as the map. Hover or tap the chart, or use its keyboard-accessible time slider, to inspect a measurement and mark its position on the map. Historical values appear in the chart only while inspecting a point, without repeating the current flight metrics. Collapsing the profile clears that highlight, not the aircraft's leg trace. Values follow the selected unit system. The profile's period selector updates the shared leg-trace period (30 minutes by default; up to 8 hours or the full available trace).
+
+Live traces combine the receiver's full/recent trace files (refreshed every 30 seconds while selected) with fresh locally received positions. Available coverage depends on the receiver; choosing a longer period cannot recover measurements that were not recorded. Missing or stale measurements and gaps between flight legs are not drawn as continuous measurements. Reported altitude is not height above terrain; an aircraft marked on the ground without an altitude does not imply zero elevation.
+
+In history mode, the profile uses only snapshots from the loaded replay window, never the current live trace. Without enough recorded points, the panel shows an unavailable-data state instead of an invented graph.
+
+## Aircraft filters
+
+The filter menu keeps **Favorites only** directly accessible and groups other controls into **Aircraft category**, **Altitude and speed** (including flight status), **Distance**, and **Advanced**. Groups start collapsed and show their active choices in the heading; opening one closes the previous group without changing its filters or unfinished edits. Saved views have their own collapsible section. The **Advanced** section adds data source, position availability, exact ICAO type codes (such as `B738, A320`), and emergency/squawk filters. The menu floats above the map without resizing it, keeps the result count visible, and closes when you click outside or press Escape.
+
+- Choices within a category or type-code group are combined with **OR**; different filter groups are combined with **AND**.
+- Filters and text search apply equally to the map and list, in live mode and history replay. A selected aircraft does not bypass them; its details remain available.
+- Numeric bounds are inclusive. Empty bounds mean no limit. Missing altitude, speed, distance, or vertical-rate values do not count as zero and cannot satisfy a filter requiring that measurement.
+- Distances use the configured/reported receiver position, never the fallback map center. When the receiver position is unknown, an active distance filter returns no matches and the menu explains why.
+- Height is reported aircraft altitude, not terrain-relative height. Climbing/descending requires a known vertical rate of at least ±128 ft/min (about ±0.65 m/s); ground state comes from the receiver.
+- Category filters use the same classification as the map icons. **Light & small** includes small jets and ultralights; **Other / unknown** includes types outside the named groups and aircraft without type information.
+- Bounds are displayed in the selected unit system but stored in physical units, so changing units does not change the selected range. Invalid edits leave the previous valid filter in effect.
+- Active filter chips show their values and can be cleared individually. Saved views include all filter groups and sorting. Existing four-toggle filters and saved views migrate automatically.
+- Paired devices synchronize these filters as well. Independent groups merge separately; simultaneous edits to the same group use the last server-processed change.
 
 ## Raspberry Pi and Debian 13
 
@@ -193,7 +221,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 The settings menu offers five interface themes: **Vector**, **Midnight**, **Radar**, **Amber**, and **Daylight**. Each theme has its own continuous altitude palette. The altitude legend, aircraft icons, and altitude-colored leg traces always use the same palette, so the legend remains an accurate reference.
 
-The separate **Map style** setting changes the presentation of the included OpenStreetMap raster layer without reloading or moving the map. **Default** is Vector's muted presentation; **Original**, **Light**, **Dark**, and **High contrast** provide alternative renderings of the same OpenStreetMap tiles. The configured `VECTOR_MAP_STYLE_URL` remains the source of the MapLibre style. These display adjustments are applied to the included raster layer named `openstreetmap`; a custom style without that layer remains unchanged.
+The separate **Map style** setting changes the presentation of the included OpenStreetMap raster layer without reloading or moving the map. **Default** uses a brighter, softly desaturated presentation with Daylight and Vector's muted presentation with the dark interface themes. Explicitly choosing **Original**, **Light**, **Dark**, or **High contrast** keeps that map rendering independent of the interface theme. Aircraft, legend, and trace colors are unaffected by this map-style adjustment. The configured `VECTOR_MAP_STYLE_URL` remains the source of the MapLibre style. These display adjustments are applied to the included raster layer named `openstreetmap`; a custom style without that layer remains unchanged.
 
 During local development, synchronization data defaults to the ignored `.vector/sync.json` file. Set `VECTOR_SYNC_STORE` in `.env.local` when a different development location is required. Never reuse or commit the production synchronization database.
 
@@ -201,9 +229,22 @@ Quality checks:
 
 ```bash
 pnpm lint
+pnpm typecheck
 pnpm test
 pnpm build
+pnpm exec playwright install chromium
+pnpm test:e2e
 ```
+
+Browser tests run against the **production build**, starting a separate server on `127.0.0.1:3100` and stopping it afterwards. Build first, and leave that port free. The suite exercises desktop and mobile Chromium layouts with synthetic live data, leg traces, and binary receiver replay files. It checks startup recovery, stale data, selection, favorites, following, history playback, themes, and menu visibility. No Pi, external map service, or personal configuration is needed for these tests; browser API requests are intercepted by fixtures. The tests do not create synchronization profiles or modify your local preferences. Screenshots, traces, and the HTML report are saved in ignored test-output directories.
+
+On Linux, install browser system dependencies with `pnpm exec playwright install --with-deps chromium`. The GitHub **Quality checks** workflow runs lint, TypeScript, unit/integration tests, the production build, and desktop/mobile browser tests on pull requests and pushes to `main`. Failed browser runs upload diagnostic artifacts. To prevent merging a failing change, enable a branch protection rule for `main` and require the `quality` job; the workflow alone does not enforce that rule. Mobile Chromium emulation is not a substitute for a real-device Safari check.
+
+### Live connection recovery
+
+Vector retries automatically if configuration, receiver metadata, or live aircraft data cannot be loaded. Requests time out after 10 seconds; consecutive failures use increasing retry delays capped at 15 seconds. After three failures, Vector reloads configuration and receiver metadata as well. Returning to a visible tab or restoring the browser's network connection triggers an immediate retry when no request is already running.
+
+The live indicator uses the receiver's `aircraft.json` timestamp, not just HTTP success. Data older than 15 seconds is marked delayed, even if the server keeps returning the same JSON. A receiver clock more than 30 seconds ahead is also treated as outdated: keep the Pi and viewing device clocks synchronized. Missing or invalid timestamps are rejected. During an outage, the last known aircraft remain visible, the footer shows their data age, and position animation/local trace recording pause until fresh data returns. Duplicate snapshots do not reset position animation or create new history samples. These are last known positions, not live aircraft positions.
 
 ## Production runtime
 
@@ -221,6 +262,8 @@ The included map style and all five of its display variants use online OpenStree
 ## Architecture
 
 The technical design and planned areas for extension are documented in [`docs/ARCHITECTUUR.md`](docs/ARCHITECTUUR.md).
+
+The live feed lifecycle and retry/freshness policy live in `src/data/aircraft-feed.ts`, independent of React and covered with deterministic clock-based tests. `use-aircraft-feed.ts` connects that lifecycle to browser visibility/network events. The settings UI and MapLibre navigation control are separate modules (`src/components/settings-menu.tsx` and `src/map/map-navigation-control.ts`) so menu behavior can evolve without expanding the page and radar rendering components.
 
 ## Licenses and data sources
 

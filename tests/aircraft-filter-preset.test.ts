@@ -33,7 +33,7 @@ test('filter preset parsing survives invalid local storage and detects the activ
   const [preset] = normalizeAircraftFilterPresets([{
     id: 'preset_active',
     name: 'Actief',
-    filters: { ...emptyAircraftFilters, airborneOnly: true },
+    filters: { airborneOnly: true },
     sort: 'seen-asc',
   }]);
 

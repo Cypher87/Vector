@@ -77,6 +77,7 @@ export type AircraftMetadata = Pick<
 
 export type AircraftTracePoint = {
   altitudeFt?: number;
+  groundSpeedKts?: number;
   latitude: number;
   longitude: number;
   onGround: boolean;

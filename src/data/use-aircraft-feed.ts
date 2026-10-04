@@ -1,21 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import type { Aircraft, FeedStatus, Receiver, RuntimeConfig } from '../domain/aircraft';
+import { useEffect, useState } from 'react';
+import type { Aircraft } from '../domain/aircraft';
 import { DEFAULT_RUNTIME_CONFIG } from '../runtime-config';
 import { distanceKilometres } from '../units';
 import { loadAircraft, loadReceiver, loadRuntimeConfig } from './readsb';
-
-type FeedState = {
-  aircraft: Aircraft[];
-  config: RuntimeConfig;
-  receiver?: Receiver;
-  status: FeedStatus;
-  lastUpdate?: number;
-  messageCount: number;
-  messageRate: number;
-  error?: 'liveDataUnavailable' | 'receiverUnavailable';
-};
+import { initialFeedState, startAircraftFeed, type FeedState } from './aircraft-feed';
 
 const shortestAngleDifference = (from: number, to: number) => ((to - from + 540) % 360) - 180;
 
@@ -51,107 +41,24 @@ const stabilizeAircraft = (next: Aircraft, previous?: Aircraft): Aircraft => {
 };
 
 export function useAircraftFeed(): FeedState {
-  const [state, setState] = useState<FeedState>({
-    aircraft: [],
-    config: DEFAULT_RUNTIME_CONFIG,
-    status: 'connecting',
-    messageCount: 0,
-    messageRate: 0,
-  });
-  const previous = useRef<{ messages: number; at: number } | undefined>(undefined);
-  const previousAircraft = useRef(new Map<string, Aircraft>());
-
+  const [state, setState] = useState(() => initialFeedState(DEFAULT_RUNTIME_CONFIG));
   useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let failures = 0;
-    const controller = new AbortController();
-
-    async function start() {
-      let config: RuntimeConfig;
-      try {
-        config = await loadRuntimeConfig(controller.signal);
-      } catch {
-        if (!active || controller.signal.aborted) return;
-        setState((current) => ({
-          ...current,
-          status: 'offline',
-          error: 'receiverUnavailable',
-        }));
-        return;
-      }
-      if (!active) return;
-      setState((current) => ({ ...current, config }));
-
-      let receiver: Receiver;
-      try {
-        receiver = await loadReceiver(config.dataBaseUrl, controller.signal);
-        if (!active) return;
-        setState((current) => ({ ...current, receiver }));
-      } catch {
-        if (!active) return;
-        setState((current) => ({
-          ...current,
-          status: 'offline',
-          error: 'receiverUnavailable',
-        }));
-        return;
-      }
-
-      const poll = async () => {
-        try {
-          const snapshot = await loadAircraft(config.dataBaseUrl, controller.signal);
-          if (!active) return;
-          const at = Date.now();
-          const earlier = previous.current;
-          const elapsedSeconds = earlier ? (at - earlier.at) / 1_000 : 0;
-          const rate = earlier && elapsedSeconds > 0
-            ? Math.max(0, Math.round((snapshot.messages - earlier.messages) / elapsedSeconds))
-            : 0;
-          previous.current = { messages: snapshot.messages, at };
-          const stableAircraft = snapshot.aircraft.map((item) => {
-            const priorAircraft = previousAircraft.current.get(item.id);
-            const stable = stabilizeAircraft(item, priorAircraft);
-            const messageRate = priorAircraft && elapsedSeconds > 0
-              ? Math.max(0, (item.messages - priorAircraft.messages) / elapsedSeconds)
-              : undefined;
-            return { ...stable, messageRate };
-          });
-          previousAircraft.current = new Map(stableAircraft.map((item) => [item.id, item]));
-          failures = 0;
-          setState((current) => ({
-            ...current,
-            aircraft: stableAircraft,
-            receiver,
-            status: 'live',
-            lastUpdate: at,
-            messageCount: snapshot.messages,
-            messageRate: rate,
-            error: undefined,
-          }));
-          timer = setTimeout(poll, receiver.refreshMs);
-        } catch {
-          if (!active || controller.signal.aborted) return;
-          failures += 1;
-          setState((current) => ({
-            ...current,
-            status: failures >= 3 ? 'offline' : 'stale',
-            error: 'liveDataUnavailable',
-          }));
-          timer = setTimeout(poll, Math.min(15_000, receiver.refreshMs * 2 ** failures));
-        }
-      };
-
-      void poll();
-    }
-
-    void start();
+    const feed = startAircraftFeed({
+      loadConfig: loadRuntimeConfig,
+      loadReceiver,
+      loadAircraft,
+      stabilize: stabilizeAircraft,
+    }, initialFeedState(DEFAULT_RUNTIME_CONFIG), setState);
+    const resume = () => {
+      if (document.visibilityState !== 'hidden') feed.resume();
+    };
+    window.addEventListener('online', resume);
+    document.addEventListener('visibilitychange', resume);
     return () => {
-      active = false;
-      controller.abort();
-      if (timer) clearTimeout(timer);
+      window.removeEventListener('online', resume);
+      document.removeEventListener('visibilitychange', resume);
+      feed.stop();
     };
   }, []);
-
   return state;
 }

@@ -1,6 +1,5 @@
-export type AircraftFilterKey = 'adsbOnly' | 'airborneOnly' | 'favoritesOnly' | 'positionOnly';
-
-export type AircraftFilters = Record<AircraftFilterKey, boolean>;
+import { normalizeAircraftFilters, filterValueEqual, type AircraftFilters } from './aircraft-filters.ts';
+export { emptyAircraftFilters, normalizeAircraftFilters, type AircraftFilterKey, type AircraftFilters } from './aircraft-filters.ts';
 
 export type AircraftSort = 'altitude-desc' | 'callsign-asc' | 'distance-asc' | 'seen-asc';
 
@@ -15,13 +14,6 @@ export const aircraftFilterPresetStorageKey = 'vector.aircraftFilterPresets';
 export const maxAircraftFilterPresets = 20;
 export const maxAircraftFilterPresetNameLength = 40;
 
-export const emptyAircraftFilters: AircraftFilters = {
-  adsbOnly: false,
-  airborneOnly: false,
-  favoritesOnly: false,
-  positionOnly: false,
-};
-
 const presetIdPattern = /^[a-zA-Z0-9_-]{1,64}$/;
 const aircraftSorts: AircraftSort[] = ['altitude-desc', 'callsign-asc', 'distance-asc', 'seen-asc'];
 
@@ -30,16 +22,6 @@ const isObject = (value: unknown): value is Record<string, unknown> => (
 );
 
 export const isAircraftSort = (value: unknown): value is AircraftSort => aircraftSorts.includes(value as AircraftSort);
-
-export function normalizeAircraftFilters(value: unknown): AircraftFilters {
-  const filters = isObject(value) ? value : {};
-  return {
-    adsbOnly: filters.adsbOnly === true,
-    airborneOnly: filters.airborneOnly === true,
-    favoritesOnly: filters.favoritesOnly === true,
-    positionOnly: filters.positionOnly === true,
-  };
-}
 
 export function normalizeAircraftFilterPresetName(value: unknown): string {
   return typeof value === 'string'
@@ -86,6 +68,4 @@ export const aircraftFilterPresetMatches = (
   preset: AircraftFilterPreset,
   filters: AircraftFilters,
   sort: AircraftSort,
-) => preset.sort === sort && Object.keys(emptyAircraftFilters).every(
-  (key) => preset.filters[key as AircraftFilterKey] === filters[key as AircraftFilterKey],
-);
+) => preset.sort === sort && filterValueEqual(normalizeAircraftFilters(preset.filters), normalizeAircraftFilters(filters));

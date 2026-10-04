@@ -1,19 +1,25 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AircraftPhoto } from '../src/components/aircraft-photo';
+import { AircraftActiveFilters } from '../src/components/aircraft-active-filters';
 import { AircraftFilterMenu } from '../src/components/aircraft-filter-menu';
-import { AircraftRoute } from '../src/components/aircraft-route';
+import { AircraftRoute, AircraftRouteSummary, useAircraftRoute } from '../src/components/aircraft-route';
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
 import { EventCenter } from '../src/components/event-center';
 import { HistoryControls } from '../src/components/history-controls';
+import { FlightProfile } from '../src/components/flight-profile';
 import { ReceiverDashboard } from '../src/components/receiver-dashboard';
 import { SyncMenu } from '../src/components/sync-menu';
+import { SettingsMenu } from '../src/components/settings-menu';
 import { VectorIcon } from '../src/components/vector-icon';
 import { useAircraftFeed } from '../src/data/use-aircraft-feed';
 import { useAircraftHistory } from '../src/data/use-aircraft-history';
-import type { Aircraft, FeedStatus, UnitSystem } from '../src/domain/aircraft';
+import { useSelectedAircraftTrace } from '../src/data/use-selected-aircraft-trace';
+import type { Aircraft, AircraftTracePoint, FeedStatus, UnitSystem } from '../src/domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../src/domain/aircraft-kind';
+import { aircraftTypeSummary } from '../src/domain/aircraft-label';
+import { activeAircraftFilterKeys, matchesAircraftFilters, normalizeAircraftFilters } from '../src/domain/aircraft-filters';
 import {
   aircraftFilterPresetStorageKey,
   emptyAircraftFilters,
@@ -111,7 +117,6 @@ export default function Home() {
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
   const receiverDashboardRef = useRef<HTMLDivElement>(null);
-  const settingsMenuRef = useRef<HTMLDetailsElement>(null);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -173,13 +178,7 @@ export default function Home() {
         setAircraftSort(savedSort);
       }
       try {
-        const savedFilters = JSON.parse(window.localStorage.getItem('vector.aircraftFilters') ?? '{}') as Partial<AircraftFilters>;
-        setAircraftFilters({
-          adsbOnly: savedFilters.adsbOnly === true,
-          airborneOnly: savedFilters.airborneOnly === true,
-          favoritesOnly: savedFilters.favoritesOnly === true,
-          positionOnly: savedFilters.positionOnly === true,
-        });
+        setAircraftFilters(normalizeAircraftFilters(JSON.parse(window.localStorage.getItem('vector.aircraftFilters') ?? '{}')));
       } catch {
         setAircraftFilters(emptyAircraftFilters);
       }
@@ -211,9 +210,7 @@ export default function Home() {
 
   useEffect(() => {
     const closeMenusOnOutsideClick = (event: MouseEvent) => {
-      const menu = settingsMenuRef.current;
       const target = event.target;
-      if (menu?.open && target instanceof Node && !menu.contains(target)) menu.open = false;
       if (target instanceof Node && !receiverDashboardRef.current?.contains(target)) {
         setReceiverDashboardOpen(false);
       }
@@ -290,9 +287,9 @@ export default function Home() {
     setMobileDetailsExpanded(false);
     if (autoHideDetails) setDetailsOpen(false);
   };
-  const changeAircraftFilter = (key: AircraftFilterKey, enabled: boolean) => {
+  const changeAircraftFilter = <K extends AircraftFilterKey,>(key: K, value: AircraftFilters[K]) => {
     setAircraftFilters((current) => {
-      const next = { ...current, [key]: enabled };
+      const next = normalizeAircraftFilters({ ...current, [key]: value });
       window.localStorage.setItem('vector.aircraftFilters', JSON.stringify(next));
       return next;
     });
@@ -479,8 +476,10 @@ export default function Home() {
     return () => window.clearTimeout(timeout);
   }, [preferenceSnapshot, saveSyncPreferences, syncConnected, syncProfileId]);
 
-  const centerLat = feed.config.receiverLatitude ?? feed.receiver?.latitude ?? 52.3086;
-  const centerLon = feed.config.receiverLongitude ?? feed.receiver?.longitude ?? 4.7639;
+  const receiverLat = feed.config.receiverLatitude ?? feed.receiver?.latitude;
+  const receiverLon = feed.config.receiverLongitude ?? feed.receiver?.longitude;
+  const centerLat = receiverLat ?? 52.3086;
+  const centerLon = receiverLon ?? 4.7639;
 
   const displayedAircraft = useMemo(() => {
     if (!history.open || !history.currentSnapshot) return feed.aircraft;
@@ -509,13 +508,10 @@ export default function Home() {
     setMapFocus({ latitude: aircraft.latitude, longitude: aircraft.longitude, request: Date.now() });
   };
 
-  const filterMatchedAircraft = useMemo(() => displayedAircraft.filter((item) => {
-    if (aircraftFilters.positionOnly && (item.latitude === undefined || item.longitude === undefined)) return false;
-    if (aircraftFilters.airborneOnly && item.onGround) return false;
-    if (aircraftFilters.adsbOnly && !item.source.startsWith('adsb')) return false;
-    if (aircraftFilters.favoritesOnly && !favoriteAircraftIdSet.has(item.id)) return false;
-    return true;
-  }), [aircraftFilters, displayedAircraft, favoriteAircraftIdSet]);
+  const filterMatchedAircraft = useMemo(() => displayedAircraft.filter((item) => matchesAircraftFilters(item, aircraftFilters, {
+    favoriteIds: favoriteAircraftIdSet,
+    distanceKm: aircraftFilters.distance === null ? undefined : distanceKilometres(receiverLat, receiverLon, item.latitude, item.longitude),
+  })), [aircraftFilters, displayedAircraft, favoriteAircraftIdSet, receiverLat, receiverLon]);
 
   const filteredAircraft = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -545,6 +541,17 @@ export default function Home() {
   const selected = selectedId === null
     ? undefined
     : displayedAircraft.find((item) => item.id === selectedId);
+  const selectedRoute = useAircraftRoute(selected);
+  const selectedTrace = useSelectedAircraftTrace({
+    aircraft: feed.aircraft, selectedId: selected?.id, dataBaseUrl: feed.config.dataBaseUrl,
+    lastUpdate: feed.lastUpdate, live: feed.status === 'live', enabled: detailsOpen || legTraceVisible,
+    historyOpen: history.open, snapshots: history.snapshots, period: legTracePeriod,
+  });
+  const [profileHighlight, setProfileHighlight] = useState<{ id?: string; point: AircraftTracePoint }>();
+  const selectedAircraftId = selected?.id;
+  const highlightProfilePoint = useCallback((point?: AircraftTracePoint) => {
+    setProfileHighlight(point ? { id: selectedAircraftId, point } : undefined);
+  }, [selectedAircraftId]);
   const selectedIsFavorite = selected ? favoriteAircraftIdSet.has(selected.id) : false;
   const selectedAltitude = selected ? altitudeValue(selected, unitSystem, language) : undefined;
   const selectedSpeed = selected ? speedValue(selected.groundSpeedKts, unitSystem, language) : undefined;
@@ -559,10 +566,9 @@ export default function Home() {
   const selectedSignalLabel = selectedRssiDbfs === undefined
     ? '—'
     : `${selectedSignalLevel} / 4 · ${seconds.format(selectedRssiDbfs)} dBFS`;
-  const activeFilterCount = Object.values(aircraftFilters).filter(Boolean).length;
-  const mapAircraft = selected && !filterMatchedAircraft.some((item) => item.id === selected.id)
-    ? [...filterMatchedAircraft, selected]
-    : filterMatchedAircraft;
+  const activeFilterCount = activeAircraftFilterKeys(aircraftFilters).length;
+  const mapAircraft = filteredAircraft;
+  const selectedOnMap = mapAircraft.some((aircraft) => aircraft.id === selected?.id);
   const listReadingFor = (item: Aircraft) => {
     const altitude = formatAltitude(item, unitSystem, language);
     if (aircraftSort === 'distance-asc') {
@@ -597,7 +603,7 @@ export default function Home() {
         </div>
 
         <div className="live-summary" aria-label={t('liveReceiverStatus')}>
-          <span className={`live-pill ${history.open ? 'history' : feed.status}`}><i /> {history.open ? t('history') : feed.status === 'live' ? 'Live' : feed.status}</span>
+          <span className={`live-pill ${history.open ? 'history' : feed.status}`}><i /> {history.open ? t('history') : feed.status === 'live' ? 'Live' : t(statusText[feed.status])}</span>
           <span><strong>{displayedAircraft.length}</strong> {t(displayedAircraft.length === 1 ? 'aircraftSingular' : 'aircraft')}</span>
           <span className="desktop-only"><strong>{history.open ? '—' : feed.messageRate || '—'}</strong> msg/s</span>
         </div>
@@ -656,103 +662,22 @@ export default function Home() {
               />
             )}
           </div>
-          <details className="settings-menu" ref={settingsMenuRef}>
-            <summary className="settings-button" aria-label={t('settings')} title={t('settings')}>
-              <VectorIcon name="settings" />
-            </summary>
-            <div className="settings-popover">
-              <strong>{t('settings')}</strong>
-              <label className="settings-field">
-                <span>{t('theme')}</span>
-                <select
-                  aria-label={t('theme')}
-                  value={theme}
-                  onChange={(event) => changeTheme(event.target.value as Theme)}
-                >
-                  <option value="vector">{t('themeVector')}</option>
-                  <option value="midnight">{t('themeMidnight')}</option>
-                  <option value="radar">{t('themeRadar')}</option>
-                  <option value="amber">{t('themeAmber')}</option>
-                  <option value="daylight">{t('themeDaylight')}</option>
-                </select>
-              </label>
-              <label className="settings-field">
-                <span>{t('mapTheme')}</span>
-                <select
-                  aria-label={t('mapTheme')}
-                  value={mapTheme}
-                  onChange={(event) => changeMapTheme(event.target.value as MapTheme)}
-                >
-                  <option value="vector">{t('mapThemeVector')}</option>
-                  <option value="standard">{t('mapThemeStandard')}</option>
-                  <option value="light">{t('mapThemeLight')}</option>
-                  <option value="dark">{t('mapThemeDark')}</option>
-                  <option value="contrast">{t('mapThemeContrast')}</option>
-                </select>
-              </label>
-              <label className="settings-field">
-                <span>{t('units')}</span>
-                <select
-                  aria-label={t('unitSystem')}
-                  value={unitSystem}
-                  onChange={(event) => changeUnitSystem(event.target.value as UnitSystem)}
-                >
-                  <option value="metric">{t('metric')}</option>
-                  <option value="aeronautical">{t('aeronautical')}</option>
-                  <option value="imperial">{t('imperial')}</option>
-                </select>
-              </label>
-              <label className="settings-field">
-                <span>{t('language')}</span>
-                <select
-                  aria-label={t('language')}
-                  value={language}
-                  onChange={(event) => changeLanguage(event.target.value as Language)}
-                >
-                  <option value="nl">{t('dutch')}</option>
-                  <option value="en">{t('english')}</option>
-                </select>
-              </label>
-              <label className="settings-field">
-                <span>{t('autoHideDetails')}</span>
-                <select
-                  aria-label={t('autoHideDetails')}
-                  value={autoHideDetails ? 'yes' : 'no'}
-                  onChange={(event) => changeAutoHideDetails(event.target.value === 'yes')}
-                >
-                  <option value="yes">{t('yes')}</option>
-                  <option value="no">{t('no')}</option>
-                </select>
-              </label>
-              <label className="settings-field">
-                <span>{t('aircraftPositionAnimation')}</span>
-                <select
-                  aria-label={t('aircraftPositionAnimation')}
-                  value={aircraftMotionEnabled ? 'yes' : 'no'}
-                  onChange={(event) => changeAircraftMotionEnabled(event.target.value === 'yes')}
-                >
-                  <option value="yes">{t('yes')}</option>
-                  <option value="no">{t('no')}</option>
-                </select>
-              </label>
-              <label className="settings-field">
-                <span>{t('legTracePeriod')}</span>
-                <select
-                  aria-label={t('legTracePeriod')}
-                  value={String(legTracePeriod)}
-                  onChange={(event) => changeLegTracePeriod(parseLegTracePeriod(event.target.value))}
-                >
-                  <option value="30">{t('traceLast30Minutes')}</option>
-                  <option value="60">{t('traceLastHour')}</option>
-                  <option value="120">{t('traceLast2Hours')}</option>
-                  <option value="240">{t('traceLast4Hours')}</option>
-                  <option value="360">{t('traceLast6Hours')}</option>
-                  <option value="480">{t('traceLast8Hours')}</option>
-                  <option value="full">{t('traceFull')}</option>
-                </select>
-              </label>
-            </div>
-          </details>
+          <SettingsMenu
+            language={language}
+            theme={theme}
+            mapTheme={mapTheme}
+            unitSystem={unitSystem}
+            autoHideDetails={autoHideDetails}
+            aircraftMotionEnabled={aircraftMotionEnabled}
+            legTracePeriod={legTracePeriod}
+            changeTheme={changeTheme}
+            changeMapTheme={changeMapTheme}
+            changeUnitSystem={changeUnitSystem}
+            changeLanguage={changeLanguage}
+            changeAutoHideDetails={changeAutoHideDetails}
+            changeAircraftMotionEnabled={changeAircraftMotionEnabled}
+            changeLegTracePeriod={changeLegTracePeriod}
+          />
         </div>
       </header>
 
@@ -767,6 +692,9 @@ export default function Home() {
                 activeFilterCount={activeFilterCount}
                 filters={aircraftFilters}
                 language={language}
+                unitSystem={unitSystem}
+                resultCount={filteredAircraft.length}
+                receiverPositionKnown={Number.isFinite(receiverLat) && Number.isFinite(receiverLon)}
                 presets={aircraftFilterPresets}
                 sort={aircraftSort}
                 onApplyPreset={applyAircraftFilterPreset}
@@ -794,6 +722,16 @@ export default function Home() {
             />
             <kbd>/</kbd>
           </label>
+
+          <AircraftActiveFilters
+            filters={aircraftFilters}
+            language={language}
+            unitSystem={unitSystem}
+            onRemove={(key) => {
+              changeAircraftFilter(key, emptyAircraftFilters[key]);
+              if (activeFilterCount === 1) searchInputRef.current?.focus();
+            }}
+          />
 
           <div className="list-meta">
             <span>{filteredAircraft.length} {t(filteredAircraft.length === 1 ? 'resultSingular' : 'results')}</span>
@@ -862,18 +800,21 @@ export default function Home() {
             actualRangeAvailable={feed.receiver?.outlineJson === true}
             actualRangeVisible={actualRangeVisible}
             aircraft={mapAircraft}
-            aircraftMotionEnabled={aircraftMotionEnabled}
+            aircraftMotionEnabled={aircraftMotionEnabled && feed.status === 'live'}
             aircraftShadowsVisible={aircraftShadowsVisible}
             center={[centerLon, centerLat]}
             dataBaseUrl={feed.config.dataBaseUrl}
             distanceRingsVisible={distanceRingsVisible}
             focusTarget={mapFocus}
-            following={following}
+            following={following && selectedOnMap}
             favoriteIds={favoriteAircraftIdSet}
             historyOpen={history.open}
             labelsVisible={labelsVisible}
             legTraceVisible={legTraceVisible && !history.open}
-            legTracePeriod={legTracePeriod}
+            tracePoints={selectedTrace.points}
+            highlightedTracePoint={detailsOpen && selectedOnMap && profileHighlight?.id === selected?.id
+              && selectedTrace.points.some((point) => point.timestamp === profileHighlight?.point.timestamp)
+              ? profileHighlight?.point : undefined}
             language={language}
             mapStyleUrl={feed.config.mapStyleUrl}
             mapTheme={mapTheme}
@@ -891,8 +832,7 @@ export default function Home() {
             onLabelsVisibleChange={changeLabelsVisible}
             onLegTraceVisibleChange={changeLegTraceVisible}
             onSelect={(id) => { setSelectedId(id); setDetailsOpen(true); setMobileDetailsExpanded(false); }}
-            recordLiveTrace={!history.open}
-            selectedId={selected?.id}
+            selectedId={selectedOnMap ? selected?.id : undefined}
             shadowTimestamp={history.open ? history.currentSnapshot?.timestamp : feed.lastUpdate ? feed.lastUpdate / 1_000 : undefined}
             theme={theme}
             unitSystem={unitSystem}
@@ -1020,28 +960,34 @@ export default function Home() {
                   aircraft={selected}
                   className="detail-aircraft-icon"
                   rotation={aircraftIconRotation(selectedKind ?? 'unknown', selected.trackDeg)}
+                  style={{ color: altitudeColor(selected, theme) }}
                 />
               </span>
               <div>
                 <span className="eyebrow">{selected.registration ?? selected.id.toUpperCase()}</span>
                 <h2>{formatCallsign(selected.flight)}</h2>
-                <p>{selected.aircraftType ?? '—'} · {typeLabel(selected, language)}</p>
+                <p>{aircraftTypeSummary(selected.aircraftType, typeLabel(selected, language))}</p>
+                <AircraftRouteSummary route={selectedRoute} language={language} />
               </div>
             </div>
-
-            <AircraftPhoto aircraft={selected} language={language} />
-
-            <AircraftRoute aircraft={selected} language={language} />
 
             <section className="metric-section">
               <div className="section-title"><h3>{t('flightStatus')}</h3><span>{seconds.format(selected.seenSeconds)} s {t('timeAgo')}</span></div>
               <div className="metric-grid">
-                <div><span>{t('altitude')}</span><strong>{selectedAltitude?.value} {selectedAltitude?.unit && <small>{selectedAltitude.unit}</small>}</strong><em className={selected.verticalRateFpm && selected.verticalRateFpm > 0 ? 'up' : ''}>{trendArrow(selected.verticalRateFpm)} {selectedVerticalRate?.value} {selectedVerticalRate?.unit}</em></div>
-                <div><span>{t('groundSpeed')}</span><strong>{selectedSpeed?.value} <small>{selectedSpeed?.unit}</small></strong><em>{unitSystem === 'metric' ? t('metric') : unitSystem === 'imperial' ? t('imperial') : t('aeronautical')}</em></div>
-                <div><span>{t('course')}</span><strong>{formatNumber(selected.trackDeg, language)}° <small>{directionLabel(selected.trackDeg)}</small></strong><em>{t('trueTrack')}</em></div>
-                <div><span>Squawk</span><strong>{selected.squawk ?? '—'}</strong><em>{selected.squawk === '7700' ? t('emergency') : t('normal')}</em></div>
+                <div><span>{t('altitude')}</span><strong>{selectedAltitude?.value} {selectedAltitude?.unit && <small>{selectedAltitude.unit}</small>}</strong>{selected.verticalRateFpm !== undefined && <em className={selected.verticalRateFpm > 0 ? 'up' : ''}>{trendArrow(selected.verticalRateFpm)} {selectedVerticalRate?.value} {selectedVerticalRate?.unit}</em>}</div>
+                <div><span>{t('groundSpeed')}</span><strong>{selectedSpeed?.value} <small>{selectedSpeed?.unit}</small></strong></div>
+                <div className="metric-secondary"><span title={t('trueTrack')}>{t('course')}</span><strong>{formatNumber(selected.trackDeg, language)}° <small>{directionLabel(selected.trackDeg)}</small></strong></div>
+                <div className="metric-secondary"><span>Squawk</span><strong>{selected.squawk ?? '—'}</strong>{selected.squawk === '7700' && <em>{t('emergency')}</em>}</div>
               </div>
             </section>
+
+            <AircraftPhoto aircraft={selected} language={language} />
+
+            <AircraftRoute route={selectedRoute} callsign={selected.flight} language={language} />
+
+            <FlightProfile key={`${selected.id}:${history.open}`} points={selectedTrace.points} loading={selectedTrace.loading}
+              language={language} unitSystem={unitSystem} period={legTracePeriod} historyOpen={history.open}
+              onPeriodChange={changeLegTracePeriod} onHighlight={highlightProfilePoint} />
 
             <section className="signal-card">
               <div>
@@ -1091,11 +1037,13 @@ export default function Home() {
       </section>
 
       <footer className="statusbar">
-        <span><i className={`status-dot ${history.open ? 'history' : feed.status}`} /> {history.open ? t('history') : t(statusText[feed.status])}</span>
+        <span role="status"><i className={`status-dot ${history.open ? 'history' : feed.status}`} /> {history.open ? t('history') : t(statusText[feed.status])}</span>
         {history.open && history.currentSnapshot ? (
           <span className="desktop-only">{new Intl.DateTimeFormat(localeForLanguage[language], { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(history.currentSnapshot.timestamp * 1_000))}</span>
         ) : feed.error ? (
-          <span className="desktop-only">{t(feed.error)}</span>
+          <span className="feed-freshness" title={`${t(feed.error)} · ${t('automaticReconnect')}`}>
+            {feed.dataAgeSeconds === undefined ? t('automaticReconnect') : `${t('lastData')}: ${feed.dataAgeSeconds} s`}
+          </span>
         ) : !feed.lastUpdate ? (
           <span className="desktop-only">{t('connecting')}</span>
         ) : null}

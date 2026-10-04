@@ -1,3 +1,5 @@
+import type { Theme } from '../theme.ts';
+
 export const mapThemes = ['vector', 'standard', 'light', 'dark', 'contrast'] as const;
 
 export type MapTheme = (typeof mapThemes)[number];
@@ -54,7 +56,17 @@ export function parseMapTheme(value: unknown): MapTheme {
   return mapThemes.includes(value as MapTheme) ? value as MapTheme : defaultMapTheme;
 }
 
-export function mapThemePaint(theme: MapTheme): MapThemePaint {
+// Only Default follows the interface theme; an explicit map-style choice is preserved.
+const daylightDefaultPaint: MapThemePaint = {
+  'raster-opacity': 1,
+  'raster-saturation': -0.58,
+  'raster-contrast': -0.04,
+  'raster-brightness-min': 0.06,
+  'raster-brightness-max': 0.98,
+};
+
+export function mapThemePaint(theme: MapTheme, interfaceTheme: Theme = 'vector'): MapThemePaint {
+  if (theme === 'vector' && interfaceTheme === 'daylight') return daylightDefaultPaint;
   return mapThemePaintValues[theme];
 }
 

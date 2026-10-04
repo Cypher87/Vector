@@ -164,6 +164,7 @@ test('maps the readsb fields used by the tar1090-style technical overview', () =
 
 test('keeps unavailable values absent and recognizes ground aircraft', () => {
   const snapshot = parseAircraftSnapshot({
+    now: 1_724_000_000,
     aircraft: [
       { hex: 'abc123', alt_baro: 'ground', type: 'unknown-source', messages: 10 },
       { type: 'adsb_icao' },
@@ -182,6 +183,13 @@ test('rejects a non-object aircraft snapshot', () => {
   assert.throws(() => parseAircraftSnapshot(null), /does not contain an object/);
 });
 
+test('never treats a missing timestamp or malformed aircraft array as current live data', () => {
+  for (const now of [undefined, null, 0, -1, NaN, Infinity, '1724000000']) {
+    assert.throws(() => parseAircraftSnapshot({ now, aircraft: [] }), /valid timestamp/);
+  }
+  assert.throws(() => parseAircraftSnapshot({ now: 1_724_000_000 }), /aircraft array/);
+});
+
 test('parses trace timestamps, flags, ground altitude and skips invalid coordinates', () => {
   assert.deepEqual(parseAircraftTrace({
     timestamp: 1_724_000_000,
@@ -194,6 +202,7 @@ test('parses trace timestamps, flags, ground altitude and skips invalid coordina
   }), [
     {
       altitudeFt: 12_000,
+      groundSpeedKts: 250,
       latitude: 52.1,
       longitude: 5.1,
       onGround: false,
@@ -203,6 +212,7 @@ test('parses trace timestamps, flags, ground altitude and skips invalid coordina
     },
     {
       altitudeFt: undefined,
+      groundSpeedKts: 30,
       latitude: 52.2,
       longitude: 5.2,
       onGround: true,
@@ -212,6 +222,7 @@ test('parses trace timestamps, flags, ground altitude and skips invalid coordina
     },
     {
       altitudeFt: 14_000,
+      groundSpeedKts: 270,
       latitude: 52.4,
       longitude: 5.4,
       onGround: false,
@@ -238,4 +249,13 @@ test('merges the full and recent traces without duplicating their overlap', () =
     [point(100), point(200), point(250)],
   );
   assert.deepEqual(mergeAircraftTraces([], [point(250)]), [point(250)]);
+});
+
+test('trace speed preserves zero and missing measurements without negative or nonfinite values', () => {
+  const points = parseAircraftTrace({ timestamp: 1_724_000_000, trace: [
+    [0, 52, 5, 1000, 0, 90, 0], [10, 52, 5, null, null, 90, 0],
+    [20, 52, 5, 1000, -1, 90, 0], [30, 52, 5, 1000, Infinity, 90, 0],
+  ] });
+  assert.deepEqual(points.map((point) => point.groundSpeedKts), [0, undefined, undefined, undefined]);
+  assert.equal(points[1].altitudeFt, undefined);
 });

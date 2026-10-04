@@ -336,6 +336,9 @@ export async function loadAircraftReplayChunk(
 export function parseAircraftSnapshot(input: unknown) {
   const value = asRecord(input);
   if (!value) throw new Error('aircraft.json does not contain an object');
+  const now = asNumber(value.now);
+  if (now === undefined || now <= 0) throw new Error('aircraft.json does not contain a valid timestamp');
+  if (!Array.isArray(value.aircraft)) throw new Error('aircraft.json does not contain an aircraft array');
 
   const records = Array.isArray(value.aircraft) ? value.aircraft : [];
   const aircraft = records.flatMap((candidate): Aircraft[] => {
@@ -412,7 +415,7 @@ export function parseAircraftSnapshot(input: unknown) {
   });
 
   return {
-    now: asNumber(value.now) ?? Date.now() / 1_000,
+    now,
     messages: asNumber(value.messages) ?? 0,
     aircraft,
   };
@@ -437,8 +440,10 @@ export function parseAircraftTrace(input: unknown): AircraftTracePoint[] {
 
     const altitude = candidate[3];
     const flags = asNumber(candidate[6]) ?? 0;
+    const speed = asNumber(candidate[4]);
     return [{
       altitudeFt: asNumber(altitude),
+      groundSpeedKts: speed !== undefined && speed >= 0 ? speed : undefined,
       latitude,
       longitude,
       onGround: altitude === 'ground',

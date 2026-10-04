@@ -6,7 +6,8 @@ import { loadAircraftRoute, normalizeCallsign, type AircraftRoute as AircraftRou
 import { translate, type Language } from '../i18n';
 
 type AircraftRouteProps = {
-  aircraft: Aircraft;
+  route: AircraftRouteData | null | undefined;
+  callsign: string;
   language: Language;
 };
 
@@ -22,19 +23,18 @@ const airportCodes = (airport: RouteAirport) => {
   return { primary, secondary };
 };
 
-export function AircraftRoute({ aircraft, language }: AircraftRouteProps) {
-  const callsign = normalizeCallsign(aircraft.flight);
+export function useAircraftRoute(aircraft: Aircraft | undefined) {
+  const flight = aircraft?.flight;
+  const registration = aircraft?.registration;
+  const latitude = aircraft?.latitude;
+  const longitude = aircraft?.longitude;
+  const callsign = normalizeCallsign(flight ?? '');
   const [routeResult, setRouteResult] = useState<{ callsign: string; route: AircraftRouteData | null }>();
-  const route = routeResult?.callsign === callsign ? routeResult.route : undefined;
 
   useEffect(() => {
+    if (!flight) return;
     let current = true;
-    const lookup = {
-      flight: aircraft.flight,
-      registration: aircraft.registration,
-      latitude: aircraft.latitude,
-      longitude: aircraft.longitude,
-    };
+    const lookup = { flight, registration, latitude, longitude };
 
     void loadAircraftRoute(lookup).then((result) => {
       if (current) setRouteResult({ callsign, route: result });
@@ -43,8 +43,32 @@ export function AircraftRoute({ aircraft, language }: AircraftRouteProps) {
     return () => {
       current = false;
     };
-  }, [aircraft.flight, aircraft.latitude, aircraft.longitude, aircraft.registration, callsign]);
+  }, [flight, latitude, longitude, registration, callsign]);
 
+  return aircraft && routeResult?.callsign === callsign ? routeResult.route : undefined;
+}
+
+export function AircraftRouteSummary({ route, language }: Pick<AircraftRouteProps, 'route' | 'language'>) {
+  if (!route) return null;
+
+  const departure = route.airports[0];
+  const destination = route.airports.at(-1)!;
+  const stops = route.airports.length - 2;
+
+  return (
+    <div className="flight-route-summary" aria-label={translate(language, 'route')}>
+      <div className="flight-route-path">
+        <strong title={departure.name} aria-label={`${airportCodes(departure).primary}: ${departure.name}`}>{airportCodes(departure).primary}</strong>
+        <span className="flight-route-arrow" aria-hidden="true">→</span>
+        <strong title={destination.name} aria-label={`${airportCodes(destination).primary}: ${destination.name}`}>{airportCodes(destination).primary}</strong>
+      </div>
+      {stops > 0 && <small className="flight-route-stops">{stops} {stops === 1 ? translate(language, 'stop') : translate(language, 'stops')}</small>}
+      {!route.plausible && <small className="flight-route-unconfirmed" title={translate(language, 'routeNotConfirmed')}>{translate(language, 'routeUnconfirmed')}</small>}
+    </div>
+  );
+}
+
+export function AircraftRoute({ route, callsign, language }: AircraftRouteProps) {
   if (route === undefined) {
     return (
       <section className="route-card route-loading" aria-label={translate(language, 'routeLoading')}>
@@ -56,10 +80,7 @@ export function AircraftRoute({ aircraft, language }: AircraftRouteProps) {
 
   if (!route) {
     return (
-      <section className="route-card route-empty">
-        <div className="route-card-heading"><span>{translate(language, 'route')}</span><small>{callsign || '—'}</small></div>
-        <p>{translate(language, 'noKnownRoute')}</p>
-      </section>
+      <p className="route-unavailable">{translate(language, 'noKnownRoute')}</p>
     );
   }
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { emptyAircraftFilters } from '../src/domain/aircraft-filters.ts';
 import {
   applySyncPreferencePatch,
   createSyncPreferencePatch,
@@ -30,7 +31,7 @@ test('synchronized preferences retain only supported values', () => {
     actualRangeOutline: true,
     aircraftMotion: false,
     aircraftShadows: false,
-    aircraftFilters: { adsbOnly: true, airborneOnly: false, favoritesOnly: true, positionOnly: true },
+    aircraftFilters: { ...emptyAircraftFilters, source: 'adsb', favoritesOnly: true, position: 'with' },
     aircraftSort: 'callsign-asc',
     autoHideDetails: false,
     distanceRings: true,
@@ -79,7 +80,7 @@ test('preference patches merge independent device changes and favorite operation
 
   const afterBoth = applySyncPreferencePatch(applySyncPreferencePatch(original, fromDeviceA), fromDeviceB);
   assert.deepEqual(afterBoth, {
-    aircraftFilters: { adsbOnly: false, airborneOnly: false, favoritesOnly: true, positionOnly: false },
+    aircraftFilters: { ...emptyAircraftFilters, favoritesOnly: true },
     favoriteAircraft: ['abc123'],
     language: 'en',
     mapLabels: false,
@@ -92,7 +93,7 @@ test('preference patches discard unknown and invalid fields', () => {
     favoriteAircraft: { add: ['ABC123', '../secret'], remove: '4840d6' },
     settings: { language: 'de', mapLabels: true, unknown: true },
   }), {
-    aircraftFilters: { adsbOnly: true },
+    aircraftFilters: { source: 'adsb' },
     favoriteAircraft: { add: ['abc123'], remove: [] },
     settings: { mapLabels: true },
   });
@@ -123,11 +124,11 @@ test('filter preset patches preserve independent changes from multiple devices',
 
   assert.deepEqual(applySyncPreferencePatch(applySyncPreferencePatch(original, fromDeviceA), fromDeviceB), {
     filterPresets: [
-      { ...favoritePreset, name: 'Mijn favorieten' },
+      { ...favoritePreset, name: 'Mijn favorieten', filters: { ...emptyAircraftFilters, favoritesOnly: true } },
       {
         id: 'preset_airborne',
         name: 'In de lucht',
-        filters: { adsbOnly: false, airborneOnly: true, favoritesOnly: false, positionOnly: false },
+        filters: { ...emptyAircraftFilters, flightStatus: 'airborne' },
         sort: 'altitude-desc',
       },
     ],
