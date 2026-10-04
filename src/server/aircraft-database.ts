@@ -1,6 +1,7 @@
 import { basename, dirname } from 'node:path';
 import { lstat } from 'node:fs/promises';
 import type { AircraftMetadata } from '../domain/aircraft.ts';
+import type { AircraftDatabaseStatus } from '../domain/aircraft-database-status.ts';
 import { decompressResource, readBoundedFile, ResourceError } from './bounded-resource.ts';
 
 export const databaseDownloadUrl = 'https://raw.githubusercontent.com/wiedehopf/tar1090-db/refs/heads/csv/aircraft.csv.gz';
@@ -61,6 +62,8 @@ export class AircraftDatabase {
   private signature = '';
   private checkAfter = 0;
   private pending?: Promise<void>;
+  private state: AircraftDatabaseStatus['state'] = 'missing';
+  private updatedAt: number | null = null;
   private readonly file: string;
   private readonly interval: number;
   constructor(file: string, interval = 60_000) { this.file = file; this.interval = interval; }
@@ -68,23 +71,39 @@ export class AircraftDatabase {
     this.checkAfter = Date.now() + this.interval;
     try {
       const info = await lstat(this.file);
-      const signature = `${info.ino}:${info.mtimeMs}:${info.size}`;
-      if (signature === this.signature) return;
+      if (!info.isFile() || info.isSymbolicLink() || info.mtimeMs <= 0 || info.mtimeMs > Date.now() + 300_000) throw new Error('Invalid aircraft database file');
+      const signatureFor = (info: Awaited<ReturnType<typeof lstat>>) => `${info.ino}:${info.mtimeMs}:${info.ctimeMs}:${info.size}`;
+      const signature = signatureFor(info);
+      if (signature === this.signature) { this.state = 'ready'; return; }
       const body = await readBoundedFile(dirname(this.file), basename(this.file), maximumDatabaseDownloadBytes);
       const records = await decodeAircraftDatabase(body);
+      // Do not attach the old file's time/count to a concurrently published replacement.
+      if (signatureFor(await lstat(this.file)) !== signature) throw new Error('Aircraft database changed during validation');
       this.records = records;
       this.signature = signature;
-    } catch {
+      // The updater publishes a freshly written file only after full validation.
+      // Failed downloads never change this timestamp; existing installations work too.
+      this.updatedAt = info.mtimeMs;
+      this.state = 'ready';
+    } catch (error) {
+      this.state = (error as NodeJS.ErrnoException).code === 'ENOENT' && !this.records.size ? 'missing' : 'unavailable';
       // Metadata is optional. Live data and trace metadata must survive a missing/bad DB.
     }
   }
-  async lookup(ids: readonly string[], signal?: AbortSignal): Promise<Record<string, AircraftMetadata>> {
+  private async ensureFresh(signal?: AbortSignal) {
     signal?.throwIfAborted();
     if (Date.now() >= this.checkAfter && !this.pending) {
       this.pending = this.refresh().finally(() => { this.pending = undefined; });
     }
     await this.pending;
     signal?.throwIfAborted();
+  }
+  async status(signal?: AbortSignal): Promise<AircraftDatabaseStatus> {
+    await this.ensureFresh(signal);
+    return { state: this.state, location: 'local', updatedAt: this.updatedAt, records: this.records.size || null };
+  }
+  async lookup(ids: readonly string[], signal?: AbortSignal): Promise<Record<string, AircraftMetadata>> {
+    await this.ensureFresh(signal);
     return Object.fromEntries(ids.flatMap((id) => {
       const value = this.records.get(id);
       return value ? [[id, value]] : [];
@@ -93,7 +112,9 @@ export class AircraftDatabase {
 }
 
 let database: { file: string; store: AircraftDatabase } | undefined;
-export function lookupLocalAircraftMetadata(file: string, ids: readonly string[], signal?: AbortSignal) {
+function localDatabase(file: string) {
   if (database?.file !== file) database = { file, store: new AircraftDatabase(file) };
-  return database.store.lookup(ids, signal);
+  return database.store;
 }
+export const lookupLocalAircraftMetadata = (file: string, ids: readonly string[], signal?: AbortSignal) => localDatabase(file).lookup(ids, signal);
+export const localAircraftDatabaseStatus = (file: string, signal?: AbortSignal) => localDatabase(file).status(signal);

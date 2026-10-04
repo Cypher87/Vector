@@ -642,6 +642,14 @@ html[data-theme] .detail-actions button[data-tooltip]::after { color: var(--ink)
 .event-chevron { grid-column: 3; grid-row: 1 / span 2; }
 .event-popover-header span { font-size: 12px; }
 .receiver-dashboard-icon { border-color: var(--line); background: none; }
+.receiver-database-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.receiver-database-state { color: var(--muted-strong); font-size: 12px; line-height: 1.4; }
+.receiver-database-state.stale, .receiver-database-state.unavailable { color: var(--receiver-accent); }
+.receiver-database-content { min-width: 0; display: grid; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--theme-card); }
+.receiver-database-content > span { color: var(--muted-strong); font-size: 12px; }
+.receiver-database-content time, .receiver-database-content > strong { color: var(--ink); font-size: 15px; font-weight: 550; font-variant-numeric: tabular-nums; line-height: 1.5; overflow-wrap: anywhere; }
+.receiver-database-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted-strong); font-size: 12px; }
+.receiver-database-content p { margin: 3px 0 0; color: var(--muted-strong); font-size: 12px; line-height: 1.5; }
 .filter-popover, .sync-popover, .receiver-dashboard, .event-popover { border-radius: 8px; }
 
 /* Filter groups share physical units and apply to both the list and map. */

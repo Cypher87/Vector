@@ -67,6 +67,7 @@ export class RadarFixture {
         });
       }
       if (url.pathname === '/api/sync/session') return json({ connected: false, preferences: {} });
+      if (url.pathname === '/api/aircraft-database-status') return json({ state: 'ready', location: 'local', updatedAt: Date.now() - 3600_000, records: 623176 });
       if (url.pathname === '/api/aircraft-metadata') return json({ aircraft: {
         abc123: { aircraftType: 'A320', registration: 'TEST-1', category: 'A3' },
         def456: { aircraftType: 'BALL', registration: 'TEST-2', category: 'B2' },

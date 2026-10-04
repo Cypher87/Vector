@@ -2,6 +2,7 @@ import type { Aircraft, FeedStatus, Receiver } from '../domain/aircraft';
 import { receiverStatistics } from '../domain/receiver-statistics';
 import { localeForLanguage, translate, type Language } from '../i18n';
 import { VectorIcon } from './vector-icon';
+import { AircraftDatabasePanel } from './aircraft-database-panel';
 
 type ReceiverDashboardProps = {
   aircraft: readonly Aircraft[];
@@ -106,6 +107,8 @@ export function ReceiverDashboard({
           <div><dt>{t('historyFiles')}</dt><dd>{receiver ? number.format(receiver.historyCount) : '—'}</dd></div>
         </dl>
       </section>
+
+      <AircraftDatabasePanel language={language} />
 
       <section className="receiver-dashboard-section">
         <h3>{t('receiverCapabilities')}</h3>

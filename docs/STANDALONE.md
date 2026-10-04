@@ -67,6 +67,8 @@ The standalone database is downloaded from [wiedehopf/tar1090-db](https://github
 
 The downloader validates the complete CSV and replaces it atomically. Invalid/incomplete downloads leave the previous file intact. Metadata reloads within about one minute on subsequent requests. Missing metadata does not fabricate a type or position. A first local installation needs a valid database before migration proceeds.
 
+The **Receiver dashboard → Aircraft database** panel shows the installed database's last update time and record count, warning when the update is older than 48 hours. Failed downloads do not advance that time. This is database freshness, not a direct systemd timer check; use the commands below for timer state and logs.
+
 ```bash
 systemctl list-timers vector-aircraft-db.timer
 sudo systemctl start vector-aircraft-db

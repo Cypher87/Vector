@@ -87,6 +87,15 @@ test('local and remote production runtimes serve live, metadata, outline, traces
       const config = await (await get('/api/config')).json();
       assert.equal(config.dataBaseUrl, '/api/readsb?source=live');
       assert.equal(JSON.stringify(config).includes(root), false);
+      const databaseResponse = await get('/api/aircraft-database-status');
+      assert.equal(databaseResponse.headers.get('cache-control'), 'no-store');
+      const databaseStatus = await databaseResponse.json();
+      assert.equal(databaseStatus.state, 'ready');
+      assert.equal(databaseStatus.location, origin === local ? 'local' : 'receiver');
+      assert.equal(databaseStatus.records, 2);
+      assert.ok(Math.abs(databaseStatus.updatedAt - Date.now()) < 60_000);
+      assert.equal(JSON.stringify(databaseStatus).includes(root), false);
+      assert.equal((await request(`${origin}/api/aircraft-database-status?url=https://example.com`)).status, 400);
       const aircraft = await (await get('/api/readsb?source=live&path=aircraft.json')).json();
       assert.equal(aircraft.aircraft[0].t, 'A320');
       assert.equal(aircraft.aircraft[0].r, 'TEST-A');
@@ -106,7 +115,7 @@ test('local and remote production runtimes serve live, metadata, outline, traces
       assert.equal((await get('/')).status, 200);
       assert.equal((await get('/credits.html')).status, 200);
     }
-    for (const path of ['/api/readsb?source=live&path=aircraft.json', '/api/aircraft-metadata?ids=abc123']) {
+    for (const path of ['/api/readsb?source=live&path=aircraft.json', '/api/aircraft-metadata?ids=abc123', '/api/aircraft-database-status']) {
       assert.equal((await request(`${remote}${path}`, { headers: { 'x-vector-data-proxy': '1' } })).status, 508);
     }
   } finally {

@@ -54,6 +54,14 @@ The live indicator checks the receiver's timestamp, not just HTTP success. Data 
 
 During an outage, aircraft remain at their last known positions, the footer shows data age, and motion/local trace recording pause until fresh data returns. Duplicate snapshots do not restart animation or add history samples. Visible aircraft during an outage are not live positions.
 
+## Aircraft database status
+
+Open the **Receiver dashboard** to see **Aircraft database**: the last update in local 24-hour date/time notation and the number of aircraft records. Updates older than 48 hours are highlighted, so you can check the daily updater before metadata becomes too old. The panel refreshes every minute while open and when you return to the tab.
+
+The timestamp comes from the validated database file published by the updater. A failed download leaves both the previous file and its date unchanged; a successful refresh advances the date even when the source data is identical. The date reflects the installed copy, not the upstream dataset's release date. It is not proof that the systemd timer is enabled: manual refreshes count too.
+
+With a remote Vector source, this is the receiver's database status. Legacy HTTP sources without a local database show **Update unknown**. Missing files and unavailable checks are shown explicitly; an unavailable check may retain the last verified date, never a new success date.
+
 ## Device synchronization
 
 Synchronization is optional. Without it, preferences stay in the current browser. It needs no account, email, password, public domain, or Google/Apple configuration.

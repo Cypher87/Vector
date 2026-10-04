@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, readFile, writeFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, readdir, rm, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { gzipSync } from 'node:zlib';
@@ -32,18 +32,34 @@ test('atomic updates preserve existing data on errors, reload in the cache and l
   try {
     const store = new AircraftDatabase(file, 0);
     assert.deepEqual(await store.lookup(['abc123']), {});
+    assert.deepEqual(await store.status(), { state: 'missing', location: 'local', records: null, updatedAt: null });
     const result = await updateAircraftDatabase(file, { fetch: responseFetch(gzipSync(csv)), minimumRecords: 2 });
     assert.equal(result.records, 2);
     assert.equal((await store.lookup(['abc123']))['abc123'].aircraftType, 'A320');
+    const pastUpdate = new Date(Date.now() - 72 * 60 * 60_000);
+    await utimes(file, pastUpdate, pastUpdate);
+    const initialStatus = await store.status();
+    assert.equal(initialStatus.state, 'ready');
+    assert.equal(initialStatus.records, 2);
+    assert.ok(Math.abs(initialStatus.updatedAt! - pastUpdate.getTime()) < 1);
     const original = await readFile(file);
     for (const fetch of [responseFetch('error', 503), responseFetch('<html>broken</html>'), responseFetch(gzipSync('ABC123;X;A320;0;;;;\n'))]) {
       await assert.rejects(() => updateAircraftDatabase(file, { fetch, minimumRecords: 2 }));
       assert.deepEqual(await readFile(file), original);
+      assert.deepEqual(await store.status(), initialStatus, 'Failed updates cannot advance the success timestamp');
     }
     await writeFile(file, 'corrupt');
     assert.equal((await store.lookup(['abc123']))['abc123'].aircraftType, 'A320');
+    assert.deepEqual(await store.status(), { ...initialStatus, state: 'unavailable' });
     await updateAircraftDatabase(file, { fetch: responseFetch(gzipSync(csv.replace('A320', 'H145'))), minimumRecords: 2 });
     assert.equal((await store.lookup(['abc123']))['abc123'].aircraftType, 'H145');
+    assert.equal((await store.status()).state, 'ready');
+    assert.ok((await store.status()).updatedAt! > initialStatus.updatedAt!);
+    // A successful refresh counts even when upstream content has not changed.
+    await utimes(file, pastUpdate, pastUpdate);
+    await store.status();
+    await updateAircraftDatabase(file, { fetch: responseFetch(gzipSync(csv.replace('A320', 'H145'))), minimumRecords: 2 });
+    assert.ok((await store.status()).updatedAt! > initialStatus.updatedAt!);
     assert.deepEqual(await readdir(root), ['aircraft.csv.gz']);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
