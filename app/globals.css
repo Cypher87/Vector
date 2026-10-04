@@ -633,6 +633,14 @@ html[data-theme] .detail-actions button[data-tooltip]::after { color: var(--ink)
 .sync-primary:hover, .sync-code-form button:hover { background: var(--accent-soft); }
 .sync-state-dot { border-color: var(--panel); }
 .event-kind-icon { border: 0; background: var(--theme-card); }
+.event-copy strong { font-size: 13px; white-space: normal; }
+.event-copy small { font-size: 12px; white-space: normal; overflow-wrap: anywhere; }
+.event-row { grid-template-columns: 34px minmax(0,1fr) 13px; row-gap: 4px; }
+.event-kind-icon { grid-column: 1; grid-row: 1 / span 2; }
+.event-copy { grid-column: 2; grid-row: 1; }
+.event-row time { grid-column: 2; grid-row: 2; font-size: 10px; }
+.event-chevron { grid-column: 3; grid-row: 1 / span 2; }
+.event-popover-header span { font-size: 12px; }
 .receiver-dashboard-icon { border-color: var(--line); background: none; }
 .filter-popover, .sync-popover, .receiver-dashboard, .event-popover { border-radius: 8px; }
 

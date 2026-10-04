@@ -21,6 +21,7 @@ VECTOR_REPOSITORY="${VECTOR_REPOSITORY:-$VECTOR_REPOSITORY_DEFAULT}"
 VECTOR_REF="${VECTOR_REF:-main}"
 ACTION='install'
 PURGE=false
+MIGRATION_ARGS=()
 
 log() {
   printf '[Vector] %s\n' "$*"
@@ -33,11 +34,14 @@ fail() {
 
 usage() {
   cat <<'EOF'
-Usage: install-debian.sh [--uninstall] [--purge]
+Usage: install-debian.sh [--yes] [--keep-source] [--rollback] [--uninstall] [--purge]
 
 Without arguments, installs or updates Vector. Set VECTOR_REF to a branch,
 tag or commit and VECTOR_REPOSITORY to another Git repository when required.
 
+  --yes          Accept safe defaults, including a necessary readsb restart.
+  --keep-source  Update Vector without migrating the configured data source.
+  --rollback     Restore the previous migration's configuration and services.
   --uninstall  Stop Vector and remove the service and /opt/vector.
   --purge      With --uninstall, also remove /etc/vector, state and the user.
 EOF
@@ -47,6 +51,8 @@ while (($# > 0)); do
   case "$1" in
     --uninstall) ACTION='uninstall' ;;
     --purge) PURGE=true ;;
+    --yes|--keep-source) MIGRATION_ARGS+=("$1") ;;
+    --rollback) ACTION='rollback' ;;
     --help|-h) usage; exit 0 ;;
     *) fail "Unknown argument: $1" ;;
   esac
@@ -57,8 +63,24 @@ if [[ ${EUID} -ne 0 ]]; then
   fail 'Run this script as root, for example with sudo.'
 fi
 
+command -v flock >/dev/null || fail 'flock (util-linux) is required.'
+exec 9>/run/lock/vector-install.lock
+flock -n 9 || fail 'Another Vector installation or migration is already running.'
+
+if [[ "$ACTION" == 'rollback' ]]; then
+  [[ -f /usr/local/lib/vector/migrate-install.mjs ]] || fail 'No guided migration is installed to restore.'
+  exec "$VECTOR_RUNTIME/node/bin/node" /usr/local/lib/vector/migrate-install.mjs --rollback
+fi
+
 uninstall_vector() {
+  if [[ -f /etc/vector/readsb-access.json ]]; then
+    "$VECTOR_RUNTIME/node/bin/node" /usr/local/lib/vector/migrate-install.mjs --detach \
+      || fail 'Receiver integration could not be removed safely; Vector has not been deleted.'
+  fi
   log 'Stopping and disabling the service.'
+  systemctl disable --now vector-aircraft-db.timer 2>/dev/null || true
+  systemctl stop vector-aircraft-db.service 2>/dev/null || true
+  rm -f -- /etc/systemd/system/vector-aircraft-db.timer /etc/systemd/system/vector-aircraft-db.service
   systemctl disable --now vector.service 2>/dev/null || true
   rm -f -- "$VECTOR_SERVICE"
   systemctl daemon-reload
@@ -72,6 +94,7 @@ uninstall_vector() {
     [[ "$VECTOR_CONFIG_DIR" == '/etc/vector' ]] || fail 'Unexpected configuration path; refusing removal.'
     [[ "$VECTOR_STATE" == '/var/lib/vector' ]] || fail 'Unexpected state path; refusing removal.'
     rm -rf -- "$VECTOR_CONFIG_DIR" "$VECTOR_STATE"
+    rm -rf -- /usr/local/lib/vector /var/lib/vector-installer
     userdel "$VECTOR_USER" 2>/dev/null || true
     groupdel "$VECTOR_GROUP" 2>/dev/null || true
   else
@@ -86,6 +109,10 @@ if [[ "$ACTION" == 'uninstall' ]]; then
 fi
 
 [[ "$PURGE" == false ]] || fail '--purge can only be used together with --uninstall.'
+
+if [[ -f /usr/local/lib/vector/migrate-install.mjs && -x "$VECTOR_RUNTIME/node/bin/node" ]]; then
+  "$VECTOR_RUNTIME/node/bin/node" /usr/local/lib/vector/migrate-install.mjs --recover-pending
+fi
 
 [[ -r /etc/os-release ]] || fail 'Cannot identify the operating system.'
 # shellcheck source=/etc/os-release
@@ -110,7 +137,7 @@ esac
 log 'Installing operating-system prerequisites.'
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl git xz-utils
+apt-get install -y --no-install-recommends ca-certificates curl git xz-utils acl
 
 if ! getent group "$VECTOR_GROUP" >/dev/null; then
   groupadd --system "$VECTOR_GROUP"
@@ -125,7 +152,8 @@ if ! id -u "$VECTOR_USER" >/dev/null 2>&1; then
     "$VECTOR_USER"
 fi
 
-install -d -o "$VECTOR_USER" -g "$VECTOR_GROUP" -m 0755 "$VECTOR_ROOT" "$VECTOR_APP"
+install -d -o root -g root -m 0755 "$VECTOR_ROOT"
+install -d -o "$VECTOR_USER" -g "$VECTOR_GROUP" -m 0755 "$VECTOR_APP"
 install -d -o root -g root -m 0755 "$VECTOR_RUNTIME"
 install -d -o "$VECTOR_USER" -g "$VECTOR_GROUP" -m 0750 "$VECTOR_STATE"
 install -d -o root -g "$VECTOR_GROUP" -m 0750 "$VECTOR_CONFIG_DIR"
@@ -209,15 +237,13 @@ run_as_vector "$VECTOR_APP" pnpm build
 [[ -f "$VECTOR_APP/dist/standalone/server.js" ]] \
   || fail 'The Vinext standalone server was not produced.'
 
-install -o root -g root -m 0644 \
-  "$VECTOR_APP/packaging/systemd/vector.service" "$VECTOR_SERVICE"
-systemd-analyze verify "$VECTOR_SERVICE"
-systemctl daemon-reload
-systemctl enable vector.service
-systemctl restart vector.service
-
-if systemctl is-active --quiet vector.service; then
-  log 'Vector is running. Open http://<pi-address>:3000 in a browser.'
-else
-  fail 'The service did not start. Inspect it with: journalctl -u vector -n 100 --no-pager'
-fi
+# Receiver startup hooks must never execute code writable by the application user.
+install -d -o root -g root -m 0755 /usr/local/lib/vector /usr/local/lib/vector/lib
+for script in migrate-install.mjs readsb-access.mjs; do
+  install -o root -g root -m 0644 "$VECTOR_APP/scripts/$script" "/usr/local/lib/vector/$script"
+done
+for script in readsb-migration.mjs migration-files.mjs; do
+  install -o root -g root -m 0644 "$VECTOR_APP/scripts/lib/$script" "/usr/local/lib/vector/lib/$script"
+done
+log 'Detecting the receiver and completing the guided installation.'
+"$VECTOR_RUNTIME/node/bin/node" /usr/local/lib/vector/migrate-install.mjs "${MIGRATION_ARGS[@]}"

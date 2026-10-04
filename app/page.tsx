@@ -491,6 +491,7 @@ export default function Home() {
   }, [feed.aircraft, history.currentSnapshot, history.open]);
 
   const favoriteAircraftIdSet = useMemo(() => new Set(favoriteAircraftIds), [favoriteAircraftIds]);
+  const eventAircraftIds = useMemo(() => new Set(history.open ? [] : feed.aircraft.map((item) => item.id)), [feed.aircraft, history.open]);
   const radarEvents = useRadarEvents({
     aircraft: feed.aircraft,
     enabled: !history.open,
@@ -610,6 +611,7 @@ export default function Home() {
 
         <div className="top-actions">
           <EventCenter
+            availableAircraftIds={eventAircraftIds}
             events={radarEvents.events}
             language={language}
             onClear={radarEvents.clear}
@@ -1049,7 +1051,7 @@ export default function Home() {
         ) : null}
         <span className="status-spacer" />
         <span>{centerLat.toFixed(2)}° N, {centerLon.toFixed(2)}° E</span>
-        <a className="desktop-only" href="/licenses/tar1090-GPL-2.0-or-later.txt" target="_blank" rel="noreferrer">Icons: tar1090 · GPL</a>
+        <a href="/credits.html" target="_blank" rel="noreferrer">{t('dataCredits')}</a>
         <span className="desktop-only">readsb {feed.receiver?.version ?? '—'}</span>
       </footer>
     </main>

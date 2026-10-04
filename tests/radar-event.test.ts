@@ -7,6 +7,7 @@ import {
   emptyRadarEventMonitorState,
   parseRadarEventPreferences,
   parseRadarEvents,
+  receiverAlertDelayMs,
 } from '../src/domain/radar-event.ts';
 
 const aircraft = (id: string, overrides: Partial<Aircraft> = {}): Aircraft => ({
@@ -20,7 +21,7 @@ const aircraft = (id: string, overrides: Partial<Aircraft> = {}): Aircraft => ({
   ...overrides,
 });
 
-test('initial feed creates no event flood and later detects favorite arrivals', () => {
+test('initial feed and short reception gaps create no favorite arrival flood', () => {
   const favoriteIds = new Set(['abc123']);
   const initial = detectRadarEvents(
     emptyRadarEventMonitorState(),
@@ -34,7 +35,7 @@ test('initial feed creates no event flood and later detects favorite arrivals', 
 
   const absent = detectRadarEvents(initial.state, [], favoriteIds, 'live', defaultRadarEventPreferences, 2);
   const returned = detectRadarEvents(absent.state, [aircraft('abc123')], favoriteIds, 'live', defaultRadarEventPreferences, 3);
-  assert.deepEqual(returned.events.map((event) => event.kind), ['favorite-entered']);
+  assert.deepEqual(returned.events, []);
 });
 
 test('detects emergency squawk changes and receiver recovery once', () => {
@@ -57,8 +58,10 @@ test('detects emergency squawk changes and receiver recovery once', () => {
   assert.deepEqual(emergency.events.map((event) => event.kind), ['squawk-7700']);
 
   const offline = detectRadarEvents(emergency.state, [], new Set(), 'offline', defaultRadarEventPreferences, 3);
-  assert.deepEqual(offline.events.map((event) => event.kind), ['receiver-offline']);
-  const online = detectRadarEvents(offline.state, [], new Set(), 'live', defaultRadarEventPreferences, 4);
+  assert.deepEqual(offline.events, []);
+  const sustained = detectRadarEvents(offline.state, [], new Set(), 'offline', defaultRadarEventPreferences, 3 + receiverAlertDelayMs);
+  assert.deepEqual(sustained.events.map((event) => event.kind), ['receiver-offline']);
+  const online = detectRadarEvents(sustained.state, [], new Set(), 'live', defaultRadarEventPreferences, 4 + receiverAlertDelayMs);
   assert.deepEqual(online.events.map((event) => event.kind), ['receiver-online']);
 });
 

@@ -5,6 +5,7 @@ import type { Aircraft, FeedStatus } from '../domain/aircraft';
 import {
   detectRadarEvents,
   emptyRadarEventMonitorState,
+  mergeRadarEvents,
   parseRadarEvents,
   radarEventStorageKey,
   type RadarEvent,
@@ -26,7 +27,11 @@ export function useRadarEvents({ aircraft, enabled, favoriteIds, preferences, st
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      setEvents(parseRadarEvents(window.localStorage.getItem(radarEventStorageKey)));
+      try {
+        setEvents(parseRadarEvents(window.localStorage.getItem(radarEventStorageKey)));
+      } catch {
+        // Notifications still work when browser storage is unavailable.
+      }
       setReady(true);
     });
     return () => window.cancelAnimationFrame(frame);
@@ -34,40 +39,49 @@ export function useRadarEvents({ aircraft, enabled, favoriteIds, preferences, st
 
   useEffect(() => {
     if (!ready) return;
-    if (!enabled) {
-      monitorRef.current = emptyRadarEventMonitorState();
-      return;
+    try {
+      if (events.length) window.localStorage.setItem(radarEventStorageKey, JSON.stringify(events));
+      else window.localStorage.removeItem(radarEventStorageKey);
+    } catch {
+      // Keep the in-memory log if storage is full or blocked.
     }
+  }, [events, ready]);
 
-    const result = detectRadarEvents(
-      monitorRef.current,
-      aircraft,
-      favoriteIds,
-      status,
-      preferences,
-    );
-    monitorRef.current = result.state;
-    if (result.events.length === 0) return;
-
-    setEvents((current) => {
-      const next = [...result.events.reverse(), ...current].slice(0, 100);
-      window.localStorage.setItem(radarEventStorageKey, JSON.stringify(next));
-      return next;
-    });
+  useEffect(() => {
+    if (!ready) return;
+    const observe = () => {
+      const now = Date.now();
+      if (!enabled) {
+        monitorRef.current = emptyRadarEventMonitorState();
+        setEvents((current) => mergeRadarEvents(current, [], now));
+        return;
+      }
+      const result = detectRadarEvents(
+        monitorRef.current, aircraft, favoriteIds, status, preferences, now,
+        document.visibilityState !== 'hidden',
+      );
+      monitorRef.current = result.state;
+      setEvents((current) => mergeRadarEvents(current, result.events, now));
+    };
+    observe();
+    // A sustained outage must be confirmed even if the feed status stops changing.
+    const timer = window.setInterval(observe, 5_000);
+    document.addEventListener('visibilitychange', observe);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', observe);
+    };
   }, [aircraft, enabled, favoriteIds, preferences, ready, status]);
 
   const markAllRead = useCallback(() => {
     setEvents((current) => {
       if (current.every((event) => event.read)) return current;
-      const next = current.map((event) => ({ ...event, read: true }));
-      window.localStorage.setItem(radarEventStorageKey, JSON.stringify(next));
-      return next;
+      return current.map((event) => ({ ...event, read: true }));
     });
   }, []);
 
   const clear = useCallback(() => {
     setEvents([]);
-    window.localStorage.removeItem(radarEventStorageKey);
   }, []);
 
   return {

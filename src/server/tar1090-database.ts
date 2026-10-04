@@ -1,5 +1,6 @@
 import type { AircraftMetadata } from '../domain/aircraft';
 import { combineAircraftMetadata } from '../domain/aircraft-metadata.ts';
+import { readBoundedResponse } from './bounded-resource.ts';
 
 type UnknownRecord = Record<string, unknown>;
 type DatabaseShard = Record<string, unknown>;
@@ -59,14 +60,7 @@ async function fetchDatabaseJson(url: URL, maximumBytes: number, signal?: AbortS
   if (isRedirectStatus(response.status)) throw new Tar1090DatabaseError('tar1090 database redirects are not allowed');
   if (!response.ok) throw new Tar1090DatabaseError(`tar1090 database returned HTTP ${response.status}`);
 
-  const declaredLength = Number(response.headers.get('content-length'));
-  if (Number.isFinite(declaredLength) && declaredLength > maximumBytes) {
-    throw new Tar1090DatabaseError('tar1090 database response is too large');
-  }
-  const body = await response.text();
-  if (new TextEncoder().encode(body).byteLength > maximumBytes) {
-    throw new Tar1090DatabaseError('tar1090 database response is too large');
-  }
+  const body = (await readBoundedResponse(response, maximumBytes, signal)).toString();
   try {
     return JSON.parse(body) as unknown;
   } catch {

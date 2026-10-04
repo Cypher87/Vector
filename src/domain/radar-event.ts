@@ -25,11 +25,21 @@ export type RadarEvent = {
 };
 
 export type RadarEventMonitorState = {
-  emergencies: Map<string, string>;
-  favorites: Set<string>;
+  emergencies: Map<string, { squawk: string; lastSeen: number }>;
+  /** null means present; a timestamp is the start of an observed absence. */
+  favorites: Map<string, number | null>;
   initialized: boolean;
-  receiverStatus?: FeedStatus;
+  hasBeenLive: boolean;
+  receiverOfflineSince?: number;
+  receiverNotified: boolean;
+  lastObservedAt?: number;
 };
+
+export const favoriteAbsenceMs = 5 * 60_000;
+export const receiverAlertDelayMs = 30_000;
+export const radarEventCooldownMs = 30 * 60_000;
+export const radarEventRetentionMs = 24 * 60 * 60_000;
+const observationGapMs = 60_000;
 
 export const radarEventStorageKey = 'vector.radarEvents';
 export const radarEventPreferencesStorageKey = 'vector.radarEventPreferences';
@@ -61,12 +71,45 @@ export function parseRadarEventPreferences(value: string | null): RadarEventPref
   }
 }
 
-export function parseRadarEvents(value: string | null): RadarEvent[] {
+const eventKey = (event: RadarEvent) => event.kind.startsWith('receiver-')
+  ? 'receiver' : `${event.kind}:${event.aircraftId}`;
+
+/** One latest notification per subject, including a single receiver incident/status. */
+function compactRadarEvents(events: readonly RadarEvent[], now: number): RadarEvent[] {
+  const seen = new Set<string>();
+  return [...events].filter((event) => event.timestamp >= now - radarEventRetentionMs && event.timestamp <= now + 60_000)
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .filter((event) => {
+      const key = eventKey(event);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 100);
+}
+
+export function mergeRadarEvents(current: readonly RadarEvent[], incoming: readonly RadarEvent[], now = Date.now()): RadarEvent[] {
+  let next = compactRadarEvents(current, now);
+  for (const event of [...incoming].sort((a, b) => a.timestamp - b.timestamp)) {
+    const key = eventKey(event);
+    const previous = next.find((item) => eventKey(item) === key);
+    if (previous && previous.timestamp > event.timestamp) continue;
+    const repeat = previous && event.timestamp - previous.timestamp < radarEventCooldownMs;
+    // Recovery updates the outage row, never creates a second unread notification.
+    const read = event.kind === 'receiver-online' ? previous?.read ?? true
+      : repeat ? previous.read : event.read;
+    next = [{ ...event, read }, ...next.filter((item) => eventKey(item) !== key)];
+  }
+  next = compactRadarEvents(next, now);
+  return next.length === current.length && next.every((event, index) => event === current[index])
+    ? current as RadarEvent[] : next;
+}
+
+export function parseRadarEvents(value: string | null, now = Date.now()): RadarEvent[] {
   if (!value) return [];
   try {
     const parsed: unknown = JSON.parse(value);
     if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((candidate): RadarEvent[] => {
+    const events = parsed.slice(0, 1_000).flatMap((candidate): RadarEvent[] => {
       if (
         !isObject(candidate)
         || typeof candidate.id !== 'string'
@@ -75,19 +118,22 @@ export function parseRadarEvents(value: string | null): RadarEvent[] {
         || typeof candidate.timestamp !== 'number'
         || !Number.isFinite(candidate.timestamp)
       ) return [];
-      const aircraftId = typeof candidate.aircraftId === 'string' && /^[a-f0-9]{6}$/i.test(candidate.aircraftId)
+      const aircraftId = typeof candidate.aircraftId === 'string' && /^~?[a-f0-9]{6}$/i.test(candidate.aircraftId)
         ? candidate.aircraftId.toLowerCase()
         : undefined;
+      const receiver = (candidate.kind as string).startsWith('receiver-');
+      if (!receiver && !aircraftId) return [];
       return [{
-        aircraftId,
-        flight: typeof candidate.flight === 'string' ? candidate.flight.slice(0, 16) : undefined,
+        aircraftId: receiver ? undefined : aircraftId,
+        flight: !receiver && typeof candidate.flight === 'string' ? candidate.flight.slice(0, 16) : undefined,
         id: candidate.id,
         kind: candidate.kind as RadarEventKind,
         read: candidate.read === true,
-        registration: typeof candidate.registration === 'string' ? candidate.registration.slice(0, 16) : undefined,
+        registration: !receiver && typeof candidate.registration === 'string' ? candidate.registration.slice(0, 16) : undefined,
         timestamp: candidate.timestamp,
       }];
-    }).slice(0, 100);
+    });
+    return compactRadarEvents(events, now);
   } catch {
     return [];
   }
@@ -96,8 +142,10 @@ export function parseRadarEvents(value: string | null): RadarEvent[] {
 export function emptyRadarEventMonitorState(): RadarEventMonitorState {
   return {
     emergencies: new Map(),
-    favorites: new Set(),
+    favorites: new Map(),
     initialized: false,
+    hasBeenLive: false,
+    receiverNotified: false,
   };
 }
 
@@ -122,51 +170,67 @@ export function detectRadarEvents(
   receiverStatus: FeedStatus,
   preferences: RadarEventPreferences,
   timestamp = Date.now(),
+  visible = true,
 ): { events: RadarEvent[]; state: RadarEventMonitorState } {
-  const favorites = new Set(
-    aircraft.filter((item) => favoriteIds.has(item.id)).map((item) => item.id),
-  );
-  const emergencies = new Map<string, string>();
-  for (const item of aircraft) {
-    if (item.squawk === '7500' || item.squawk === '7600' || item.squawk === '7700') {
-      emergencies.set(item.id, item.squawk);
-    }
-  }
-
+  const gap = previous.lastObservedAt !== undefined
+    && (timestamp - previous.lastObservedAt > observationGapMs || timestamp < previous.lastObservedAt);
   const state: RadarEventMonitorState = {
-    emergencies,
-    favorites,
-    initialized: true,
-    receiverStatus,
+    ...previous,
+    emergencies: new Map(previous.emergencies),
+    favorites: new Map(previous.favorites),
+    lastObservedAt: timestamp,
   };
-  if (!previous.initialized) return { events: [], state };
-
   const events: RadarEvent[] = [];
-  if (preferences.favorite) {
-    for (const item of aircraft) {
-      if (favorites.has(item.id) && !previous.favorites.has(item.id)) {
-        events.push(eventForAircraft(item, 'favorite-entered', timestamp));
-      }
-    }
-  }
-  if (preferences.emergency) {
-    for (const item of aircraft) {
-      const squawk = emergencies.get(item.id);
-      if (squawk && previous.emergencies.get(item.id) !== squawk) {
-        events.push(eventForAircraft(item, `squawk-${squawk}` as RadarEventKind, timestamp));
-      }
-    }
-  }
-  if (preferences.receiver) {
-    if (receiverStatus === 'offline' && previous.receiverStatus !== 'offline') {
-      events.push({ id: `${timestamp}-receiver-offline`, kind: 'receiver-offline', read: false, timestamp });
-    } else if (
-      receiverStatus === 'live'
-      && (previous.receiverStatus === 'offline' || previous.receiverStatus === 'stale')
-    ) {
+
+  if (receiverStatus === 'live') {
+    if (previous.receiverNotified && preferences.receiver) {
       events.push({ id: `${timestamp}-receiver-online`, kind: 'receiver-online', read: false, timestamp });
     }
+    state.receiverOfflineSince = undefined;
+    state.receiverNotified = false;
+    state.hasBeenLive = true;
+  } else if (receiverStatus === 'offline' && visible && !gap && previous.hasBeenLive) {
+    state.receiverOfflineSince ??= timestamp;
+    if (!state.receiverNotified && timestamp - state.receiverOfflineSince >= receiverAlertDelayMs && preferences.receiver) {
+      events.push({ id: `${timestamp}-receiver-offline`, kind: 'receiver-offline', read: false, timestamp });
+      state.receiverNotified = true;
+    }
+  } else {
+    // A sleeping/background tab or a short delay isn't evidence of receiver failure.
+    state.receiverOfflineSince = undefined;
   }
 
+  if (receiverStatus !== 'live') {
+    state.initialized = false;
+    return { events, state };
+  }
+
+  const fresh = aircraft.filter((item) => Number.isFinite(item.seenSeconds) && item.seenSeconds <= 60);
+  const present = new Set(fresh.map((item) => item.id));
+  const baseline = !previous.initialized || gap;
+  state.favorites.clear();
+  for (const id of favoriteIds) {
+    const absentSince = previous.favorites.get(id);
+    // Already-present favorites on startup, recovery or newly favoriting aren't arrivals.
+    state.favorites.set(id, present.has(id) ? null
+      : baseline || absentSince === undefined ? timestamp - favoriteAbsenceMs : absentSince ?? timestamp);
+  }
+  for (const [id, emergency] of state.emergencies) {
+    if (!present.has(id) && timestamp - emergency.lastSeen >= favoriteAbsenceMs) state.emergencies.delete(id);
+  }
+  for (const item of fresh) {
+    const emergency = item.squawk === '7500' || item.squawk === '7600' || item.squawk === '7700';
+    const changed = emergency && previous.emergencies.get(item.id)?.squawk !== item.squawk;
+    if (emergency) state.emergencies.set(item.id, { squawk: item.squawk!, lastSeen: timestamp });
+    else state.emergencies.delete(item.id);
+    const absentSince = previous.favorites.get(item.id);
+    if (changed && preferences.emergency) {
+      events.push(eventForAircraft(item, `squawk-${item.squawk}` as RadarEventKind, timestamp));
+    } else if (!baseline && preferences.favorite && favoriteIds.has(item.id)
+      && absentSince !== undefined && absentSince !== null && timestamp - absentSince >= favoriteAbsenceMs) {
+      events.push(eventForAircraft(item, 'favorite-entered', timestamp));
+    }
+  }
+  state.initialized = true;
   return { events, state };
 }

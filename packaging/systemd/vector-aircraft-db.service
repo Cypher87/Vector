@@ -1,0 +1,22 @@
+[Unit]
+Description=Update Vector aircraft metadata
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=vector
+Group=vector
+WorkingDirectory=/opt/vector/app
+EnvironmentFile=/etc/vector/vector.env
+ExecStart=/opt/vector/runtime/node/bin/node --experimental-strip-types /opt/vector/app/scripts/update-aircraft-db.mjs
+TimeoutStartSec=180
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/vector
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

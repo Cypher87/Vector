@@ -1,11 +1,22 @@
 import type { RuntimeConfig, UnitSystem } from '../domain/aircraft';
 import { DEFAULT_RUNTIME_CONFIG } from '../runtime-config.ts';
+import { isAbsolute, resolve } from 'node:path';
 
 export type VectorServerConfig = {
+  source: 'local' | 'http' | 'vector';
+  liveDirectory: string;
+  historyDirectory: string;
+  databaseFile: string;
+  remoteBaseUrl?: URL;
   historyBaseUrl: URL;
   liveBaseUrl: URL;
   publicConfig: RuntimeConfig;
   tar1090BaseUrl: URL;
+};
+
+const absolutePath = (value: string, name: string) => {
+  if (!isAbsolute(value) || value.includes('\0')) throw new Error(`${name} must be an absolute filesystem path`);
+  return resolve(value);
 };
 
 const DEFAULT_LIVE_URL = 'http://127.0.0.1/tar1090/data/';
@@ -77,6 +88,11 @@ export function parseUpstreamBaseUrl(value: string, variableName: string): URL {
 export function readVectorServerConfig(
   environment: Record<string, string | undefined> = process.env,
 ): VectorServerConfig {
+  // Existing URL-only installations retain their transport; new installs need no tar1090.
+  const source = environment.READSB_SOURCE?.trim() || (environment.READSB_LIVE_URL?.trim() ? 'http' : 'local');
+  if (source !== 'local' && source !== 'http' && source !== 'vector') throw new Error('READSB_SOURCE must be local, http or vector');
+  const remoteBaseUrl = source === 'vector'
+    ? parseUpstreamBaseUrl(environment.READSB_REMOTE_URL?.trim() || '', 'READSB_REMOTE_URL') : undefined;
   const liveBaseUrl = parseUpstreamBaseUrl(
     environment.READSB_LIVE_URL?.trim() || DEFAULT_LIVE_URL,
     'READSB_LIVE_URL',
@@ -90,6 +106,11 @@ export function readVectorServerConfig(
     : new URL('../', liveBaseUrl);
 
   return {
+    source,
+    liveDirectory: absolutePath(environment.READSB_LIVE_DIR?.trim() || '/run/readsb', 'READSB_LIVE_DIR'),
+    historyDirectory: absolutePath(environment.READSB_HISTORY_DIR?.trim() || '/var/globe_history', 'READSB_HISTORY_DIR'),
+    databaseFile: absolutePath(environment.VECTOR_AIRCRAFT_DATABASE?.trim() || resolve('.vector/aircraft-db/aircraft.csv.gz'), 'VECTOR_AIRCRAFT_DATABASE'),
+    remoteBaseUrl,
     liveBaseUrl,
     historyBaseUrl,
     tar1090BaseUrl,

@@ -7,6 +7,7 @@ import type { RadarEvent, RadarEventPreferenceKey, RadarEventPreferences } from 
 import { VectorIcon, type VectorIconName } from './vector-icon';
 
 type EventCenterProps = {
+  availableAircraftIds: ReadonlySet<string>;
   events: RadarEvent[];
   language: Language;
   onClear: () => void;
@@ -41,7 +42,7 @@ const preferenceLabels: Record<RadarEventPreferenceKey, TranslationKey> = {
   receiver: 'eventReceiverAlerts',
 };
 
-export function EventCenter({ events, language, onClear, onMarkAllRead, onPreferenceChange, onSelectAircraft, preferences, unreadCount }: EventCenterProps) {
+export function EventCenter({ availableAircraftIds, events, language, onClear, onMarkAllRead, onPreferenceChange, onSelectAircraft, preferences, unreadCount }: EventCenterProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const t = (key: TranslationKey) => translate(language, key);
@@ -55,11 +56,25 @@ export function EventCenter({ events, language, onClear, onMarkAllRead, onPrefer
       if (open && event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
     };
     document.addEventListener('click', closeOnOutsideClick);
-    return () => document.removeEventListener('click', closeOnOutsideClick);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (!open || event.key !== 'Escape') return;
+      setOpen(false);
+      rootRef.current?.querySelector<HTMLButtonElement>('.event-center-button')?.focus();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('click', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
   }, [open]);
 
   useEffect(() => {
-    if (open && unreadCount > 0) onMarkAllRead();
+    const markVisibleRead = () => {
+      if (open && unreadCount > 0 && document.visibilityState !== 'hidden') onMarkAllRead();
+    };
+    markVisibleRead();
+    document.addEventListener('visibilitychange', markVisibleRead);
+    return () => document.removeEventListener('visibilitychange', markVisibleRead);
   }, [onMarkAllRead, open, unreadCount]);
 
   return (
@@ -81,7 +96,7 @@ export function EventCenter({ events, language, onClear, onMarkAllRead, onPrefer
           <header className="event-popover-header">
             <div>
               <strong>{t('eventCenter')}</strong>
-              <span>{events.length} {t(events.length === 1 ? 'eventSingular' : 'events')}</span>
+              <span>{t('eventLastDay')}</span>
             </div>
             <button aria-label={t('closeEventCenter')} onClick={() => setOpen(false)} type="button">
               <VectorIcon name="close" />
@@ -98,6 +113,7 @@ export function EventCenter({ events, language, onClear, onMarkAllRead, onPrefer
             )}
             {events.map((event) => {
               const aircraftLabel = event.flight ?? event.registration ?? event.aircraftId?.toUpperCase();
+              const selectable = event.aircraftId && availableAircraftIds.has(event.aircraftId);
               const content = (
                 <>
                   <span className={`event-kind-icon ${event.kind.startsWith('squawk') ? 'critical' : event.kind === 'receiver-online' ? 'success' : ''}`}>
@@ -105,13 +121,13 @@ export function EventCenter({ events, language, onClear, onMarkAllRead, onPrefer
                   </span>
                   <span className="event-copy">
                     <strong>{t(eventTranslation[event.kind])}</strong>
-                    <small>{aircraftLabel ?? t('eventReceiver')}</small>
+                    <small>{aircraftLabel ?? t('eventReceiver')}{event.aircraftId && !selectable ? ` · ${t('eventAircraftUnavailable')}` : ''}</small>
                   </span>
                   <time dateTime={new Date(event.timestamp).toISOString()}>{dateTime.format(event.timestamp)}</time>
-                  {event.aircraftId && <VectorIcon className="event-chevron" name="chevronRight" />}
+                  {selectable && <VectorIcon className="event-chevron" name="chevronRight" />}
                 </>
               );
-              return event.aircraftId ? (
+              return selectable ? (
                 <button className="event-row" key={event.id} onClick={() => { setOpen(false); onSelectAircraft(event.aircraftId!); }} type="button">
                   {content}
                 </button>

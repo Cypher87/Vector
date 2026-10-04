@@ -34,7 +34,7 @@ The period selector controls both the profile and leg trace: **30 minutes** by d
 
 Coverage depends on what the receiver recorded. A longer period cannot recover missing data, and gaps or stale measurements are not drawn as continuous measurements. A ground flag without an altitude does not imply zero elevation.
 
-History replay uses readsb/tar1090 `globe_history` files. In history mode, the profile uses only snapshots from the loaded replay window, never the current live trace. With insufficient points, it shows an unavailable-data state instead of an invented graph.
+History replay uses readsb's `globe_history` files, read directly or through a configured HTTP source; tar1090 is not required. Recording must be enabled in readsb. In history mode, the profile uses only snapshots from the loaded replay window, never the current live trace. With insufficient points, it shows an unavailable-data state instead of an invented graph.
 
 ## Appearance and layers
 
@@ -64,7 +64,11 @@ Synchronization is optional. Without it, preferences stay in the current browser
 
 Themes, map style, units, language, detail-panel behavior, map layers, trace period, filters, sorting, event preferences, and favorites synchronize live, normally within a second. Independent settings and favorite additions/removals merge separately; conflicting changes to the same setting use the last server-processed update.
 
-The event log and read state remain local, contain at most 100 entries, and can be cleared in the event center. Opening Vector does not generate arrival events for favorites already present.
+The event log and read state remain local and can be cleared in the event center. It keeps the latest notification per aircraft/event type and one receiver-status row, for up to 24 hours and 100 entries. Existing duplicates are consolidated automatically. Repeats update the row instead of adding another; a read notification only becomes unread again after a 30-minute quiet period.
+
+Favorites already present on startup, reconnection, returning after sleep, or when you add a favorite do not trigger arrival alerts. Brief reception gaps are ignored: a previously seen favorite must be absent from fresh live data for five minutes before its return counts again. New emergency squawks are detected immediately from fresh data, including on startup and in background tabs; different emergency codes remain separate alerts. An emergency takes precedence over a simultaneous favorite arrival.
+
+Receiver notifications require at least 30 seconds continuously offline after an established live connection, with the tab visible. Short delays and browser sleep do not generate recovery-only messages. Recovery updates the outage row without adding another unread notification. Notifications for aircraft no longer in the live view remain readable but are not clickable.
 
 ### Manage devices
 

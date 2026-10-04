@@ -42,3 +42,14 @@ test('application commands run from the Vector checkout', async () => {
   );
   assert.match(installer, /run_as_vector "\$VECTOR_APP" pnpm build/);
 });
+
+test('installer uses the guided migration, serializes runs and protects privileged helper code', async () => {
+  const installer = await readFile(installerUrl, 'utf8');
+  assert.match(installer, /flock -n 9/);
+  assert.match(installer, /install -d -o root -g root -m 0755 "\$VECTOR_ROOT"/);
+  assert.match(installer, /install -d -o root -g root -m 0755 \/usr\/local\/lib\/vector/);
+  assert.match(installer, /migrate-install\.mjs "\$\{MIGRATION_ARGS\[@\]\}"/);
+  assert.ok(installer.indexOf('--recover-pending') < installer.indexOf('apt-get update'));
+  assert.ok(installer.indexOf('migrate-install.mjs --detach') < installer.indexOf('rm -rf -- "$VECTOR_ROOT"'));
+  assert.match(installer, /--rollback\) ACTION='rollback'/);
+});

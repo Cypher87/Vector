@@ -1,11 +1,11 @@
 # Architectuur — Vector ADS-B Radar
 
 Status: huidige implementatie en groeirichting
-Datum: 14 september 2026
+Datum: 4 oktober 2026
 
 ## Doel
 
-Vector is een zelfstandig draaiende webinterface boven op readsb/tar1090. readsb blijft verantwoordelijk voor ontvangst, decoding en het publiceren van JSON-data. Vector verzorgt kaartweergave, zoeken, filtering, selectie, details en gebruikersvoorkeuren.
+Vector is een zelfstandig draaiende webinterface boven op readsb. tar1090 is optioneel. readsb blijft verantwoordelijk voor ontvangst, decoding, traces, replayopnames en het publiceren van JSON-data. Vector verzorgt veilige bestandstoegang, metadata, kaartweergave, zoeken, filtering, selectie, details en gebruikersvoorkeuren.
 
 Belangrijke uitgangspunten:
 
@@ -23,7 +23,8 @@ Belangrijke uitgangspunten:
 | Applicatie | React 19 + TypeScript |
 | Runtime/build | Vinext op Vite, als standalone Node-server |
 | Kaart | MapLibre GL JS |
-| Databron | readsb JSON via servergeconfigureerde, begrensde proxy |
+| Databron | lokale readsb-bestanden, bestaande HTTP-bron of externe Vector; dezelfde begrensde API |
+| Vliegtuigdatabase | apart bijgewerkte CSV van tar1090-db, buiten de repository |
 | Styling | globale CSS met responsive layout en CSS-variabelen |
 | Voorkeuren | browseropslag, optioneel gesynchroniseerd via anonieme apparaatkoppeling |
 | Synchronisatie | tijdelijke 6-tekenkoppelcode en lange HTTP-only apparaatsleutel |
@@ -33,8 +34,10 @@ Belangrijke uitgangspunten:
 ```mermaid
 flowchart LR
     SDR[SDR / netwerkfeeds] --> R[readsb]
-    R -->|receiver.json en aircraft.json| W[HTTP-server]
-    W -->|servergeconfigureerde upstream| P[Vector readsb-proxy]
+    R -->|JSON, traces en replay| F[Lokale bestanden]
+    F --> P[Vector readsb-API]
+    DB[Vliegtuigdatabase] --> P
+    W[Optionele HTTP-bron of externe Vector] --> P
     P --> V[Vector-client]
     V --> M[MapLibre-kaart]
     V --> UI[Lijst, filters en details]
@@ -141,8 +144,10 @@ Bronnen en attributie:
 ## Runtimeconfiguratie
 
 ```ini
-READSB_LIVE_URL=http://127.0.0.1/tar1090/data/
-READSB_HISTORY_URL=http://127.0.0.1/tar1090/globe_history/
+READSB_SOURCE=local
+READSB_LIVE_DIR=/run/readsb
+READSB_HISTORY_DIR=/var/globe_history
+VECTOR_AIRCRAFT_DATABASE=/var/lib/vector/aircraft-db/aircraft.csv.gz
 VECTOR_SITE_NAME=Vector
 VECTOR_RECEIVER_TITLE="Local readsb receiver"
 VECTOR_UNIT_SYSTEM=metric
@@ -156,10 +161,17 @@ PORT=3000
 
 De Debian-installatie bewaart deze waarden in `/etc/vector/vector.env`, buiten de Git-checkout. Dezelfde build kan zo voor een andere receiver worden gebruikt en updates overschrijven de lokale instellingen niet. Als de receivercoördinaten in de environment staan, hebben die voorrang op `receiver.json`; zonder deze variabelen gebruikt Vector de positie uit `receiver.json`. De browser ontvangt alleen publieke labels, receivercoördinaten en lokale proxyroutes; upstream-URLs blijven server-side.
 
+`readsb-source.ts` kiest het transport; de client blijft `/api/readsb?source=live|history&path=...` en `/api/aircraft-metadata?ids=...` gebruiken. `local` leest alleen reguliere bestanden onder vast ingestelde roots en decodeert gzip. `http` behoudt bestaande directory-URLs en de tar1090-metadatafallback. `vector` gebruikt uitsluitend de vaste APIs van een andere Vector-server; doorgeschakelde proxyketens worden geweigerd. Bestaande URL-configuraties zonder `READSB_SOURCE` blijven HTTP gebruiken.
+
+De lokale vliegtuigdatabase wordt dagelijks via een aparte systemd-timer opgehaald, volledig gevalideerd en atomair vervangen. Vector vult alleen ontbrekende metadata in live snapshots aan; posities, hoogtes en aanwezige readsb-metadata blijven ongewijzigd. Replay krijgt metadata via dezelfde lookup. Een mislukte update bewaart de laatst geldige database. Zie [standalone installatie en migratie](STANDALONE.md).
+
+De installer detecteert de actieve readsb-service en migreert een lokale HTTP-bron automatisch naar bestandstoegang. `scripts/migrate-install.mjs` gebruikt een afgeschermd hersteljournaal, tijdelijke configuratie en controles onder de Vector-servicegebruiker. Alleen ontbrekende uitvoeropties in een herkende `JSON_OPTIONS`-configuratie worden aangepast; de noodzakelijke readsb-herstart vraagt toestemming. ACLs en een root-beheerde opstarthelper regelen blijvende leestoegang. Instellingen worden bij een mislukte controle hersteld zonder opnames te verwijderen. Nieuwe, door Vector aangemaakte opnameopslag krijgt zeven dagen bewaartermijn; bestaande opnamepaden en bewaarbeleid blijven intact.
+
 ## Betrouwbaarheid en veiligheid
 
 - clientverzoeken bevatten alleen een bronsoort en een gevalideerd relatief pad;
-- alleen `aircraft.json`, `receiver.json`, recente traces en geldige replaypaden zijn toegestaan;
+- alleen `aircraft.json`, `receiver.json`, `outline.json`, recente/volledige traces en geldige replaypaden zijn toegestaan;
+- lokale reads weigeren traversal, symlinks onder de ingestelde roots en speciale bestanden;
 - upstream origins komen uitsluitend uit serverconfiguratie; redirects, credentials en traversal worden geweigerd;
 - receiververzoeken hebben een time-out en een maximale responsgrootte;
 - onbekende en ontbrekende JSON-velden veroorzaken geen volledige UI-fout;
@@ -185,7 +197,7 @@ Bij grotere receiverclusters kan de huidige snapshotfeed achter dezelfde interfa
 
 Een release is bruikbaar wanneer een gebruiker met één configuratiebestand:
 
-- verbinding maakt met een bestaande readsb/tar1090-datamap;
+- verbinding maakt met readsb via lokale bestanden, HTTP of een externe Vector-server;
 - live vliegtuigen op kaart en in lijst ziet;
 - kan zoeken, sorteren, filteren, selecteren en centreren;
 - details, route, foto en trace ziet wanneer die beschikbaar zijn;

@@ -27,8 +27,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm typecheck
+      - run: sudo apt-get update && sudo apt-get install -y acl
       - run: pnpm test
       - run: pnpm build
+      - run: bash -n scripts/install-debian.sh
+      - run: pnpm test:standalone
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v6
