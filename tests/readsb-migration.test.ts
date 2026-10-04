@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, unlink, statfs, rename, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, unlink, statfs, rename, symlink, chmod, readdir, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseEnv } from 'node:util';
 import { execFileSync } from 'node:child_process';
-import { dataDirectory, argumentValue, patchEnvironment, planReadsb, readerAcl, migrationSettings } from '../scripts/lib/readsb-migration.mjs';
+import { dataDirectory, argumentValue, patchEnvironment, planReadsb, readerAcl, readerCanAccess, migrationSettings } from '../scripts/lib/readsb-migration.mjs';
 import { MigrationFiles, snapshot, atomicWrite } from '../scripts/lib/migration-files.mjs';
 import { install } from '../scripts/migrate-install.mjs';
 import { grantReadAccess, restoreAccess } from '../scripts/readsb-access.mjs';
@@ -75,6 +75,20 @@ test('read-only ACLs do not widen masked permissions for other users or groups',
   assert.match(readerAcl(before, 900, false), /^user:900:r--$/m);
 });
 
+test('existing reader access respects owner, named user, group and mask precedence', () => {
+  const info = { uid: 100, gid: 200 };
+  const publicAcl = 'user::rwx\ngroup::r-x\nother::r-x\n';
+  assert.equal(readerCanAccess(publicAcl, info, 900, [], true), true);
+  const restricted = 'user::rwx\ngroup::r-x\nother::---\n';
+  assert.equal(readerCanAccess(restricted, info, 900, [], true), false);
+  assert.equal(readerCanAccess(restricted, info, 900, [200], true), true);
+  assert.equal(readerCanAccess(`${publicAcl}user:900:---\nmask::rwx\n`, info, 900, [], true), false);
+  assert.equal(readerCanAccess(`${publicAcl}mask::---\n`, info, 900, [200], true), false);
+  assert.equal(readerCanAccess(publicAcl.replace('user::rwx', 'user::---'), info, 100, [], true), false);
+  assert.equal(readerCanAccess('user::rwx\ngroup::---\ngroup:300:r--\ngroup:400:--x\nmask::r-x\nother::---\n', info, 900, [300, 400], true), true);
+  assert.equal(readerCanAccess('user::rwx\ngroup::---\nother::--x\n', info, 900, [], true, true), true);
+});
+
 test('write-ahead backup restores original files and refuses to overwrite later edits', async () => {
   const root = await mkdtemp(join(tmpdir(), 'vector-migration-files-'));
   try {
@@ -113,11 +127,11 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
   const io = {
     log: () => {}, sleep: async () => {},
     ask: async () => { calls.push('question'); return state.choice; },
-    readFile: async (path: string) => path.startsWith('/proc/') ? `${state.argv.join('\0')}\0` : readFile(map(path), 'utf8'),
+    readFile: async (path: string) => path.startsWith('/proc/5678/') ? '/usr/bin/python3\0/usr/share/readsb-mqtt/main.py\0' : path.startsWith('/proc/') ? `${state.argv.join('\0')}\0` : readFile(map(path), 'utf8'),
     snapshot: (path: string) => snapshot(map(path)),
     atomicWrite: (path: string, content: string) => atomicWrite(map(path), content),
     lstat: (path: string) => lstat(map(path)),
-    realpath: async () => '/usr/bin/readsb',
+    realpath: async (path: string) => path.startsWith('/proc/5678/') ? '/usr/bin/python3' : '/usr/bin/readsb',
     mkdir: (path: string, options: { recursive: boolean; mode: number }) => mkdir(map(path), options),
     unlink: (path: string) => unlink(map(path)),
     chown: async () => {}, statfs: () => statfs(root), MigrationFiles: Files,
@@ -127,7 +141,7 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
       if (command === 'id') return '900\n';
       if (command === 'systemctl') {
         if (args[0] === 'list-units') return state.services.map((name) => `${name} loaded active running readsb`).join('\n');
-        if (args[0] === 'show') return 'MainPID=1234\nUser=readsb\nGroup=readsb\nDynamicUser=no\nRootDirectory=\n';
+        if (args[0] === 'show') return `MainPID=${args[1] === 'readsb-mqtt.service' ? 5678 : 1234}\nUser=readsb\nGroup=readsb\nDynamicUser=no\nRootDirectory=\n`;
         if (args[0] === 'cat') return unit;
         if (args[0] === 'restart' && args[1] === 'readsb.service') state.argv = [...argv, ...(parseEnv(await readFile(map('/etc/default/readsb'), 'utf8')).JSON_OPTIONS || '').split(/\s+/)];
         if (['is-active', 'is-enabled'].includes(args[0]) && args.at(-1) !== 'vector.service') throw new Error('not active');
@@ -169,7 +183,7 @@ test('Linux permission helper grants inheritable read-only access and ACL remova
   const root = await mkdtemp(join(tmpdir(), 'vector-acl-'));
   try {
     await writeFile(join(root, 'aircraft.json'), '{}', { mode: 0o600 });
-    const execute = async (command: string, args: string[], input?: string) => execFileSync(command, args, { input, encoding: 'utf8' });
+    const execute = async (command: string, args: string[], input?: string) => command === 'id' ? '' : execFileSync(command, args, { input, encoding: 'utf8' });
     const changes: string[] = [];
     await grantReadAccess({ uid: 77777, roots: [root] }, execute, async (entry: { path: string }) => { changes.push(entry.path); });
     assert.ok(changes.includes(join(root, 'aircraft.json')));
@@ -184,7 +198,7 @@ test('Linux permission helper grants inheritable read-only access and ACL remova
 
 test('Linux permission writes stay on their opened inode during symlink replacement and rollback preserves later changes', { skip: process.platform !== 'linux' }, async () => {
   const root = await mkdtemp(join(tmpdir(), 'vector-acl-race-'));
-  const execute = async (command: string, args: string[], input?: string) => execFileSync(command, args, { input, encoding: 'utf8' });
+  const execute = async (command: string, args: string[], input?: string) => command === 'id' ? '' : execFileSync(command, args, { input, encoding: 'utf8' });
   try {
     const data = join(root, 'data');
     const victim = join(root, 'private');
@@ -214,6 +228,63 @@ test('Linux permission writes stay on their opened inode during symlink replacem
     await restoreAccess(fileEntry, execute);
     assert.doesNotMatch(await execute('getfacl', ['-cpn', path]), /user:77777/);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Linux readable receiver output works without any setfacl calls, including on ACL-less filesystems', { skip: process.platform !== 'linux' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'vector-readable-'));
+  try {
+    await chmod(root, 0o755);
+    await writeFile(join(root, 'aircraft.json'), '{}', { mode: 0o644 });
+    await mkdir(join(root, 'traces'), { mode: 0o755 });
+    const execute = async (command: string, args: string[]) => {
+      assert.notEqual(command, 'setfacl', 'Existing readable output must not require ACL support');
+      return command === 'id' ? '' : execFileSync(command, args, { encoding: 'utf8' });
+    };
+    const changes: string[] = [];
+    await grantReadAccess({ uid: 77777, roots: [root] }, execute, async (entry) => { changes.push(entry.path); });
+    assert.deepEqual(changes, []);
+    assert.equal((await lstat(root)).mode & 0o777, 0o755);
+    assert.equal((await lstat(join(root, 'aircraft.json'))).mode & 0o777, 0o644);
+    // A later readsb-style atomic replacement remains readable without default ACLs.
+    await writeFile(join(root, 'next.json'), '{}', { mode: 0o644 });
+    await rename(join(root, 'next.json'), join(root, 'aircraft.json'));
+    await grantReadAccess({ uid: 77777, roots: [root] }, execute);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('Linux unsupported ACLs fail on a disposable probe without modifying receiver permissions', { skip: process.platform !== 'linux' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'vector-no-acl-'));
+  try {
+    await chmod(root, 0o755);
+    const file = join(root, 'aircraft.json');
+    await writeFile(file, '{}', { mode: 0o600 });
+    const execute = async (command: string, args: string[]) => {
+      if (command === 'id') return '';
+      if (command === 'setfacl') {
+        const target = await realpath(args.at(-1)!);
+        assert.match(target, /\.vector-acl-check-/);
+        await chmod(args.at(-1)!, 0o640); // Reproduce setfacl's mode-bit fallback on unsupported filesystems.
+        throw new Error('Operation not supported');
+      }
+      return execFileSync(command, args, { encoding: 'utf8' });
+    };
+    const changes: string[] = [];
+    await assert.rejects(() => grantReadAccess({ uid: 77777, roots: [root] }, execute, async (entry) => { changes.push(entry.path); }), /Cannot grant Vector read access.*aircraft\.json.*ACL setup is unavailable/);
+    assert.deepEqual(changes, []);
+    assert.equal((await lstat(root)).mode & 0o777, 0o755);
+    assert.equal((await lstat(file)).mode & 0o777, 0o600);
+    assert.deepEqual(await readdir(root), ['aircraft.json']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('auxiliary readsb-mqtt is excluded before presenting receiver choices', async () => {
+  const sim = await simulation();
+  try {
+    sim.state.services = ['readsb-mqtt.service', 'readsb.service'];
+    await sim.migrate();
+    assert.equal(sim.calls.includes('question'), false);
+    assert.equal(JSON.parse(await readFile(sim.map('/etc/vector/readsb-access.json'), 'utf8')).service, 'readsb.service');
+  } finally { await sim.cleanup(); }
 });
 
 test('missing recording options ask once, preserve receiver settings and install bounded retention only for a new directory', async () => {

@@ -1,10 +1,11 @@
-import { lstat, readFile, readdir, realpath, open } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath, open, unlink } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { dataDirectory, readerAcl } from './lib/readsb-migration.mjs';
+import { dataDirectory, readerAcl, readerCanAccess } from './lib/readsb-migration.mjs';
 
 const execute = promisify(execFile);
 // ACL tools operate on an opened inode, never a receiver-controlled pathname that
@@ -25,6 +26,25 @@ async function pinned(path, operation) {
 
 const normalizeAcl = (text) => text.split('\n').map((line) => line.split('#')[0].trim()).filter(Boolean).sort().join('\n');
 
+// setfacl can change ordinary mode bits even when returning EOPNOTSUPP.
+// Probe an empty, disposable file on the same filesystem before touching data.
+async function checkAclSupport(path, info, run) {
+  await pinned(info.isDirectory() ? path : dirname(path), async (directory, parent) => {
+    if (parent.dev !== info.dev) throw new Error(`Cannot safely test ACL support for ${path}`);
+    const probe = join(directory, `.vector-acl-check-${randomUUID()}`);
+    let handle;
+    try {
+      handle = await open(probe, 'wx', 0o600);
+      await run('setfacl', ['-m', 'u:0:r--', '--', `/proc/${process.pid}/fd/${handle.fd}`]);
+    } catch (error) {
+      throw new Error(`Cannot grant Vector read access to ${path}: ACL setup is unavailable (${error.message}). Existing permissions were not changed; use a filesystem with POSIX ACL support or provide read access to the vector user.`);
+    } finally {
+      await handle?.close();
+      if (handle) await unlink(probe).catch((error) => { if (error.code !== 'ENOENT') throw error; });
+    }
+  });
+}
+
 export async function restoreAccess(entry, run) {
   await pinned(entry.path, async (descriptor, info) => {
     if (entry.ino !== info.ino || entry.dev !== info.dev) return; // readsb atomically replaced it
@@ -37,9 +57,20 @@ export async function restoreAccess(entry, run) {
 /** @param {(entry: {path: string, before: string, after: string, ino: number, dev: number}) => Promise<void>} [remember] */
 export async function grantReadAccess(spec, run, remember = async () => {}) {
   if (!Number.isInteger(spec.uid) || spec.uid <= 0 || !Array.isArray(spec.roots) || spec.roots.length > 3) throw new Error('Invalid reader configuration');
+  const groupText = (await run('id', ['-G', String(spec.uid)])).trim();
+  const groups = groupText ? groupText.split(/\s+/).map(Number) : [];
+  if (groups.some((group) => !Number.isInteger(group) || group < 0)) throw new Error('Invalid reader groups');
+  const supportedDevices = new Set();
   let visited = 0;
   const grant = async (path, directory, traverseOnly = false) => pinned(path, async (descriptor, info) => {
     const before = await run('getfacl', ['-cpn', '--', descriptor]);
+    // Public readsb output (usually 0755/0644) needs no ACL or default ACL.
+    // This also supports tmpfs/mounts whose kernel does not implement POSIX ACLs.
+    if (readerCanAccess(before, info, spec.uid, groups, directory, traverseOnly)) return;
+    if (!supportedDevices.has(info.dev)) {
+      await checkAclSupport(path, info, run);
+      supportedDevices.add(info.dev);
+    }
     const after = readerAcl(before, spec.uid, directory, traverseOnly);
     if (normalizeAcl(before) !== normalizeAcl(after)) {
       await remember({ path, before, after, ino: info.ino, dev: info.dev });

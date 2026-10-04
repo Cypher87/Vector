@@ -92,6 +92,23 @@ export function planReadsb({ argv, help, unit, defaults }) {
     defaults: patchEnvironment(defaults, { JSON_OPTIONS: `${options} ${additions.join(' ')}`.trim() }) };
 }
 
+/** POSIX ACL precedence matters: matching owner/user/group entries override other. */
+export function readerCanAccess(acl, info, uid, groups, directory, traverseOnly = false) {
+  const entries = acl.split('\n').map((line) => line.split('#')[0].trim().split(':')).filter((entry) => entry.length === 3);
+  const bits = (value = '') => (value.includes('r') ? 4 : 0) | (value.includes('w') ? 2 : 0) | (value.includes('x') ? 1 : 0);
+  const permission = (kind, who = '') => entries.find((entry) => entry[0] === kind && entry[1] === who)?.[2];
+  const mask = permission('mask') === undefined ? 7 : bits(permission('mask'));
+  let effective;
+  if (info.uid === uid) effective = bits(permission('user'));
+  else if (permission('user', String(uid)) !== undefined) effective = bits(permission('user', String(uid))) & mask;
+  else {
+    const matchingGroups = entries.filter(([kind, who]) => kind === 'group' && groups.includes(who ? Number(who) : info.gid));
+    effective = matchingGroups.length ? matchingGroups.reduce((total, entry) => total | bits(entry[2]), 0) & mask : bits(permission('other'));
+  }
+  const needed = traverseOnly ? 1 : directory ? 5 : 4;
+  return (effective & needed) === needed;
+}
+
 /** Preserve effective access for existing ACL entries when extending the mask. */
 export function readerAcl(acl, uid, directory, traverseOnly = false) {
   const lines = acl.split('\n').map((line) => line.split('#')[0].trim()).filter(Boolean);

@@ -15,7 +15,7 @@ Review the downloaded script before running it if desired. Once installation com
 1. Detect the running readsb systemd service and its actual live/history output paths.
 2. Back up configuration and affected service files in root-only `/var/lib/vector-installer/`.
 3. Prepare the aircraft database, preserving the last valid copy if downloading fails.
-4. Grant Vector narrowly scoped read access using ACLs. A root-owned startup helper restores permissions when readsb recreates `/run` data after a restart.
+4. Reuse existing read permissions; readable output needs no ACL support (including on ACL-less tmpfs mounts). For restricted output, test ACL support before granting narrowly scoped access. A root-owned startup helper checks access when readsb recreates `/run` data after a restart.
 5. Add missing recording/output options to the standard `/etc/default/readsb` configuration, if needed. Receiver device, gain, network, MLAT, feeder, and location settings are preserved.
 6. Switch `/etc/vector/vector.env` to direct file access, preserving other settings. Staged settings are validated before replacing the live configuration.
 7. Install/start Vector and the daily metadata updater. Verify that the API returns fresh receiver data, not merely that the process is running.
@@ -44,6 +44,8 @@ sudo bash /tmp/vector-install.sh --keep-source
 ```
 
 Automatic option changes support the conventional readsb systemd layout using `/etc/default/readsb` and `JSON_OPTIONS`. Custom startup wrappers, isolated/container receivers, unsupported readsb builds, and separately relocated full traces are not rewritten blindly. An unsupported configuration stops with an explanation before publishing new settings; an existing HTTP source can still be kept with `--keep-source`.
+
+Only running readsb decoder processes count as receivers; companion services such as MQTT exporters are excluded. If a data path is genuinely unreadable and its filesystem cannot grant ACL access, installation stops with that path and restores configuration. It does not remount filesystems, grant write access, or make private data public.
 
 ## Recovery
 

@@ -3,7 +3,7 @@ import { createInterface } from 'node:readline/promises';
 import { networkInterfaces, hostname } from 'node:os';
 import { parseEnv } from 'node:util';
 import { readFile, mkdir, chown, lstat, realpath, statfs, unlink } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { configPath, ownedHistory, planReadsb, migrationSettings, patchEnvironment, serviceName, dataDirectory } from './lib/readsb-migration.mjs';
@@ -57,6 +57,9 @@ async function receiver(service, io) {
   if (info.DynamicUser === 'yes' || info.RootDirectory) throw new Error('Isolated receivers need a remote Vector/HTTP source');
   const argv = (await readFile(`/proc/${info.MainPID}/cmdline`, 'utf8')).split('\0').filter(Boolean);
   const executable = await realpath(`/proc/${info.MainPID}/exe`);
+  if (basename(executable) !== 'readsb' || !argv.length || basename(argv[0]) !== 'readsb') {
+    throw new Error('Not a readsb decoder; skipping auxiliary service');
+  }
   const user = info.User || 'root';
   const uid = Number((await run('id', ['-u', user])).trim());
   const gid = Number((await run('id', ['-g', user])).trim());
