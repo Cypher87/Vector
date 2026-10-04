@@ -5,7 +5,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
-  workers: 2,
+  // Software WebGL rendering competes for the limited CPU capacity of CI runners.
+  workers: process.env.CI ? 1 : 2,
   timeout: 45_000,
   expect: { timeout: 10_000 },
   reporter: [['list'], ['html', { open: 'never' }]],

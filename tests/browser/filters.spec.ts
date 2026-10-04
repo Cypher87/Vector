@@ -141,6 +141,40 @@ test('combined filters, ranges, saved views and units remain consistent', async 
   await expect(filter.getByRole('spinbutton', { name: 'Altitude · From (ft)', exact: true })).toHaveValue('3280.84');
 });
 
+test('reload restores saved filters and units after a temporary configuration failure', async ({ page, radar, isMobile }) => {
+  if (isMobile) await page.setViewportSize({ width: 360, height: 780 });
+  await page.goto('/');
+  await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);
+  const savedFilters = {
+    categories: ['airliner', 'balloon'], altitude: { min: 3_000, max: 23_000 },
+    speed: { min: 54, max: null }, distance: 25,
+  };
+  // Seed once, not in an init script: reload must preserve actual stored preferences.
+  await page.evaluate((filters) => {
+    localStorage.setItem('vector.aircraftFilters', JSON.stringify(filters));
+    localStorage.setItem('vector.unitSystem', 'aeronautical');
+    localStorage.setItem('vector.aircraftSort', 'callsign-asc');
+  }, savedFilters);
+  radar.configFailures = 1;
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith('/api/config') && response.status() === 503),
+    page.reload(),
+  ]);
+  // Check feed recovery separately so a startup failure isn't reported as a filter bug.
+  await expect(page.locator('.brand')).toContainText('Vector test');
+  await expect(page.locator('footer [role="status"]')).toHaveText('Receiver online');
+  await expect(page.locator('.aircraft-map-marker')).toHaveCount(1);
+  await expect(page.locator('.aircraft-map-marker')).toContainText('VECTOR');
+  if (isMobile) await page.locator('.mobile-list-button').click();
+  await expect(page.locator('.active-filter-chip')).toHaveCount(4);
+  await expect(page.locator('.sort-select')).toHaveValue('callsign-asc');
+  await page.locator('.filter-menu > summary').click();
+  await openFilterGroup(page, 'flight');
+  await expect(page.getByRole('spinbutton', { name: 'Altitude · From (ft)', exact: true })).toHaveValue('3000');
+  await expect(page.getByRole('spinbutton', { name: 'Altitude · To (ft)', exact: true })).toHaveValue('23000');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('vector.aircraftFilters')!))).toMatchObject(savedFilters);
+});
+
 test('advanced filters exclude the selected aircraft without losing its details', async ({ page, isMobile }) => {
   await page.goto('/');
   await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);
