@@ -5,6 +5,15 @@ import type { AircraftWake } from './aircraft-wake.ts';
 export type WakePoint = { x: number; y: number };
 export type WakeLane = { path: string; end: WakePoint; length: number };
 const iconPixelsPerUnit = 32.4 / 40;
+const traceGeometry = new WeakMap<AircraftTracePoint, { position: AircraftPosition; olderPosition?: AircraftPosition; distance?: number }>();
+function geometry(point: AircraftTracePoint) {
+  let value = traceGeometry.get(point);
+  if (!value) {
+    value = { position: [point.longitude, point.latitude] };
+    traceGeometry.set(point, value);
+  }
+  return value;
+}
 
 /** Match the resized silhouette's engines, without scaling geographic history or stroke widths. */
 export const aircraftWakeOrigins = (wake: AircraftWake, iconScale: number): [number, number][] =>
@@ -29,17 +38,22 @@ export function aircraftWakeRoute(
       || !Number.isFinite(point.latitude) || Math.abs(point.latitude) > 90
       || !Number.isFinite(point.longitude) || Math.abs(point.longitude) > 180) break;
     if (!newer && now - point.timestamp > 15) break;
-    if (!newer && aircraftPositionDistanceMetres(position, [point.longitude, point.latitude]) > 2_500) break;
+    const coordinate = geometry(point).position;
+    if (!newer && aircraftPositionDistanceMetres(position, coordinate) > 2_500) break;
     if (newer) {
       const elapsed = newer.timestamp - point.timestamp;
       if (newer.startsLeg || elapsed > 15 || elapsed <= 0) break;
-      if (aircraftPositionDistanceMetres([point.longitude, point.latitude], [newer.longitude, newer.latitude])
-        > Math.max(2_000, elapsed * 1_200)) break;
+      const segment = geometry(newer);
+      if (segment.olderPosition !== coordinate) {
+        segment.olderPosition = coordinate;
+        segment.distance = aircraftPositionDistanceMetres(coordinate, segment.position);
+      }
+      if (segment.distance! > Math.max(2_000, elapsed * 1_200)) break;
     }
     newer = point;
     // Use the same wrapped world as the marker, including at the date line.
-    const longitude = position[0] + ((point.longitude - position[0] + 540) % 360) - 180;
-    const projected = project([longitude, point.latitude]);
+    const longitude = point.longitude + 360 * Math.round((position[0] - point.longitude) / 360);
+    const projected = project(longitude === point.longitude ? coordinate : [longitude, point.latitude]);
     const dx = projected.x - origin.x, dy = projected.y - origin.y;
     const local = { x: (dx * cos + dy * sin) / iconPixelsPerUnit, y: (-dx * sin + dy * cos) / iconPixelsPerUnit };
     if (!Number.isFinite(local.x) || !Number.isFinite(local.y)) break;

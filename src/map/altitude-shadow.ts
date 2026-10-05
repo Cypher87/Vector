@@ -63,17 +63,24 @@ export function altitudeShadowProjection(
   sun: SolarPosition,
   mapBearingDeg = 0,
 ): AltitudeShadowProjection {
-  if ((altitudeFt === undefined && !onGround) || sun.elevationDeg <= -0.833) {
+  if (altitudeFt === undefined && !onGround) {
     return { blurPx: 0, offsetXpx: 0, offsetYpx: 0, opacity: 0, scale: 1 };
   }
 
   const altitudeRatio = Math.min(maximumVisualAltitudeFt, Math.max(0, altitudeFt ?? 0)) / maximumVisualAltitudeFt;
   const normalizedAltitude = onGround ? 0 : Math.pow(altitudeRatio, 0.8);
-  const elevationRad = Math.max(3, Math.min(90, sun.elevationDeg)) * radians;
+  // At night this is a height cue, not a literal solar shadow. Blend through
+  // twilight to fixed north-west lighting; daylight keeps the actual sun.
+  const twilight = Math.max(0, Math.min(1, (-0.833 - sun.elevationDeg) / (6 - 0.833)));
+  const nightBlend = twilight * twilight * (3 - 2 * twilight);
+  const azimuthDelta = normalizeDegrees(315 - sun.azimuthDeg + 180) - 180;
+  const lightAzimuth = sun.azimuthDeg + azimuthDelta * nightBlend;
+  const lightElevation = sun.elevationDeg + (45 - sun.elevationDeg) * nightBlend;
+  const elevationRad = Math.max(3, Math.min(90, lightElevation)) * radians;
   const solarLengthFactor = Math.max(0.58, Math.min(1.55, 0.45 + 0.55 / Math.tan(elevationRad)));
   const baseDistance = onGround ? 0.6 : 1 + normalizedAltitude * 17;
   const distance = Math.min(19, baseDistance * solarLengthFactor);
-  const shadowBearing = normalizeDegrees(sun.azimuthDeg + 180 - mapBearingDeg) * radians;
+  const shadowBearing = normalizeDegrees(lightAzimuth + 180 - mapBearingDeg) * radians;
 
   return {
     blurPx: onGround ? 0.3 : 0.5 + normalizedAltitude * 1.8,

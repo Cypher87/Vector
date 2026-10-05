@@ -31,8 +31,9 @@ test(`${type} parallel trails retain equal visual weight at different headings i
       const x = 90 + (index % 2) * 180 + index * .13;
       const y = 80 + Math.floor(index / 2) * 220;
       Object.assign(marker.style, { left: `${x}px`, top: `${y}px`, transform: 'translate(-50%, -50%)' });
-      const icon = marker.querySelector<SVGSVGElement>('.map-aircraft-icon')!;
+      const icon = marker.querySelector<SVGSVGElement>('.aircraft-wake-svg')!;
       icon.style.transform = `rotate(${heading}deg) scale(1)`;
+      marker.querySelector<SVGSVGElement>('.map-aircraft-icon')!.style.transform = icon.style.transform;
       const gradient = icon.querySelector('linearGradient')!;
       gradient.id = `wake-review-${index}`;
       // Isolate pixel coverage with a straight reference route; geographic
@@ -124,7 +125,7 @@ test(`long curved trails remain light and continuous in ${tone}`, async ({ page,
     const marker = element.cloneNode(true) as HTMLElement;
     marker.querySelector('.map-plane-label')?.remove();
     Object.assign(marker.style, { left: '180px', top: '65px', transform: 'translate(-50%, -50%)' });
-    const icon = marker.querySelector<SVGSVGElement>('.map-aircraft-icon')!;
+    const icon = marker.querySelector<SVGSVGElement>('.aircraft-wake-svg')!;
     icon.style.transform = 'rotate(0deg) scale(1)';
     const gradients = icon.querySelectorAll('linearGradient');
     for (const [index, group] of [...icon.querySelectorAll('.aircraft-speed-wake > g')].entries()) {

@@ -16,7 +16,7 @@ test.beforeEach(async ({ page, radar }) => {
 
 test('map icon size eases with zoom, keeps the GPS anchor and leaves list icons and trail widths unchanged', async ({ page, radar }, testInfo) => {
   const marker = page.getByRole('button', { name: /^GROW,/ });
-  const body = marker.locator('.map-aircraft-icon > .aircraft-icon-body');
+  const body = marker.locator('.aircraft-map-symbol');
   const size = () => body.evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).a * 32.4);
   await expect.poll(size).toBeCloseTo(32.4, 2);
   const labelFont = await marker.locator('.map-plane-label strong').evaluate((element) => getComputedStyle(element).fontSize);
@@ -37,8 +37,8 @@ test('map icon size eases with zoom, keeps the GPS anchor and leaves list icons 
       const anchor = element.getBoundingClientRect();
       const receiver = document.querySelector('.receiver-map-marker')!.getBoundingClientRect();
       const favorite = element.querySelector('.favorite-map-target')!.getBoundingClientRect();
-      const scale = new DOMMatrix(getComputedStyle(body).transform).a;
-      const wake = icon.querySelector('.aircraft-speed-wake-base')!;
+      const scale = new DOMMatrix(getComputedStyle(element.querySelector('.aircraft-map-symbol')!).transform).a;
+      const wake = element.querySelector('.aircraft-speed-wake-base')!;
       const lane = wake.parentElement as unknown as SVGGraphicsElement;
       const engine = new DOMPoint(20, 34).matrixTransform(body.getScreenCTM()!);
       const trailStart = new DOMPoint(0, 0).matrixTransform(lane.getScreenCTM()!);
@@ -66,9 +66,9 @@ test('map icon size eases with zoom, keeps the GPS anchor and leaves list icons 
   expect(await propellerAnimation.evaluate((animation) => animation.playState)).toBe('running');
   // New feed contacts inherit the current zoom size, not the initial size.
   radar.extraAircraft.push({ ...radar.extraAircraft[0], hex: 'fed002', flight: 'NEW', lon: 4.82, lat: 52.31, t: 'AT76', desc: 'L2T' });
-  const newBody = page.getByRole('button', { name: /^NEW,/ }).locator('.map-aircraft-icon > .aircraft-icon-body');
+  const newBody = page.getByRole('button', { name: /^NEW,/ }).locator('.aircraft-map-symbol');
   await expect(newBody).toHaveCSS('transform', await body.evaluate((element) => getComputedStyle(element).transform));
-  await expect(page.locator('.aircraft-altitude-shadow-icon[data-shape="light"] > .aircraft-icon-body'))
+  await expect(page.locator('.aircraft-altitude-shadow-marker .aircraft-map-symbol').filter({ has: page.locator('[data-shape="light"]') }))
     .toHaveCSS('transform', await body.evaluate((element) => getComputedStyle(element).transform));
   await page.screenshot({ path: testInfo.outputPath('zoomed-aircraft-icons.png') });
   for (let step = 4; step >= 0; step--) {
@@ -79,29 +79,44 @@ test('map icon size eases with zoom, keeps the GPS anchor and leaves list icons 
   }
 });
 
-test('zoom sizing produces intermediate frames and respects reduced motion without disabling sizing', async ({ page }) => {
-  const body = page.getByRole('button', { name: /^GROW,/ }).locator('.map-aircraft-icon > .aircraft-icon-body');
-  const sample = page.evaluate(() => new Promise<number[]>((resolve) => {
-    document.querySelector('button[aria-label="Zoom in"]')!.addEventListener('click', () => {
-      const frames: number[] = [], start = performance.now();
-      const collect = () => {
-        const body = document.querySelector('.aircraft-map-marker.favorite .aircraft-icon-body')!;
-        frames.push(new DOMMatrix(getComputedStyle(body).transform).a);
-        if (performance.now() - start < 700) requestAnimationFrame(collect);
-        else resolve(frames);
-      };
-      collect();
-    }, { once: true, capture: true });
-  }));
-  await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
-  const frames = await sample;
-  const min = Math.min(...frames), max = Math.max(...frames);
-  expect(max - min).toBeGreaterThan(.04);
-  expect(frames.some((value) => value > min + .005 && value < max - .005)).toBe(true);
-  expect(frames.every((value, index) => index === 0 || value >= frames[index - 1] - .00001)).toBe(true);
+test('icons freeze during zoom, resize smoothly afterwards, and keep engine offsets aligned', async ({ page }) => {
+  const body = page.getByRole('button', { name: /^GROW,/ }).locator('.aircraft-map-symbol');
+  for (const [control, from, to] of [
+    ['Zoom in', 1, aircraftMapIconScale(8.2)], ['Zoom out', aircraftMapIconScale(8.2), 1],
+  ] as const) {
+    const sample = page.evaluate((control) => new Promise<{ scale: number; zooming: boolean; gap: number }[]>((resolve) => {
+      document.querySelector(`button[aria-label="${control}"]`)!.addEventListener('click', () => {
+        const frames: { scale: number; zooming: boolean; gap: number }[] = [], start = performance.now();
+        const collect = () => {
+          const marker = document.querySelector('.aircraft-map-marker.favorite')!;
+          const symbol = marker.querySelector('.aircraft-map-symbol')!;
+          const body = marker.querySelector<SVGGraphicsElement>('.aircraft-icon-body')!;
+          const lane = marker.querySelector('.aircraft-speed-wake-base')!.parentElement as unknown as SVGGraphicsElement;
+          const engine = new DOMPoint(20, 34).matrixTransform(body.getScreenCTM()!);
+          const tail = new DOMPoint(0, 0).matrixTransform(lane.getScreenCTM()!);
+          frames.push({ scale: new DOMMatrix(getComputedStyle(symbol).transform).a,
+            zooming: (document.querySelector('.maplibre-surface') as HTMLElement).dataset.cameraZooming === 'true',
+            gap: Math.hypot(engine.x - tail.x, engine.y - tail.y) });
+          if (performance.now() - start < 950) requestAnimationFrame(collect);
+          else resolve(frames);
+        };
+        requestAnimationFrame(collect);
+      }, { once: true, capture: true });
+    }), control);
+    await page.getByRole('button', { name: control, exact: true }).click();
+    const frames = await sample;
+    const zoomFrames = frames.filter((frame) => frame.zooming);
+    expect(zoomFrames.length).toBeGreaterThan(0);
+    expect(zoomFrames.every(({ scale }) => Math.abs(scale - from) < .00001)).toBe(true);
+    expect(frames.some(({ scale, zooming }) => !zooming && scale > Math.min(from, to) + .005 && scale < Math.max(from, to) - .005)).toBe(true);
+    expect(frames.every(({ scale }, i) => i === 0 || (to > from
+      ? scale >= frames[i - 1].scale - .00001 : scale <= frames[i - 1].scale + .00001))).toBe(true);
+    expect(Math.max(...frames.map((frame) => frame.gap))).toBeLessThan(.02);
+    await expect.poll(() => body.evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).a)).toBeCloseTo(to, 4);
+  }
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await expect.poll(() => body.evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).a))
-    .toBeCloseTo(aircraftMapIconScale(9.2), 4);
+    .toBeCloseTo(aircraftMapIconScale(8.2), 4);
   await expect(body.locator('.aircraft-icon-propeller')).toHaveCSS('animation-name', 'none');
 });

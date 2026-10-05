@@ -52,7 +52,7 @@ export function createAircraftIconElement() {
   return icon;
 }
 
-export function updateAircraftIconElement(icon: SVGSVGElement, aircraft: Aircraft, rotation: number) {
+export function updateAircraftIconElement(icon: SVGSVGElement, aircraft: Aircraft, rotation: number, wakeIcon?: SVGSVGElement) {
   const definition = aircraftIconDefinition(aircraft);
   if (icon.dataset.shape !== definition.name) {
     icon.replaceChildren();
@@ -62,8 +62,13 @@ export function updateAircraftIconElement(icon: SVGSVGElement, aircraft: Aircraf
     renderPaths(icon, definition);
     icon.style.setProperty('--icon-motion-phase', aircraftIconMotionPhase(aircraft.id));
   }
-  icon.style.transform = aircraftIconTransform(definition, rotation);
-  updateAircraftWakeElement(icon, aircraft, definition);
+  const transform = aircraftIconTransform(definition, rotation);
+  if (icon.style.transform !== transform) icon.style.transform = transform;
+  if (wakeIcon) {
+    if (wakeIcon.style.transform !== transform) wakeIcon.style.transform = transform;
+    wakeIcon.style.setProperty('--icon-motion-phase', aircraftIconMotionPhase(aircraft.id));
+    updateAircraftWakeElement(wakeIcon, aircraft, definition);
+  }
 }
 
 type AircraftIconProps = {

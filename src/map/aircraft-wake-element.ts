@@ -121,3 +121,52 @@ export function updateAircraftWakeRouteElement(
   const status = drawn ? 'measured' : 'pending';
   if (state.group.dataset.route !== status) state.group.dataset.route = status;
 }
+
+/** On busy maps, one shared canvas replaces hundreds of repainting SVGs.
+ * Use the same measured route, engine offsets, gradients and CSS-pixel widths.
+ * Only the faint dash animation rests while the camera is moving.
+ */
+export function drawAircraftWakeRoute(
+  context: CanvasRenderingContext2D, icon: SVGSVGElement, trace: readonly AircraftTracePoint[], timestamp: number,
+  position: AircraftPosition, project: (position: AircraftPosition) => WakePoint, rotation: number,
+  appearance: { lengthScale: number; middleOpacity: number; tailOpacity: number; opacity: number; color: string; flowTime: number }, iconScale: number,
+) {
+  const state = elements.get(icon);
+  if (!state?.wake) return false;
+  const wake = { ...state.wake, length: state.wake.length * appearance.lengthScale, origins: aircraftWakeOrigins(state.wake, iconScale) };
+  const route = aircraftWakeRoute(trace, timestamp, position, project, rotation, wake.length + 20 * iconScale);
+  const origin = project(position);
+  context.save();
+  context.translate(origin.x, origin.y);
+  context.rotate(rotation * Math.PI / 180);
+  context.scale(32.4 / 40, 32.4 / 40);
+  context.lineWidth = wake.width;
+  context.lineCap = 'round';
+  let drawn = false;
+  wake.origins.forEach(([x, y], index) => {
+    const lane = aircraftWakeLane(wake, index, route);
+    if (!lane.length) return;
+    drawn = true;
+    context.save();
+    context.translate(x - 20, y - 20);
+    const gradient = context.createLinearGradient(0, 0, lane.end.x, lane.end.y);
+    for (const [stop, alpha] of [[0, .42], [.45, appearance.middleOpacity], [.75, appearance.tailOpacity], [1, 0]]) {
+      gradient.addColorStop(stop, `rgba(${appearance.color}, ${alpha})`);
+    }
+    context.strokeStyle = gradient;
+    const path = new Path2D(lane.path);
+    context.globalAlpha = appearance.opacity * .45;
+    context.stroke(path);
+    context.globalAlpha = appearance.opacity * .08;
+    context.setLineDash([3, 8]);
+    context.lineDashOffset = -22 * (appearance.flowTime / 1_000 / wake.duration % 1);
+    context.stroke(path);
+    context.restore();
+  });
+  context.restore();
+  if (state.group) {
+    const status = drawn ? 'measured' : 'pending';
+    if (state.group.dataset.route !== status) state.group.dataset.route = status;
+  }
+  return drawn;
+}

@@ -175,16 +175,24 @@ button { color: inherit; }
 .aircraft-altitude-shadow-icon { width: 32.4px; height: 36px; color: #020709; }
 .aircraft-altitude-shadow-icon .aircraft-icon-main { fill: currentColor; stroke: rgba(2,7,9,.72); }
 .aircraft-altitude-shadow-icon .aircraft-icon-accent { display: none; }
-.aircraft-map-marker { --aircraft-color: #d5e1e4; --aircraft-marker-filter: drop-shadow(0 2px 3px rgba(19,38,43,.46)); position: absolute; width: calc(32px * var(--aircraft-icon-scale, 1)); height: calc(34px * var(--aircraft-icon-scale, 1)); padding: 0; display: grid; place-items: center; overflow: visible; border: 0; background: transparent; color: #d5e1e4; cursor: pointer; backface-visibility: hidden; will-change: transform; }
+.aircraft-map-marker { --aircraft-color: #d5e1e4; --aircraft-marker-filter: drop-shadow(0 2px 3px rgba(19,38,43,.46)); position: absolute; width: calc(32px * var(--aircraft-icon-scale, 1)); height: calc(34px * var(--aircraft-icon-scale, 1)); padding: 0; display: grid; place-items: center; overflow: visible; border: 0; background: transparent; color: #d5e1e4; cursor: pointer; }
 /* Keep shadow/selection glow off the wake, which is a sibling of the body. */
-.aircraft-map-marker > .map-aircraft-icon > .aircraft-icon-body,
+.aircraft-map-marker > .aircraft-map-symbol > .map-aircraft-icon > .aircraft-icon-body,
 .aircraft-map-marker > .map-plane-label,
 .aircraft-map-marker > .favorite-map-target { filter: var(--aircraft-marker-filter); }
 .aircraft-icon-svg { display: block; overflow: visible; color: inherit; transform-origin: 50% 50%; }
 .list-aircraft-icon, .detail-aircraft-icon { transition: transform .24s linear; }
 .map-aircraft-icon { width: 32.4px; height: 36px; color: var(--aircraft-color); backface-visibility: hidden; will-change: transform; }
-/* Scale the silhouette about its GPS anchor, not the geographic wake geometry. */
-.maplibre-surface .map-aircraft-icon > .aircraft-icon-body { transform-box: view-box; transform-origin: 50% 50%; transform: scale(var(--aircraft-icon-scale, 1)); }
+/* Composite the small silhouette separately; a changing long trail must not
+   invalidate the icon's raster or allocate an oversized GPU layer per plane. */
+.aircraft-map-symbol, .aircraft-wake-svg { position: absolute; left: 50%; top: 50%; width: 32.4px; height: 36px; margin-left: -16.2px; margin-top: -18px; }
+.aircraft-map-symbol { transform: scale(var(--aircraft-icon-scale, 1)); transform-origin: center; will-change: transform; }
+.aircraft-wake-svg { pointer-events: none; will-change: transform; backface-visibility: hidden; }
+.map-wake-canvas { position: absolute; inset: 0; pointer-events: none; display: none; }
+.maplibre-surface[data-wake-renderer="canvas"] .aircraft-wake-svg { display: none; }
+.maplibre-surface[data-wake-renderer="canvas"][data-wake-enabled="true"][data-icon-animation="running"][data-page-visible="true"] .map-wake-canvas { display: block; }
+.maplibre-surface[data-wake-renderer="canvas"] .aircraft-speed-wake-flow { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) { .map-wake-canvas { display: none !important; } }
 .aircraft-icon-main { fill: currentColor; stroke: #071115; stroke-linejoin: round; }
 .aircraft-icon-accent { fill: none; stroke: #071115; stroke-linecap: round; stroke-linejoin: round; }
 .map-aircraft-icon .aircraft-icon-main, .map-aircraft-icon .aircraft-icon-accent { stroke: #183137; }
