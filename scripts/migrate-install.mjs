@@ -253,10 +253,13 @@ export async function install({ yes = false, keepSource = false } = {}, io = sys
     }
     log((await asVector('check-readsb.mjs', stagedConfig, io)).trim());
     await transaction.write(configPath, candidate, 0o640, { uid: 0, gid });
-    for (const name of ['vector.service', 'vector-aircraft-db.service', 'vector-aircraft-db.timer']) {
+    const units = ['vector.service', 'vector-aircraft-db.service', 'vector-aircraft-db.timer'];
+    for (const name of units) {
       await transaction.write(join(unitRoot, name), await readFile(join(app, 'packaging/systemd', name), 'utf8'));
     }
-    await run('systemd-analyze', ['verify', ...transaction.state.files.filter((file) => file.path.startsWith(`${unitRoot}/`) && /\.(?:service|timer)$/.test(file.path)).map((file) => file.path)]);
+    if (transaction.state.ownedHistory) units.push('vector-readsb-history-clean.service', 'vector-readsb-history-clean.timer');
+    // The rollback journal omits unchanged files; repeat installs must still verify every unit.
+    await run('systemd-analyze', ['verify', ...units.map((name) => join(unitRoot, name))]);
     await run('systemctl', ['daemon-reload']);
     await run('systemctl', ['enable', '--now', 'vector-aircraft-db.timer']);
     if (transaction.state.ownedHistory) await run('systemctl', ['enable', '--now', 'vector-readsb-history-clean.timer']);

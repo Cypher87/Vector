@@ -15,6 +15,9 @@ const unit = '[Service]\nEnvironmentFile=/etc/default/readsb\nExecStart=/usr/bin
 const defaults = '# Existing receiver settings\nRECEIVER_OPTIONS="--device-type rtlsdr --gain 42"\nNET_OPTIONS="--net --net-bo-port 30005"\nJSON_OPTIONS="--json-location-accuracy 2"\n';
 const vectorEnv = 'READSB_LIVE_URL=http://127.0.0.1/tar1090/data/\nREADSB_HISTORY_URL=http://127.0.0.1/tar1090/globe_history/\nVECTOR_SITE_NAME="My receiver"\nPORT=3000\n';
 const fullArgs = ['/usr/bin/readsb', '--write-json', '/run/readsb', '--write-globe-history=/var/globe_history', '--heatmap', '30'];
+const vectorUnits = ['vector.service', 'vector-aircraft-db.service', 'vector-aircraft-db.timer'];
+const historyUnits = ['vector-readsb-history-clean.service', 'vector-readsb-history-clean.timer'];
+const verifyArgs = (names: string[]) => ['verify', ...names.map((name) => join('/etc/systemd/system', name))];
 
 test('detects existing receiver paths, including heatmap override, without a restart', () => {
   const plan = planReadsb({ argv: fullArgs, help, unit, defaults });
@@ -113,13 +116,14 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
   const root = await mkdtemp(join(tmpdir(), 'vector-guided-'));
   const map = (path: string) => join(root, path.replaceAll('\\', '/').replace(/^\/+/, ''));
   const calls: string[] = [];
-  const state = { argv, failHealth: false, failCheck: false, failDatabase: false, services: ['readsb.service'], choice: 0, remoteUrl: 'http://vector-receiver.example:3000/' };
+  const verifications: string[][] = [];
+  const state = { argv, failHealth: false, failCheck: false, failDatabase: false, failVerify: false, services: ['readsb.service'], choice: 0, remoteUrl: 'http://vector-receiver.example:3000/' };
   const put = async (path: string, body: string) => { await mkdir(join(map(path), '..'), { recursive: true }); await writeFile(map(path), body); };
   await put('/etc/vector/vector.env', env);
   await put('/etc/default/readsb', defaults);
   await put('/etc/systemd/system/vector.service', 'old unit');
   for (const dir of ['/run/readsb', '/var/globe_history', '/var/lib']) await mkdir(map(dir), { recursive: true });
-  for (const name of ['vector.service', 'vector-aircraft-db.service', 'vector-aircraft-db.timer']) await put(`/opt/vector/app/packaging/systemd/${name}`, `[Unit]\nDescription=${name}\n`);
+  for (const name of vectorUnits) await put(`/opt/vector/app/packaging/systemd/${name}`, await readFile(new URL(`../packaging/systemd/${name}`, import.meta.url), 'utf8'));
   class Files extends MigrationFiles {
     constructor(directory: string, initial?: ConstructorParameters<typeof MigrationFiles>[1]) { super(map(directory), initial); }
     async write(path: string, content: string, mode = 0o644) { return super.write(map(path), content, mode); }
@@ -139,6 +143,15 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
     run: async (command: string, args: string[]) => {
       calls.push(`${command} ${args.join(' ')}`);
       if (command === 'id') return '900\n';
+      if (command === 'systemd-analyze') {
+        assert.equal(args[0], 'verify');
+        assert.ok(args.length > 1, 'systemd-analyze verify requires at least one unit');
+        verifications.push([...args]);
+        if (args[1] !== 'readsb.service' && args[1] !== 'readsb-second.service') {
+          for (const path of args.slice(1)) await readFile(map(path));
+          if (state.failVerify) throw new Error('systemd-analyze failed: invalid Vector unit');
+        }
+      }
       if (command === 'systemctl') {
         if (args[0] === 'list-units') return state.services.map((name) => `${name} loaded active running readsb`).join('\n');
         if (args[0] === 'show') return `MainPID=${args[1] === 'readsb-mqtt.service' ? 5678 : 1234}\nUser=readsb\nGroup=readsb\nDynamicUser=no\nRootDirectory=\n`;
@@ -160,19 +173,29 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
   };
   // Adapter deliberately narrows OS effects while keeping the real transaction logic.
   const migrate = (options = {}) => install(options, io as unknown as Parameters<typeof install>[1]);
-  return { root, map, calls, state, migrate, cleanup: () => rm(root, { recursive: true, force: true }) };
+  const journal = async () => {
+    const { id } = JSON.parse(await readFile(map('/var/lib/vector-installer/latest.json'), 'utf8'));
+    return JSON.parse(await readFile(map(`/var/lib/vector-installer/${id}/journal.json`), 'utf8'));
+  };
+  return { root, map, calls, verifications, state, migrate, journal, cleanup: () => rm(root, { recursive: true, force: true }) };
 }
 
 test('guided migration detects a ready receiver without questions, preserves preferences and is repeatable', async () => {
   const sim = await simulation();
   try {
     await sim.migrate();
+    assert.deepEqual(sim.verifications.at(-1), verifyArgs(vectorUnits));
     assert.equal(parseEnv(await readFile(sim.map('/etc/vector/vector.env'), 'utf8')).VECTOR_SITE_NAME, 'My receiver');
     assert.equal(sim.calls.includes('question'), false);
     assert.equal(sim.calls.some((call) => call === 'systemctl restart readsb.service'), false);
     assert.equal(await readFile(sim.map('/etc/default/readsb'), 'utf8'), defaults);
     const first = await readFile(sim.map('/etc/vector/vector.env'), 'utf8');
     await sim.migrate();
+    assert.deepEqual(sim.verifications.at(-1), verifyArgs(vectorUnits));
+    assert.equal((await sim.journal()).status, 'complete');
+    if (process.platform === 'linux') {
+      assert.equal((await sim.journal()).files.some((file: { path: string }) => /\.(service|timer)$/.test(file.path)), false, 'unchanged units are still verified, without adding them to the rollback journal');
+    }
     assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), first);
     assert.equal(sim.calls.filter((call) => call === 'question').length, 0);
     assert.equal(sim.calls.some((call) => /(?:stop|disable) tar1090/.test(call)), false);
@@ -291,11 +314,16 @@ test('missing recording options ask once, preserve receiver settings and install
   const sim = await simulation(['/usr/bin/readsb', '--write-json', '/run/readsb']);
   try {
     await sim.migrate();
+    assert.deepEqual(sim.verifications.at(-1), verifyArgs([...vectorUnits, ...historyUnits]));
     assert.equal(sim.calls.filter((call) => call === 'question').length, 1);
     assert.ok(sim.calls.includes('systemctl restart readsb.service'));
     assert.match(await readFile(sim.map('/etc/default/readsb'), 'utf8'), /--gain 42/);
     assert.match(await readFile(sim.map('/etc/tmpfiles.d/vector-readsb-history.conf'), 'utf8'), /7d/);
     await sim.migrate();
+    assert.deepEqual(sim.verifications.at(-1), verifyArgs([...vectorUnits, ...historyUnits]));
+    if (process.platform === 'linux') {
+      assert.equal((await sim.journal()).files.some((file: { path: string }) => /\.(service|timer)$/.test(file.path)), false);
+    }
     assert.equal(sim.calls.filter((call) => call === 'question').length, 1);
     assert.equal(sim.calls.filter((call) => call === 'systemctl restart readsb.service').length, 1);
   } finally { await sim.cleanup(); }
@@ -343,6 +371,7 @@ test('external legacy HTTP sources require an explicit Vector URL and never surv
   const sim = await simulation(fullArgs, remote);
   try {
     await sim.migrate();
+    assert.deepEqual(sim.verifications, [verifyArgs(vectorUnits)]);
     assert.equal(sim.calls.filter((call) => call === 'question').length, 2);
     const migrated = parseEnv(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'));
     assert.equal(migrated.READSB_SOURCE, 'vector');
@@ -352,6 +381,7 @@ test('external legacy HTTP sources require an explicit Vector URL and never surv
     assert.equal(migrated.VECTOR_SITE_NAME, 'My receiver');
     assert.equal(sim.calls.includes('grant ACL'), false);
     await sim.migrate({ keepSource: true });
+    assert.deepEqual(sim.verifications, [verifyArgs(vectorUnits), verifyArgs(vectorUnits)]);
     assert.equal(sim.calls.filter((call) => call === 'question').length, 2);
   } finally { await sim.cleanup(); }
 });
@@ -421,16 +451,37 @@ test('an interrupted journal is recovered before another migration begins', asyn
   } finally { await sim.cleanup(); }
 });
 
-test('Linux systemd accepts the generated receiver hook and independent history retention units', { skip: process.platform !== 'linux' }, async () => {
+test('failed Vector unit verification restores configuration before enabling new timers', async () => {
+  const sim = await simulation();
+  sim.state.failVerify = true;
+  try {
+    await assert.rejects(() => sim.migrate(), /systemd-analyze failed: invalid Vector unit[\s\S]*Previous configuration restored/);
+    assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
+    assert.equal(await readFile(sim.map('/etc/systemd/system/vector.service'), 'utf8'), 'old unit');
+    assert.equal(sim.calls.some((call) => call.startsWith('systemctl enable --now')), false);
+    assert.equal((await sim.journal()).status, 'rolled-back');
+  } finally { await sim.cleanup(); }
+});
+
+test('Linux systemd accepts the actual verification arguments on initial and repeated installs', { skip: process.platform !== 'linux' }, async () => {
   const sim = await simulation(['/usr/bin/readsb', '--write-json=/run/readsb']);
   try {
+    await sim.migrate();
     await sim.migrate();
     const unitDir = sim.map('/etc/systemd/system');
     await writeFile(join(unitDir, 'readsb.service'), '[Unit]\nDescription=Isolated readsb validation fixture\n[Service]\nExecStart=/usr/bin/true\n');
     const dropin = join(unitDir, 'readsb.service.d/90-vector-access.conf');
     await writeFile(dropin, (await readFile(dropin, 'utf8')).replaceAll('/opt/vector/runtime/node/bin/node', process.execPath));
-    execFileSync('systemd-analyze', ['--generators=no', '--man=no', 'verify',
-      join(unitDir, 'readsb.service'), join(unitDir, 'vector-readsb-history-clean.service'), join(unitDir, 'vector-readsb-history-clean.timer')],
-    { env: { ...process.env, SYSTEMD_UNIT_PATH: `${unitDir}:/usr/lib/systemd/system` }, encoding: 'utf8' });
+    for (const name of vectorUnits.filter((name) => name.endsWith('.service'))) {
+      const path = join(unitDir, name);
+      await writeFile(path, (await readFile(path, 'utf8')).replaceAll('/opt/vector/runtime/node/bin/node', process.execPath));
+    }
+    assert.equal(sim.verifications.length, 4);
+    for (const args of sim.verifications) {
+      // Run the installer's captured arguments against real systemd, mapping only fixture paths.
+      execFileSync('systemd-analyze', ['--generators=no', '--man=no', args[0],
+        ...args.slice(1).map((path) => sim.map(path.startsWith('/') ? path : `/etc/systemd/system/${path}`))],
+      { env: { ...process.env, SYSTEMD_UNIT_PATH: `${unitDir}:/usr/lib/systemd/system` }, encoding: 'utf8' });
+    }
   } finally { await sim.cleanup(); }
 });
