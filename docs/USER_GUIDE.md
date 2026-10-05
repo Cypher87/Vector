@@ -34,7 +34,7 @@ The period selector controls both the profile and leg trace: **30 minutes** by d
 
 Coverage depends on what the receiver recorded. A longer period cannot recover missing data, and gaps or stale measurements are not drawn as continuous measurements. A ground flag without an altitude does not imply zero elevation.
 
-History replay uses readsb's `globe_history` files, read directly or through a configured HTTP source; tar1090 is not required. Recording must be enabled in readsb. In history mode, the profile uses only snapshots from the loaded replay window, never the current live trace. With insufficient points, it shows an unavailable-data state instead of an invented graph.
+History replay uses readsb's `globe_history` files, read directly or through another Vector server. Recording must be enabled in readsb. In history mode, the profile uses only snapshots from the loaded replay window, never the current live trace. With insufficient points, it shows an unavailable-data state instead of an invented graph.
 
 ## Appearance and layers
 
@@ -44,7 +44,7 @@ The independent **Map style** setting offers **Default**, **Original**, **Light*
 
 These styles adjust the raster layer named `openstreetmap` in the style configured by `VECTOR_MAP_STYLE_URL`. Custom styles without that layer remain unchanged. All included variants use the same online OpenStreetMap tiles.
 
-Map layers include aircraft labels, altitude shadows, actual range outline, and distance rings. Settings also controls position animation, unit system, language, and detail-panel behavior.
+Map layers include aircraft labels, altitude shadows, aircraft trails, leg trace, actual range outline, and distance rings. **Aircraft trails** is on by default; its switch controls only the decorative speed trails, not leg traces, shadows, rotor/propeller animation or position smoothing. Your choice is saved locally and synchronized across paired devices. Settings also controls position animation, unit system, language, and detail-panel behavior.
 
 ## Connection status
 
@@ -60,7 +60,19 @@ Open the **Receiver dashboard** to see **Aircraft database**: the last update in
 
 The timestamp comes from the validated database file published by the updater. A failed download leaves both the previous file and its date unchanged; a successful refresh advances the date even when the source data is identical. The date reflects the installed copy, not the upstream dataset's release date. It is not proof that the systemd timer is enabled: manual refreshes count too.
 
-With a remote Vector source, this is the receiver's database status. Legacy HTTP sources without a local database show **Update unknown**. Missing files and unavailable checks are shown explicitly; an unavailable check may retain the last verified date, never a new success date.
+With a remote Vector source, this is the receiver's database status. Missing files and unavailable checks are shown explicitly; an unavailable check may retain the last verified date, never a new success date. Older remote Vector versions may report **Update unknown** until upgraded.
+
+Aircraft icons are original Vector silhouettes for aircraft families, shared by the map, list, details and shadows. They do not promise a model-exact outline. Balloons and unknown contacts stay upright; unknown contacts remain a small neutral dot. Altitude colors, favorites, selection and motion behave consistently across the set.
+
+Map icons smoothly grow from approximately 32 pixels at overview zoom (7.2 or lower), through 38 pixels around zoom 9.2, to a maximum of 46 pixels at zoom 11.5. Their geographic centers do not shift. Shadows, hit areas, favorite brackets and label spacing follow the icon size, while label text, list/detail icons and trail stroke widths stay unchanged.
+
+On the live map, helicopters/gyrocopters have a slow rotor animation. Light aircraft have a rotating nose propeller and turboprops have one at each wing-mounted engine. The propeller blades rotate in a narrow, top-down projection rather than pulsing in width. Only the moving parts animate; the body, heading and GPS position are not altered. This is decorative, not measured engine RPM or an exact blade count. It is independent of position smoothing and pauses for stationary/ground contacts, old data, history mode and hidden tabs. Reduced-motion preferences disable it; list/detail icons and shadows stay static.
+
+Subtle animated speed trails fade in between zoom levels 6.6 and 7.2 for fresh, airborne contacts moving at least 30 knots with a known direction. They follow the recent measured route, including turns, using the same local position buffer as the leg trace. Jets have the longest trails, turboprops intermediate trails, and piston/electric propeller aircraft the shortest, softer trails. Known engine metadata determines propulsion and engine count; otherwise the displayed aircraft family supplies a visual fallback. Ultralights and fixed-wing drones require engine metadata. Helicopters/gyrocopters keep only their rotor animation; gliders (including motor gliders), balloons/airships, parachutists, ground vehicles and unknown contacts have no speed trail.
+
+Trail length and flow speed increase with ground speed. The length scale smoothly grows from 16% at zoom 6.5 to 100% at zoom 9.5, with full maximum lengths of about 385 screen pixels for jets, 243 for turboprops and 162 for propeller aircraft. Visibility still fades in between zoom 6.6 and 7.2. The fade along each trail becomes gentler between zoom 8.5 and 11.5, so longer routes become visible earlier without making the trails darker.
+
+These are decorative airflow cues, **not measured condensation trails or engine-state measurements**. Older points stay attached to their map positions as the icon turns or the map zooms. After opening Vector, trails build up as positions arrive, using up to twenty minutes from the existing 600-point local buffer; missing history is not extrapolated. The available route and zoom level can make a trail shorter than its maximum. Reception gaps, new legs and large position jumps break the trail. This adds no per-aircraft network requests. Unlike the altitude-colored legtrace, these trails are neutral-colored and fade out; they disappear when zoomed out, in history mode, on stale data, in hidden tabs and with reduced motion. They do not appear in lists, details or shadows.
 
 ## Device synchronization
 

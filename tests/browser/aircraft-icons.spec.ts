@@ -1,4 +1,5 @@
 import { test, expect } from './radar-fixture';
+import { vectorAircraftShapes } from '../../src/map/vector-aircraft-shapes';
 
 for (const theme of ['vector', 'daylight']) {
   test(`unknown contact stays upright and consistent across map, list and details in ${theme}`, async ({ page, radar, isMobile }, testInfo) => {
@@ -65,5 +66,62 @@ for (const theme of ['vector', 'daylight']) {
     await expect(detailIcon).toHaveAttribute('data-shape', 'helicopter');
     await expect(marker).toHaveClass(/helicopter/);
     await expect(mapIcon).not.toHaveAttribute('style', /rotate\(0deg\)/);
+  });
+}
+
+for (const theme of ['vector', 'daylight']) {
+  test(`original silhouettes remain visible and consistent in ${theme}`, async ({ page, radar, isMobile }, testInfo) => {
+    await page.addInitScript((theme) => {
+      localStorage.setItem('vector.theme', theme);
+      localStorage.setItem('vector.aircraftMotion', 'false');
+    }, theme);
+    const contacts = [
+      ['A320', 'A3', 'airliner'], ['B789', 'A5', 'heavy'], ['B744', 'A5', 'heavy-four'],
+      ['C25A', 'A2', 'small'], ['C172', 'A1', 'light'], ['AT76', 'A3', 'turboprop'],
+      ['GLID', 'B1', 'glider'], ['H145', 'A7', 'helicopter'], ['BALL', 'B2', 'balloon'],
+      ['SHIP', 'B2', 'airship'], ['F16', 'A6', 'high-performance'], ['ZZZZ', 'B4', 'ultralight'],
+      ['ZZZZ', 'B6', 'uav'], ['ZZZZ', 'B3', 'skydiver'], ['SERV', 'C2', 'ground'],
+      ['ZZZZ', 'A7', 'gyrocopter'], ['ZZZZ', 'A0', 'unknown-contact-dot'],
+    ];
+    radar.extraAircraft = contacts.map(([t, category, name], index) => ({
+      hex: (0xaa0000 + index).toString(16), flight: `ICON${index}`, t, category,
+      ...(name === 'gyrocopter' ? { desc: 'G1P' } : {}),
+      type: 'adsb_icao', lat: 51.6 + Math.floor(index / 5) * 0.45,
+      lon: 3.4 + (index % 5) * 0.7, alt_baro: 10_000, track: 45, seen: 0, messages: 20,
+    }));
+    await page.goto('/');
+    await expect(page.locator('.aircraft-map-marker')).toHaveCount(19);
+    for (const [index, [, , name]] of contacts.entries()) {
+      const mapIcon = page.getByRole('button', { name: new RegExp(`^ICON${index},`) }).locator('.map-aircraft-icon');
+      await expect(mapIcon).toHaveAttribute('data-shape', name);
+      const paths = await mapIcon.locator('.aircraft-icon-main').evaluateAll((elements) => elements.map((element) => {
+        const box = (element as SVGGraphicsElement).getBBox();
+        return { width: box.width, height: box.height };
+      }));
+      expect(paths.some((box) => box.width > 5 && box.height > 5)).toBe(true);
+      if (name === 'balloon' || name === 'airship' || name === 'unknown-contact-dot') await expect(mapIcon).toHaveAttribute('style', /rotate\(0deg\)/);
+    }
+    await page.screenshot({ path: testInfo.outputPath(`original-icons-map-${theme}.png`) });
+
+    // A contact sheet uses the same DOM renderer's SVG and app CSS, at real icon size.
+    await page.evaluate(({ shapes, mobile }) => {
+      const sheet = document.createElement('section');
+      sheet.id = 'icon-review-sheet';
+      Object.assign(sheet.style, { position: 'fixed', inset: '0', zIndex: '999999', overflow: 'auto', background: 'var(--panel-deep)', color: 'var(--ink)', padding: '24px', display: 'grid', gridTemplateColumns: `repeat(${mobile ? 2 : 5}, 1fr)`, gap: '12px' });
+      for (const name of shapes) {
+        const source = document.querySelector<SVGSVGElement>(`.aircraft-map-marker .map-aircraft-icon[data-shape="${name}"]`)!;
+        const card = document.createElement('div');
+        Object.assign(card.style, { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', minHeight: '96px', border: '1px solid var(--line)', borderRadius: '8px' });
+        const icon = source.cloneNode(true) as SVGSVGElement;
+        Object.assign(icon.style, { transform: 'none', width: '40px', height: '40px', color: '#6bbfc9', '--aircraft-color': '#6bbfc9' });
+        const label = document.createElement('span');
+        label.textContent = name;
+        label.style.fontSize = '12px';
+        card.append(icon, label);
+        sheet.append(card);
+      }
+      document.body.append(sheet);
+    }, { shapes: Object.keys(vectorAircraftShapes), mobile: isMobile });
+    await page.screenshot({ path: testInfo.outputPath(`original-icons-gallery-${theme}.png`) });
   });
 }

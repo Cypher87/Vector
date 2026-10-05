@@ -2,7 +2,7 @@ import type { AircraftMetadata } from '../domain/aircraft.ts';
 import { combineAircraftMetadata } from '../domain/aircraft-metadata.ts';
 import type { VectorServerConfig } from './vector-config.ts';
 import { lookupLocalAircraftMetadata } from './aircraft-database.ts';
-import { loadTar1090AircraftMetadata, parseTar1090TraceMetadata } from './tar1090-database.ts';
+import { parseReadsbTraceMetadata } from './aircraft-metadata-parser.ts';
 import { loadReadsbResource, vectorProxyHeader } from './readsb-source.ts';
 import { readBoundedResponse, ResourceError } from './bounded-resource.ts';
 
@@ -21,28 +21,20 @@ export async function loadVectorAircraftMetadata(config: VectorServerConfig, ids
     return Object.fromEntries(ids.filter((id) => Object.hasOwn(response.aircraft, id)).map((id) => [id, response.aircraft[id]]));
   }
   const records = await lookupLocalAircraftMetadata(config.databaseFile, ids, signal);
-  if (config.source === 'http') {
-    try {
-      const unresolved = ids.filter((id) => !records[id]?.aircraftType && !records[id]?.description);
-      const legacySignal = AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(2_000)]);
-      const legacy = unresolved.length ? await loadTar1090AircraftMetadata(config.tar1090BaseUrl, unresolved, legacySignal) : {};
-      for (const id of ids) if (legacy[id]) records[id] = combineAircraftMetadata(legacy[id], records[id] ?? {});
-    } catch { signal?.throwIfAborted(); }
-  }
   // Database outages must not prevent trace emitter-category lookup (e.g. balloons).
   const missing = ids.filter((id) => !records[id]?.category && !records[id]?.aircraftType && !records[id]?.description);
   let cursor = 0;
   await Promise.all(Array.from({ length: Math.min(4, missing.length) }, async () => {
     while (cursor < missing.length) {
       const id = missing[cursor++];
-      const key = `${config.source}:${config.liveDirectory}:${config.liveBaseUrl}:${id}`;
+      const key = `${config.liveDirectory}:${id}`;
       const cached = traceCache.get(key);
       let metadata = cached?.metadata;
       if (!cached || cached.expires < Date.now()) {
         for (const kind of ['recent', 'full']) {
           try {
             const body = await loadReadsbResource(config, 'live', `traces/${id.slice(-2)}/trace_${kind}_${id}.json`, signal);
-            metadata = parseTar1090TraceMetadata(JSON.parse(body.toString()));
+            metadata = parseReadsbTraceMetadata(JSON.parse(body.toString()));
             if (metadata) break;
           } catch { signal?.throwIfAborted(); }
         }

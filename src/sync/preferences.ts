@@ -22,6 +22,7 @@ export type SyncPreferences = {
   actualRangeOutline?: boolean;
   aircraftMotion?: boolean;
   aircraftShadows?: boolean;
+  aircraftWakes?: boolean;
   aircraftFilters?: SyncedAircraftFilters;
   aircraftSort?: SyncedAircraftSort;
   autoHideDetails?: boolean;
@@ -71,7 +72,7 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
     preferences.radarEventPreferences = normalizeRadarEventPreferences(value.radarEventPreferences);
   }
 
-  for (const key of ['actualRangeOutline', 'aircraftMotion', 'aircraftShadows', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
+  for (const key of ['actualRangeOutline', 'aircraftMotion', 'aircraftShadows', 'aircraftWakes', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
     if (typeof value[key] === 'boolean') preferences[key] = value[key];
   }
 
@@ -109,6 +110,7 @@ const scalarPreferenceKeys = [
   'actualRangeOutline',
   'aircraftMotion',
   'aircraftShadows',
+  'aircraftWakes',
   'aircraftSort',
   'autoHideDetails',
   'distanceRings',

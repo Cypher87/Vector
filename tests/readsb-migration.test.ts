@@ -113,7 +113,7 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
   const root = await mkdtemp(join(tmpdir(), 'vector-guided-'));
   const map = (path: string) => join(root, path.replaceAll('\\', '/').replace(/^\/+/, ''));
   const calls: string[] = [];
-  const state = { argv, failHealth: false, failCheck: false, failDatabase: false, services: ['readsb.service'], choice: 0 };
+  const state = { argv, failHealth: false, failCheck: false, failDatabase: false, services: ['readsb.service'], choice: 0, remoteUrl: 'http://vector-receiver.example:3000/' };
   const put = async (path: string, body: string) => { await mkdir(join(map(path), '..'), { recursive: true }); await writeFile(map(path), body); };
   await put('/etc/vector/vector.env', env);
   await put('/etc/default/readsb', defaults);
@@ -126,7 +126,7 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
   }
   const io = {
     log: () => {}, sleep: async () => {},
-    ask: async () => { calls.push('question'); return state.choice; },
+    ask: async (_question: string, choices?: string[]) => { calls.push('question'); return choices ? state.choice : state.remoteUrl; },
     readFile: async (path: string) => path.startsWith('/proc/5678/') ? '/usr/bin/python3\0/usr/share/readsb-mqtt/main.py\0' : path.startsWith('/proc/') ? `${state.argv.join('\0')}\0` : readFile(map(path), 'utf8'),
     snapshot: (path: string) => snapshot(map(path)),
     atomicWrite: (path: string, content: string) => atomicWrite(map(path), content),
@@ -338,16 +338,21 @@ test('a missing database stops migration before changing receiver options or pub
   } finally { await sim.cleanup(); }
 });
 
-test('intentional remote receiver is preserved unless the user chooses to change it', async () => {
+test('external legacy HTTP sources require an explicit Vector URL and never survive as fallbacks', async () => {
   const remote = vectorEnv.replaceAll('127.0.0.1', 'receiver.example');
   const sim = await simulation(fullArgs, remote);
   try {
     await sim.migrate();
-    assert.equal(sim.calls.filter((call) => call === 'question').length, 1);
-    assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), remote);
+    assert.equal(sim.calls.filter((call) => call === 'question').length, 2);
+    const migrated = parseEnv(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'));
+    assert.equal(migrated.READSB_SOURCE, 'vector');
+    assert.equal(migrated.READSB_REMOTE_URL, sim.state.remoteUrl);
+    assert.equal(migrated.READSB_LIVE_URL, undefined);
+    assert.equal(migrated.READSB_HISTORY_URL, undefined);
+    assert.equal(migrated.VECTOR_SITE_NAME, 'My receiver');
     assert.equal(sim.calls.includes('grant ACL'), false);
     await sim.migrate({ keepSource: true });
-    assert.equal(sim.calls.filter((call) => call === 'question').length, 1);
+    assert.equal(sim.calls.filter((call) => call === 'question').length, 2);
   } finally { await sim.cleanup(); }
 });
 
@@ -365,8 +370,39 @@ test('multiple receivers require one explicit selection and missing local receiv
     noReceiver.state.services = [];
     await noReceiver.migrate();
     assert.equal(noReceiver.calls.filter((call) => call === 'question').length, 1);
-    assert.equal(await readFile(noReceiver.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
+    assert.equal(parseEnv(await readFile(noReceiver.map('/etc/vector/vector.env'), 'utf8')).READSB_REMOTE_URL, noReceiver.state.remoteUrl);
   } finally { await noReceiver.cleanup(); }
+});
+
+test('keep-source refuses legacy HTTP before changes but preserves existing Vector connections', async () => {
+  const legacy = await simulation();
+  try {
+    await assert.rejects(() => legacy.migrate({ keepSource: true }), /without --keep-source/);
+    assert.equal(await readFile(legacy.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
+    assert.equal(legacy.calls.length, 0);
+  } finally { await legacy.cleanup(); }
+  const environment = 'READSB_SOURCE=vector\nREADSB_REMOTE_URL=http://vector-receiver.example:3000/\nVECTOR_SITE_NAME="My receiver"\n';
+  const remote = await simulation(fullArgs, environment);
+  try {
+    await remote.migrate();
+    assert.equal(await readFile(remote.map('/etc/vector/vector.env'), 'utf8'), environment);
+    assert.equal(remote.calls.includes('question'), false);
+    assert.equal(remote.calls.includes('grant ACL'), false);
+  } finally { await remote.cleanup(); }
+});
+
+test('cancelled or invalid remote migrations leave the original source and receiver untouched', async () => {
+  for (const answer of ['cancel', 'file:///private', 'https://user:secret@receiver.example/', 'https://receiver.example/?url=elsewhere']) {
+    const sim = await simulation();
+    try {
+      sim.state.services = [];
+      sim.state.remoteUrl = answer;
+      await assert.rejects(() => sim.migrate());
+      assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
+      assert.equal(sim.calls.includes('grant ACL'), false);
+      assert.equal(sim.calls.some((call) => call.startsWith('systemctl restart')), false);
+    } finally { await sim.cleanup(); }
+  }
 });
 
 test('an interrupted journal is recovered before another migration begins', async () => {

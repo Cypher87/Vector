@@ -31,6 +31,7 @@ export type VectorIconName =
   | 'trash'
   | 'unlink'
   | 'warning'
+  | 'wakes'
   | 'zoomIn'
   | 'zoomOut';
 
@@ -79,6 +80,7 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
   trash: ['M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14', 'M10 11v6M14 11v6'],
   unlink: ['m9.5 14.5-2 2a3 3 0 0 1-4.2-4.2l3-3a3 3 0 0 1 4.2 0', 'm14.5 9.5 2-2a3 3 0 0 1 4.2 4.2l-3 3a3 3 0 0 1-4.2 0', 'm8 16 8-8', 'M4 4l16 16'],
   warning: ['M12 3 2.5 20h19L12 3Z', 'M12 9v5M12 17h.01'],
+  wakes: ['M12 3v10M6 9l6-3 6 3', 'M8 14v7M16 14v7'],
   zoomIn: ['M12 5v14M5 12h14'],
   zoomOut: ['M5 12h14'],
 };

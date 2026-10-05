@@ -18,20 +18,27 @@ export function useSelectedAircraftTrace({ aircraft, selectedId, dataBaseUrl, la
   const cacheBase = useRef(dataBaseUrl);
   const [local, setLocal] = useState<TraceState>();
   const [server, setServer] = useState<TraceState>();
+  const [liveTraces, setLiveTraces] = useState<ReadonlyMap<string, AircraftTracePoint[]>>(() => new Map());
   const key = `${dataBaseUrl}:${selectedId ?? ''}`;
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      if (cacheBase.current !== dataBaseUrl) { cache.current.clear(); cacheBase.current = dataBaseUrl; }
+      let changed = false;
+      if (cacheBase.current !== dataBaseUrl) { cache.current.clear(); cacheBase.current = dataBaseUrl; changed = true; }
       if (live && lastUpdate) {
         for (const item of aircraft) {
           const point = tracePointFromAircraft(item, lastUpdate / 1_000);
-          if (point) cache.current.set(item.id, appendTracePoint(cache.current.get(item.id) ?? [], point));
+          if (point) {
+            const previous = cache.current.get(item.id) ?? [];
+            const next = appendTracePoint(previous, point);
+            if (next !== previous) { cache.current.set(item.id, next); changed = true; }
+          }
         }
         for (const [id, points] of cache.current) {
-          if ((points.at(-1)?.timestamp ?? 0) < lastUpdate / 1_000 - 1_800) cache.current.delete(id);
+          if ((points.at(-1)?.timestamp ?? 0) < lastUpdate / 1_000 - 1_800) { cache.current.delete(id); changed = true; }
         }
       }
+      if (changed) setLiveTraces(new Map(cache.current));
       const points = selectedId ? cache.current.get(selectedId) ?? [] : [];
       setLocal((current) => current?.key === key && current.points === points ? current : { key, points });
     });
@@ -72,5 +79,5 @@ export function useSelectedAircraftTrace({ aircraft, selectedId, dataBaseUrl, la
     return limitAircraftTracePeriod([...upstream, ...tail], period);
   }, [historyOpen, key, local, period, selectedId, server, snapshots]);
 
-  return { points, loading: enabled && !historyOpen && !!selectedId && server?.key !== key };
+  return { points, liveTraces, loading: enabled && !historyOpen && !!selectedId && server?.key !== key };
 }

@@ -3,6 +3,7 @@ import test from 'node:test';
 import type { Aircraft } from '../src/domain/aircraft.ts';
 import { aircraftKind } from '../src/domain/aircraft-kind.ts';
 import { aircraftIconDefinition, aircraftIconTransform } from '../src/map/aircraft-icon-definition.ts';
+import { vectorAircraftShapes } from '../src/map/vector-aircraft-shapes.ts';
 
 const aircraft = (patch: Partial<Aircraft> = {}): Aircraft => ({
   id: 'abc123', flight: 'TEST', onGround: false, source: 'adsb_icao',
@@ -33,10 +34,10 @@ test('placeholder types do not imply a light aircraft, but known categories stil
 
 test('known categories and descriptions keep their silhouettes without an exact type code', () => {
   for (const [category, name] of [
-    ['A1', 'cessna'], ['A3', 'airliner'], ['A5', 'heavy_2e'], ['A7', 'helicopter'],
+    ['A1', 'light'], ['A3', 'airliner'], ['A5', 'heavy'], ['A7', 'helicopter'],
     ['B1', 'glider'], ['B2', 'balloon'], ['B6', 'uav'],
   ]) assert.equal(aircraftIconDefinition(aircraft({ category })).name, name);
-  for (const [description, name] of [['H2T', 'helicopter'], ['G1P', 'gyrocopter'], ['L1P', 'cessna']]) {
+  for (const [description, name] of [['H2T', 'helicopter'], ['G1P', 'gyrocopter'], ['L1P', 'light']]) {
     const icon = aircraftIconDefinition(aircraft({ description }));
     assert.equal(icon.name, name);
     assert.match(aircraftIconTransform(icon, 90), /^rotate\(90deg\)/);
@@ -44,16 +45,34 @@ test('known categories and descriptions keep their silhouettes without an exact 
 });
 
 test('known aircraft and ground vehicles never use the generic aircraft fallback', () => {
-  assert.equal(aircraftIconDefinition(aircraft({ aircraftType: 'C172' })).name, 'cessna');
+  assert.equal(aircraftIconDefinition(aircraft({ aircraftType: 'C172' })).name, 'light');
   assert.equal(aircraftIconDefinition(aircraft({ aircraftType: 'EC35' })).name, 'helicopter');
   assert.equal(aircraftIconDefinition(aircraft({ aircraftType: 'BALL' })).name, 'balloon');
   assert.equal(aircraftIconDefinition(aircraft({ aircraftType: 'GLID' })).name, 'glider');
-  // Ground catalog entries have no supported path: do not fall back to an airplane.
-  assert.equal(aircraftIconDefinition(aircraft({ aircraftType: 'SERV', onGround: true })).name, 'unknown-contact-dot');
-  assert.equal(aircraftIconDefinition(aircraft({ category: 'C0', onGround: true })).name, 'unknown-contact-dot');
+  assert.equal(aircraftIconDefinition(aircraft({ aircraftType: 'SERV', onGround: true })).name, 'ground');
+  assert.equal(aircraftIconDefinition(aircraft({ category: 'C0', onGround: true })).name, 'ground');
   const known = aircraftIconDefinition(aircraft({ aircraftType: 'A320' }));
   assert.notEqual(known.name, 'unknown-contact-dot');
   assert.match(aircraftIconTransform(known, 213), /^rotate\(213deg\)/);
+});
+
+test('original Vector catalog covers all families and keeps balloons upright', () => {
+  for (const [category, name] of [['A2', 'small'], ['A6', 'high-performance'], ['B3', 'skydiver'], ['B4', 'ultralight'], ['B6', 'uav'], ['C2', 'ground']]) {
+    assert.equal(aircraftIconDefinition(aircraft({ category })).name, name);
+  }
+  for (const [aircraftType, name] of [['AT76', 'turboprop'], ['B744', 'heavy-four'], ['A388', 'heavy-four'], ['B789', 'heavy'], ['SHIP', 'airship']]) {
+    assert.equal(aircraftIconDefinition(aircraft({ aircraftType })).name, name);
+  }
+  for (const aircraftType of ['BALL', 'SHIP']) {
+    assert.equal(aircraftIconTransform(aircraftIconDefinition(aircraft({ aircraftType })), 231), 'rotate(0deg) scale(1)');
+  }
+  assert.equal(Object.keys(vectorAircraftShapes).length, 17);
+  assert.equal(new Set(Object.values(vectorAircraftShapes).map((shape) => JSON.stringify(shape.path))).size, 17);
+  for (const shape of Object.values(vectorAircraftShapes)) {
+    assert.ok(shape.path);
+    assert.ok(shape.w > 0 && shape.h > 0);
+    assert.ok((shape.strokeScale ?? 1) <= 1);
+  }
 });
 
 test('a contact resolves to its specific icon when metadata becomes available', () => {

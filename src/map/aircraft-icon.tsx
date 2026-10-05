@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react';
 import type { Aircraft } from '../domain/aircraft';
-import { aircraftIconDefinition, aircraftIconTransform, type AircraftIconDefinition, type ShapePath } from './aircraft-icon-definition';
+import { aircraftIconDefinition, aircraftIconPartProjection, aircraftIconTransform, type AircraftIconDefinition, type ShapePath } from './aircraft-icon-definition';
+import { aircraftIconMotionPhase } from './icon-animation';
+import { updateAircraftWakeElement } from './aircraft-wake-element';
 
 const svgNamespace = 'http://www.w3.org/2000/svg';
 
@@ -9,6 +11,7 @@ const paths = (value?: ShapePath) => value ? Array.isArray(value) ? value : [val
 function renderPaths(parent: SVGElement, definition: AircraftIconDefinition) {
   const { shape } = definition;
   const group = document.createElementNS(svgNamespace, 'g');
+  group.setAttribute('class', 'aircraft-icon-body');
   if (shape.transform) group.setAttribute('transform', shape.transform);
 
   paths(shape.path).forEach((pathData) => {
@@ -25,6 +28,19 @@ function renderPaths(parent: SVGElement, definition: AircraftIconDefinition) {
     path.setAttribute('d', pathData);
     path.setAttribute('stroke-width', String(0.42 * (shape.accentMult ?? 1) * (shape.strokeScale ?? 1)));
     group.appendChild(path);
+  });
+  shape.movingParts?.forEach((part) => {
+    const plane = document.createElementNS(svgNamespace, 'g');
+    plane.setAttribute('class', `aircraft-icon-${part.kind}-plane`);
+    const projection = aircraftIconPartProjection(part);
+    if (projection) plane.setAttribute('transform', projection);
+    const path = document.createElementNS(svgNamespace, 'path');
+    path.setAttribute('class', `aircraft-icon-moving-part aircraft-icon-${part.kind}`);
+    path.setAttribute('d', part.path);
+    path.setAttribute('paint-order', 'stroke');
+    path.style.transformOrigin = `${part.origin[0]}px ${part.origin[1]}px`;
+    plane.appendChild(path);
+    group.appendChild(plane);
   });
   parent.appendChild(group);
 }
@@ -44,8 +60,10 @@ export function updateAircraftIconElement(icon: SVGSVGElement, aircraft: Aircraf
     icon.setAttribute('viewBox', definition.shape.viewBox);
     icon.setAttribute('preserveAspectRatio', definition.shape.noAspect ? 'none' : 'xMidYMid meet');
     renderPaths(icon, definition);
+    icon.style.setProperty('--icon-motion-phase', aircraftIconMotionPhase(aircraft.id));
   }
   icon.style.transform = aircraftIconTransform(definition, rotation);
+  updateAircraftWakeElement(icon, aircraft, definition);
 }
 
 type AircraftIconProps = {
@@ -67,7 +85,7 @@ export function AircraftIcon({ aircraft, className = '', rotation = 0, style }: 
       style={{ ...style, transform: aircraftIconTransform(definition, rotation) }}
       viewBox={shape.viewBox}
     >
-      <g transform={shape.transform}>
+      <g className="aircraft-icon-body" transform={shape.transform}>
         {paths(shape.path).map((pathData, index) => (
           <path
             className="aircraft-icon-main"
@@ -84,6 +102,16 @@ export function AircraftIcon({ aircraft, className = '', rotation = 0, style }: 
             key={`accent-${index}`}
             strokeWidth={0.42 * (shape.accentMult ?? 1) * (shape.strokeScale ?? 1)}
           />
+        ))}
+        {shape.movingParts?.map((part, index) => (
+          <g className={`aircraft-icon-${part.kind}-plane`} key={`moving-${index}`} transform={aircraftIconPartProjection(part)}>
+            <path
+              className={`aircraft-icon-moving-part aircraft-icon-${part.kind}`}
+              d={part.path}
+              paintOrder="stroke"
+              style={{ transformOrigin: `${part.origin[0]}px ${part.origin[1]}px` }}
+            />
+          </g>
         ))}
       </g>
     </svg>

@@ -38,7 +38,7 @@ test('ignores malformed actual range points and avoids an antimeridian line', ()
   ]);
 });
 
-test('maps the readsb fields used by the tar1090-style technical overview', () => {
+test('maps the readsb fields used by the technical overview', () => {
   const snapshot = parseAircraftSnapshot({
     now: 1_724_000_000.5,
     messages: 123_456,

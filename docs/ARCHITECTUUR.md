@@ -1,11 +1,11 @@
 # Architectuur — Vector ADS-B Radar
 
 Status: huidige implementatie en groeirichting
-Datum: 4 oktober 2026
+Datum: 5 oktober 2026
 
 ## Doel
 
-Vector is een zelfstandig draaiende webinterface boven op readsb. tar1090 is optioneel. readsb blijft verantwoordelijk voor ontvangst, decoding, traces, replayopnames en het publiceren van JSON-data. Vector verzorgt veilige bestandstoegang, metadata, kaartweergave, zoeken, filtering, selectie, details en gebruikersvoorkeuren.
+Vector is een zelfstandig draaiende webinterface boven op readsb, zonder tar1090-applicatie, webserver of iconen. De losse databasebron tar1090-db blijft behouden. readsb blijft verantwoordelijk voor ontvangst, decoding, traces, replayopnames en het publiceren van JSON-data. Vector verzorgt veilige bestandstoegang, metadata, kaartweergave, zoeken, filtering, selectie, details en gebruikersvoorkeuren.
 
 Belangrijke uitgangspunten:
 
@@ -23,7 +23,7 @@ Belangrijke uitgangspunten:
 | Applicatie | React 19 + TypeScript |
 | Runtime/build | Vinext op Vite, als standalone Node-server |
 | Kaart | MapLibre GL JS |
-| Databron | lokale readsb-bestanden, bestaande HTTP-bron of externe Vector; dezelfde begrensde API |
+| Databron | lokale readsb-bestanden of externe Vector; dezelfde begrensde API |
 | Vliegtuigdatabase | apart bijgewerkte CSV van tar1090-db, buiten de repository |
 | Styling | globale CSS met responsive layout en CSS-variabelen |
 | Voorkeuren | browseropslag, optioneel gesynchroniseerd via anonieme apparaatkoppeling |
@@ -37,7 +37,7 @@ flowchart LR
     R -->|JSON, traces en replay| F[Lokale bestanden]
     F --> P[Vector readsb-API]
     DB[Vliegtuigdatabase] --> P
-    W[Optionele HTTP-bron of externe Vector] --> P
+    W[Externe Vector] --> P
     P --> V[Vector-client]
     V --> M[MapLibre-kaart]
     V --> UI[Lijst, filters en details]
@@ -72,7 +72,7 @@ src/
   units.ts               conversie en formattering
 scripts/
   install-debian.sh      herhaalbare Debian 13-installatie en updates
-  sync-tar1090-icons.mjs  reproduceerbare iconsynchronisatie
+  update-aircraft-db.mjs onafhankelijke metadata-update
 packaging/
   systemd/               service-unit
   vector.env.example     lokale configuratiesjabloon
@@ -122,7 +122,7 @@ Voorkeurswijzigingen worden als veldpatches opgeslagen. Filters worden per filte
 
 De visuele codering bestaat uit:
 
-- type-afhankelijke vliegtuigvormen uit de tar1090-iconencatalogus;
+- eigen SVG-silhouetten per toestelfamilie uit `vector-aircraft-shapes.ts`, met dezelfde classificatie als de filters;
 - rotatie op basis van geldige track/heading;
 - een continue hoogtegradiënt;
 - een afzonderlijke geselecteerde toestand;
@@ -136,7 +136,7 @@ Route- en fotogegevens zijn optionele verrijkingen. Ze staan achter afzonderlijk
 
 Bronnen en attributie:
 
-- vliegtuigiconen: afgeleid van tar1090, GPL-2.0-or-later;
+- vliegtuigiconen: eigen Vector-ontwerpen, onder de projectlicentie;
 - vliegtuigfoto's: Planespotters wanneer beschikbaar;
 - routegegevens en luchthavennamen: adsb.im wanneer beschikbaar;
 - kaarttegels: bepaald door `public/map-style.json`.
@@ -161,7 +161,7 @@ PORT=3000
 
 De Debian-installatie bewaart deze waarden in `/etc/vector/vector.env`, buiten de Git-checkout. Dezelfde build kan zo voor een andere receiver worden gebruikt en updates overschrijven de lokale instellingen niet. Als de receivercoördinaten in de environment staan, hebben die voorrang op `receiver.json`; zonder deze variabelen gebruikt Vector de positie uit `receiver.json`. De browser ontvangt alleen publieke labels, receivercoördinaten en lokale proxyroutes; upstream-URLs blijven server-side.
 
-`readsb-source.ts` kiest het transport; de client blijft `/api/readsb?source=live|history&path=...` en `/api/aircraft-metadata?ids=...` gebruiken. `local` leest alleen reguliere bestanden onder vast ingestelde roots en decodeert gzip. `http` behoudt bestaande directory-URLs en de tar1090-metadatafallback. `vector` gebruikt uitsluitend de vaste APIs van een andere Vector-server; doorgeschakelde proxyketens worden geweigerd. Bestaande URL-configuraties zonder `READSB_SOURCE` blijven HTTP gebruiken.
+`readsb-source.ts` kiest het transport; de client blijft `/api/readsb?source=live|history&path=...` en `/api/aircraft-metadata?ids=...` gebruiken. `local` leest alleen reguliere bestanden onder vast ingestelde roots en decodeert gzip. `vector` gebruikt uitsluitend de vaste APIs van een andere Vector-server; doorgeschakelde proxyketens worden geweigerd. De oude HTTP-modus en metadatafallback zijn verwijderd. De installer migreert oude lokale URL-configuraties; externe HTTP-bronnen vragen een expliciete keuze voor lokale readsb of een Vector-server. Een handmatig gestart oud configuratiebestand geeft een migratiefout, geen stille andere databron.
 
 De lokale vliegtuigdatabase wordt dagelijks via een aparte systemd-timer opgehaald, volledig gevalideerd en atomair vervangen. Vector vult alleen ontbrekende metadata in live snapshots aan; posities, hoogtes en aanwezige readsb-metadata blijven ongewijzigd. Replay krijgt metadata via dezelfde lookup. Een mislukte update bewaart de laatst geldige database. Zie [standalone installatie en migratie](STANDALONE.md).
 
@@ -197,7 +197,7 @@ Bij grotere receiverclusters kan de huidige snapshotfeed achter dezelfde interfa
 
 Een release is bruikbaar wanneer een gebruiker met één configuratiebestand:
 
-- verbinding maakt met readsb via lokale bestanden, HTTP of een externe Vector-server;
+- verbinding maakt met readsb via lokale bestanden of een externe Vector-server;
 - live vliegtuigen op kaart en in lijst ziet;
 - kan zoeken, sorteren, filteren, selecteren en centreren;
 - details, route, foto en trace ziet wanneer die beschikbaar zijn;

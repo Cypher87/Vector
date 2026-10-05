@@ -127,6 +127,7 @@ export default function Home() {
   const [labelsVisible, setLabelsVisible] = useState(true);
   const [aircraftMotionEnabled, setAircraftMotionEnabled] = useState(true);
   const [aircraftShadowsVisible, setAircraftShadowsVisible] = useState(true);
+  const [aircraftWakesVisible, setAircraftWakesVisible] = useState(true);
   const [legTraceVisible, setLegTraceVisible] = useState(true);
   const [legTracePeriod, setLegTracePeriod] = useState<LegTracePeriod>(defaultLegTracePeriod);
   const [actualRangeVisible, setActualRangeVisible] = useState(false);
@@ -166,6 +167,7 @@ export default function Home() {
       if (window.localStorage.getItem('vector.mapLabels') === 'false') setLabelsVisible(false);
       if (window.localStorage.getItem('vector.aircraftMotion') === 'false') setAircraftMotionEnabled(false);
       if (window.localStorage.getItem('vector.aircraftShadows') === 'false') setAircraftShadowsVisible(false);
+      if (window.localStorage.getItem('vector.aircraftWakes') === 'false') setAircraftWakesVisible(false);
       if (window.localStorage.getItem('vector.legTrace') === 'false') setLegTraceVisible(false);
       setLegTracePeriod(parseLegTracePeriod(window.localStorage.getItem('vector.legTracePeriod')));
       if (window.localStorage.getItem('vector.actualRangeOutline') === 'true') setActualRangeVisible(true);
@@ -261,6 +263,10 @@ export default function Home() {
     setAircraftShadowsVisible(visible);
     window.localStorage.setItem('vector.aircraftShadows', String(visible));
   };
+  const changeAircraftWakesVisible = (visible: boolean) => {
+    setAircraftWakesVisible(visible);
+    window.localStorage.setItem('vector.aircraftWakes', String(visible));
+  };
   const changeLegTraceVisible = (visible: boolean) => {
     setLegTraceVisible(visible);
     window.localStorage.setItem('vector.legTrace', String(visible));
@@ -344,6 +350,7 @@ export default function Home() {
     actualRangeOutline: actualRangeVisible,
     aircraftMotion: aircraftMotionEnabled,
     aircraftShadows: aircraftShadowsVisible,
+    aircraftWakes: aircraftWakesVisible,
     aircraftFilters,
     aircraftSort,
     autoHideDetails,
@@ -358,7 +365,7 @@ export default function Home() {
     mapTheme,
     theme,
     unitSystem,
-  }), [actualRangeVisible, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, mapTheme, radarEventPreferences, theme, unitSystem]);
+  }), [actualRangeVisible, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, mapTheme, radarEventPreferences, theme, unitSystem]);
 
   useEffect(() => {
     if (!syncProfileId) {
@@ -417,6 +424,10 @@ export default function Home() {
       if (saved.aircraftShadows !== undefined) {
         setAircraftShadowsVisible(saved.aircraftShadows);
         window.localStorage.setItem('vector.aircraftShadows', String(saved.aircraftShadows));
+      }
+      if (saved.aircraftWakes !== undefined) {
+        setAircraftWakesVisible(saved.aircraftWakes);
+        window.localStorage.setItem('vector.aircraftWakes', String(saved.aircraftWakes));
       }
       if (saved.legTrace !== undefined) {
         setLegTraceVisible(saved.legTrace);
@@ -803,7 +814,10 @@ export default function Home() {
             actualRangeVisible={actualRangeVisible}
             aircraft={mapAircraft}
             aircraftMotionEnabled={aircraftMotionEnabled && feed.status === 'live'}
+            live={feed.status === 'live'}
             aircraftShadowsVisible={aircraftShadowsVisible}
+            aircraftWakesVisible={aircraftWakesVisible}
+            wakeTraces={selectedTrace.liveTraces}
             center={[centerLon, centerLat]}
             dataBaseUrl={feed.config.dataBaseUrl}
             distanceRingsVisible={distanceRingsVisible}
@@ -823,6 +837,7 @@ export default function Home() {
             onDeselect={clearAircraftSelection}
             onActualRangeVisibleChange={changeActualRangeVisible}
             onAircraftShadowsVisibleChange={changeAircraftShadowsVisible}
+            onAircraftWakesVisibleChange={changeAircraftWakesVisible}
             onDistanceRingsVisibleChange={changeDistanceRingsVisible}
             onHistoryToggle={() => {
               if (history.open) history.close();

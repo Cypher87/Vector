@@ -4,7 +4,7 @@ import type { Language } from '../i18n';
 const helicopterTypes = new Set([
   'A109', 'A139', 'A149', 'A169', 'A189', 'AS32', 'AS50', 'AS55', 'AS65',
   'B06', 'B212', 'B412', 'EC25', 'EC35', 'EC45', 'EC55', 'EC75', 'EH10',
-  'GAZL', 'H46', 'H47', 'H53', 'H60', 'H64', 'H160', 'MI24', 'NH90',
+  'GAZL', 'H46', 'H47', 'H53', 'H60', 'H64', 'H125', 'H130', 'H135', 'H145', 'H160', 'H175', 'MI24', 'NH90',
   'PUMA', 'R22', 'R44', 'R66', 'S61', 'S76', 'S92', 'TIGR', 'UH1',
 ]);
 
@@ -37,7 +37,7 @@ export function aircraftKind(aircraft: Aircraft): AircraftKind {
   const category = aircraft.category?.trim().toUpperCase() ?? '';
   const typeDescription = /^[A-Z][1-9][A-Z]$/.test(description) ? description : '';
 
-  if (helicopterTypes.has(type) || description.includes('HELICOPTER') || category === 'A7') return 'helicopter';
+  if (helicopterTypes.has(type) || /^[HG][1-9][PTJ]$/.test(typeDescription) || description.includes('HELICOPTER') || category === 'A7') return 'helicopter';
   if (gliderTypes.has(type) || description.includes('GLIDER') || category === 'B1') return 'glider';
   if (balloonTypes.has(type) || description.includes('BALLOON') || description.includes('AIRSHIP') || category === 'B2') return 'balloon';
   if (category === 'B3') return 'skydiver';
@@ -45,13 +45,15 @@ export function aircraftKind(aircraft: Aircraft): AircraftKind {
   if (category === 'B6') return 'uav';
   if (category.startsWith('C') || aircraft.onGround && ['GND', 'GRND', 'SERV', 'TWR'].includes(type)) return 'ground';
   if (category === 'A6') return 'high-performance';
-  if (category === 'A5' || heavyTypes.has(type) || heavyPrefixes.some((prefix) => type.startsWith(prefix))) return 'heavy';
+  if (category === 'A5' || heavyTypes.has(type) || heavyPrefixes.some((prefix) => type.startsWith(prefix)) || /^[LA][34]J$/.test(typeDescription)) return 'heavy';
   if (businessJetPrefixes.some((prefix) => type.startsWith(prefix)) || /^(L1J|L2J)$/.test(typeDescription) && (category === 'A1' || category === 'A2')) return 'small';
   if (turbopropPrefixes.some((prefix) => type.startsWith(prefix)) || /^(L1T|L2T|A1T|A2T)$/.test(typeDescription)) return 'turboprop';
   if (category === 'A3' || category === 'A4') return 'airliner';
   if (category === 'A2') return 'small';
   if (category === 'A1') return 'light';
   if (/^(A2|A3|B3|B6|B7|B8|BCS|CRJ|E1|E2|E7|E9)/.test(type)) return 'airliner';
+  if (/^[LA][12]J$/.test(typeDescription)) return 'small';
+  if (/^[LA][1-9]P$/.test(typeDescription)) return 'light';
   if (type && !unknownTypes.has(type)) return 'light';
   return 'unknown';
 }

@@ -13,7 +13,5 @@ export async function loadAircraftDatabaseStatus(config: VectorServerConfig, sig
     const status = parseAircraftDatabaseStatus(JSON.parse(body.toString()));
     return { ...status, location: 'receiver' };
   }
-  const status = await localAircraftDatabaseStatus(config.databaseFile, signal);
-  // HTTP tar1090 metadata does not expose a trustworthy update timestamp.
-  return config.source === 'http' && status.state === 'missing' ? { ...status, state: 'external' } : status;
+  return localAircraftDatabaseStatus(config.databaseFile, signal);
 }

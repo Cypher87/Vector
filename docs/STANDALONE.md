@@ -22,12 +22,12 @@ Review the downloaded script before running it if desired. Once installation com
 
 Existing readsb recordings are retained. If the installer creates a new history directory, it uses `/var/lib/readsb/vector-history` with a separate daily cleanup job and a **seven-day retention period**. Existing history directories and their retention policies are not changed. New history takes time to accumulate; a completed replay block will not exist immediately after recording is enabled.
 
-readsb remains the decoder and recorder. Vector no longer needs the tar1090 web application/server for local data. The installer does not uninstall tar1090, stop shared web servers, or remove receiver data. This leaves the previous interface available as a fallback.
+readsb remains the decoder and recorder. Vector uses no tar1090 application, web endpoints, or icons, in either local or remote mode. The separate `tar1090-db` metadata dataset is retained. The installer does not uninstall other applications, stop shared web servers, or remove receiver data; an existing tar1090 installation is left untouched, but Vector does not use it.
 
 ## When the installer asks a question
 
 - **Multiple running receivers:** choose the intended readsb service.
-- **Existing external source:** keep it or explicitly switch to the local receiver.
+- **Existing external HTTP source:** enter another Vector server's URL, explicitly switch to local readsb, or cancel. Existing Vector-to-Vector connections are preserved without questions.
 - **Missing recording options:** approve the brief readsb restart and new recording behavior. An already configured receiver does not need a restart just to switch Vector's data source.
 - **No local receiver:** enter the URL of another Vector server. Vector does not install/configure an SDR decoder or guess device settings.
 
@@ -37,13 +37,13 @@ For automated installations, `--yes` accepts safe defaults and the necessary rec
 sudo VECTOR_READSB_SERVICE=readsb.service bash /tmp/vector-install.sh --yes
 ```
 
-To update only, retaining the existing data source:
+To update only, retaining an existing `local` or `vector` data source:
 
 ```bash
 sudo bash /tmp/vector-install.sh --keep-source
 ```
 
-Automatic option changes support the conventional readsb systemd layout using `/etc/default/readsb` and `JSON_OPTIONS`. Custom startup wrappers, isolated/container receivers, unsupported readsb builds, and separately relocated full traces are not rewritten blindly. An unsupported configuration stops with an explanation before publishing new settings; an existing HTTP source can still be kept with `--keep-source`.
+Automatic option changes support the conventional readsb systemd layout using `/etc/default/readsb` and `JSON_OPTIONS`. Custom startup wrappers, isolated/container receivers, unsupported readsb builds, and separately relocated full traces are not rewritten blindly. An unsupported configuration stops with an explanation before publishing new settings. `--keep-source` refuses legacy HTTP sources: rerun without it to migrate. Source choices are never guessed by `--yes`.
 
 Only running readsb decoder processes count as receivers; companion services such as MQTT exporters are excluded. If a data path is genuinely unreadable and its filesystem cannot grant ACL access, installation stops with that path and restores configuration. It does not remount filesystems, grant write access, or make private data public.
 
@@ -98,4 +98,4 @@ READSB_REMOTE_URL=http://receiver.local:3000/
 
 Use the actual Pi hostname/address and restart the development server. No local metadata download is needed. Chained Vector proxies are rejected to avoid loops. Synchronization belongs to the server visited in the browser, so development and production preferences stay separate.
 
-Legacy HTTP directories remain supported with `READSB_SOURCE=http`, `READSB_LIVE_URL`, and `READSB_HISTORY_URL`. Photos, routes, and map tiles continue using their external providers. Use HTTPS or a trusted network. The packaged service needs an active Node.js runtime; it is not a static site.
+Legacy HTTP directory sources are no longer supported. The installer removes their obsolete environment settings after a successful migration; a manually started legacy configuration fails with migration instructions instead of silently choosing a different receiver. Photos, routes, and map tiles continue using their external providers. Use HTTPS or a trusted network. The packaged service needs an active Node.js runtime; it is not a static site.

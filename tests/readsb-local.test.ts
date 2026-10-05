@@ -11,10 +11,12 @@ import { readBoundedFile, readBoundedResponse, decompressResource } from '../src
 import { loadVectorAircraftMetadata } from '../src/server/aircraft-metadata-source.ts';
 import { GET as readsbGet } from '../app/api/readsb/route.ts';
 
-test('source selection is standalone by default, preserves URL installs and hides private paths', () => {
+test('source selection is standalone by default, refuses legacy sources and hides private paths', () => {
   const standalone = readVectorServerConfig({});
   assert.equal(standalone.source, 'local');
-  assert.equal(readVectorServerConfig({ READSB_LIVE_URL: 'http://receiver.example/data/' }).source, 'http');
+  assert.throws(() => readVectorServerConfig({ READSB_LIVE_URL: 'http://receiver.example/data/' }), /Run the Vector installer/);
+  assert.throws(() => readVectorServerConfig({ READSB_SOURCE: 'http' }), /Run the Vector installer/);
+  assert.throws(() => readVectorServerConfig({ READSB_HISTORY_URL: 'http://receiver.example/history/' }), /Run the Vector installer/);
   assert.equal(readVectorServerConfig({ READSB_SOURCE: 'local', READSB_LIVE_URL: 'http://receiver.example/data/' }).source, 'local');
   assert.equal(readVectorServerConfig({ READSB_SOURCE: 'vector', READSB_REMOTE_URL: 'https://receiver.example/vector' }).remoteBaseUrl?.pathname, '/vector/');
   assert.equal('databaseFile' in standalone.publicConfig, false);
@@ -107,7 +109,7 @@ test('Linux local reads reject named pipes and inaccessible files without blocki
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test('remote Vector mode uses only fixed API paths; legacy HTTP directories still work', async () => {
+test('remote Vector mode uses only fixed API paths and refuses proxy chains', async () => {
   const originalFetch = globalThis.fetch;
   const calls: string[] = [];
   globalThis.fetch = (async (input, init) => {
@@ -126,9 +128,10 @@ test('remote Vector mode uses only fixed API paths; legacy HTTP directories stil
     assert.equal(new URL(calls[1]).searchParams.get('source'), 'history');
     assert.equal(new URL(calls[2]).pathname, '/vector/api/aircraft-metadata');
     assert.throws(() => rejectProxyLoop(new Request('http://local/api/readsb', { headers: { [vectorProxyHeader]: '1' } }), remote), /Chained/);
-    const legacy = readVectorServerConfig({ READSB_LIVE_URL: 'http://legacy.example/data/' });
-    await loadReadsbResource(legacy, 'live', 'receiver.json');
-    assert.equal(calls.at(-1), 'http://legacy.example/data/receiver.json');
+    assert.equal(calls.every((url) => new URL(url).origin === 'http://receiver.example'), true);
+    const before = calls.length;
+    await assert.rejects(() => loadReadsbResource(remote, 'live', 'https://other.example/aircraft.json'));
+    assert.equal(calls.length, before);
   } finally { globalThis.fetch = originalFetch; }
 });
 

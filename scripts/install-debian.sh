@@ -40,7 +40,7 @@ Without arguments, installs or updates Vector. Set VECTOR_REF to a branch,
 tag or commit and VECTOR_REPOSITORY to another Git repository when required.
 
   --yes          Accept safe defaults, including a necessary readsb restart.
-  --keep-source  Update Vector without migrating the configured data source.
+  --keep-source  Retain a local/Vector source (not a legacy HTTP source).
   --rollback     Restore the previous migration's configuration and services.
   --uninstall  Stop Vector and remove the service and /opt/vector.
   --purge      With --uninstall, also remove /etc/vector, state and the user.

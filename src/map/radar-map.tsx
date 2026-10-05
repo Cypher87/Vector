@@ -14,6 +14,7 @@ import { mapAltitudeLabel } from '../units';
 import { altitudeColor, altitudeColorForValue } from './altitude-color';
 import { applyAltitudeShadowProjection } from './altitude-shadow';
 import { createAircraftIconElement, updateAircraftIconElement } from './aircraft-icon';
+import { aircraftMapIconScale } from './aircraft-map-size';
 import {
   aircraftMotionEnabled as canAnimateAircraftMotion,
   aircraftPositionDistanceMetres,
@@ -25,6 +26,9 @@ import {
 } from './aircraft-motion';
 import { createDistanceRings, type DistanceRing } from './distance-rings';
 import { aircraftIconRotation } from './heading';
+import { aircraftIconMotionActive } from './icon-animation';
+import { aircraftWakeZoomOpacity, aircraftWakeZoomProfile, maximumAircraftWakeScreenLength } from './aircraft-wake';
+import { updateAircraftWakeRouteElement } from './aircraft-wake-element';
 import { mapThemePaint, openStreetMapRasterLayerId, type MapTheme, type MapThemePaint } from './map-theme';
 
 type RadarMapProps = {
@@ -33,6 +37,8 @@ type RadarMapProps = {
   aircraft: Aircraft[];
   aircraftMotionEnabled: boolean;
   aircraftShadowsVisible: boolean;
+  aircraftWakesVisible: boolean;
+  wakeTraces: ReadonlyMap<string, AircraftTracePoint[]>;
   center: [longitude: number, latitude: number];
   dataBaseUrl: string;
   distanceRingsVisible: boolean;
@@ -41,6 +47,7 @@ type RadarMapProps = {
   following: boolean;
   historyOpen: boolean;
   labelsVisible: boolean;
+  live: boolean;
   legTraceVisible: boolean;
   tracePoints: AircraftTracePoint[];
   highlightedTracePoint?: AircraftTracePoint;
@@ -49,6 +56,7 @@ type RadarMapProps = {
   mapTheme: MapTheme;
   onActualRangeVisibleChange: (visible: boolean) => void;
   onAircraftShadowsVisibleChange: (visible: boolean) => void;
+  onAircraftWakesVisibleChange: (visible: boolean) => void;
   onDeselect: () => void;
   onDistanceRingsVisibleChange: (visible: boolean) => void;
   onHistoryToggle: () => void;
@@ -167,7 +175,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   };
 };
 
-export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, mapTheme, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId, shadowTimestamp, theme, unitSystem }: RadarMapProps) {
+export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, wakeTraces, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, live, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, mapTheme, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId, shadowTimestamp, theme, unitSystem }: RadarMapProps) {
   const centerLongitude = center[0];
   const centerLatitude = center[1];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -194,6 +202,9 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const actualRangeAvailableRef = useRef(actualRangeAvailable);
   const actualRangeVisibleRef = useRef(actualRangeVisible);
   const aircraftShadowsVisibleRef = useRef(aircraftShadowsVisible);
+  const aircraftWakesVisibleRef = useRef(aircraftWakesVisible);
+  const wakeTracesRef = useRef(wakeTraces);
+  const lastWakeDrawRef = useRef(0);
   const distanceRingsVisibleRef = useRef(distanceRingsVisible);
   const labelsVisibleRef = useRef(labelsVisible);
   const legTraceVisibleRef = useRef(legTraceVisible);
@@ -202,6 +213,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const navigationControlRef = useRef<ReturnType<typeof createMapNavigationControl> | undefined>(undefined);
   const onActualRangeVisibleChangeRef = useRef(onActualRangeVisibleChange);
   const onAircraftShadowsVisibleChangeRef = useRef(onAircraftShadowsVisibleChange);
+  const onAircraftWakesVisibleChangeRef = useRef(onAircraftWakesVisibleChange);
   const onDeselectRef = useRef(onDeselect);
   const onDistanceRingsVisibleChangeRef = useRef(onDistanceRingsVisibleChange);
   const onHistoryToggleRef = useRef(onHistoryToggle);
@@ -213,15 +225,27 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    const container = containerRef.current;
+    const updateVisibility = () => {
+      if (container) container.dataset.pageVisible = String(!document.hidden);
+    };
+    updateVisibility();
+    document.addEventListener('visibilitychange', updateVisibility);
+    return () => document.removeEventListener('visibilitychange', updateVisibility);
+  }, []);
+
+  useEffect(() => {
     actualRangeAvailableRef.current = actualRangeAvailable;
     actualRangeVisibleRef.current = actualRangeVisible;
     aircraftMotionEnabledRef.current = aircraftMotionEnabled;
     followingRef.current = following;
     selectedIdRef.current = selectedId;
     aircraftShadowsVisibleRef.current = aircraftShadowsVisible;
+    aircraftWakesVisibleRef.current = aircraftWakesVisible;
     distanceRingsVisibleRef.current = distanceRingsVisible;
     onActualRangeVisibleChangeRef.current = onActualRangeVisibleChange;
     onAircraftShadowsVisibleChangeRef.current = onAircraftShadowsVisibleChange;
+    onAircraftWakesVisibleChangeRef.current = onAircraftWakesVisibleChange;
     onDeselectRef.current = onDeselect;
     onDistanceRingsVisibleChangeRef.current = onDistanceRingsVisibleChange;
     onHistoryToggleRef.current = onHistoryToggle;
@@ -231,7 +255,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     historyOpenRef.current = historyOpen;
     labelsVisibleRef.current = labelsVisible;
     legTraceVisibleRef.current = legTraceVisible;
-  }, [actualRangeAvailable, actualRangeVisible, aircraftMotionEnabled, aircraftShadowsVisible, distanceRingsVisible, following, historyOpen, labelsVisible, legTraceVisible, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId]);
+  }, [actualRangeAvailable, actualRangeVisible, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, distanceRingsVisible, following, historyOpen, labelsVisible, legTraceVisible, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId]);
 
   useEffect(() => {
     languageRef.current = language;
@@ -241,12 +265,38 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       actualRangeAvailable,
       actualRangeVisible,
       aircraftShadowsVisible,
+      aircraftWakesVisible,
       distanceRingsVisible,
       labelsVisible,
       legTraceVisible,
       historyOpen,
     );
-  }, [actualRangeAvailable, actualRangeVisible, aircraftShadowsVisible, distanceRingsVisible, historyOpen, labelsVisible, language, legTraceVisible, shadowTimestamp]);
+  }, [actualRangeAvailable, actualRangeVisible, aircraftShadowsVisible, aircraftWakesVisible, distanceRingsVisible, historyOpen, labelsVisible, language, legTraceVisible, shadowTimestamp]);
+
+  const updateWakePositions = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || historyOpenRef.current || !aircraftWakesVisibleRef.current || document.hidden
+      || window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      || aircraftWakeZoomOpacity(map.getZoom()) === 0) return;
+    lastWakeDrawRef.current = performance.now();
+    const width = map.getCanvas().clientWidth, height = map.getCanvas().clientHeight;
+    const { lengthScale } = aircraftWakeZoomProfile(map.getZoom());
+    const iconScale = aircraftMapIconScale(map.getZoom());
+    const margin = maximumAircraftWakeScreenLength * lengthScale + 40;
+    for (const [id, marker] of markersRef.current) {
+      if (!marker.aircraft || !marker.displayedPosition) continue;
+      const point = map.project(marker.displayedPosition);
+      const inView = point.x >= -margin && point.x <= width + margin && point.y >= -margin && point.y <= height + margin;
+      updateAircraftWakeRouteElement(marker.icon, inView ? wakeTracesRef.current.get(id) ?? [] : [],
+        shadowTimestampRef.current, marker.displayedPosition, (position) => map.project(position),
+        aircraftIconRotation(aircraftKind(marker.aircraft), marker.displayedTrackDeg, map.getBearing()), lengthScale, iconScale);
+    }
+  }, []);
+
+  useEffect(() => {
+    wakeTracesRef.current = wakeTraces;
+    updateWakePositions();
+  }, [wakeTraces, aircraftWakesVisible, historyOpen, ready, updateWakePositions]);
 
   const animateMarkers = useCallback(function animateMarkerFrame(now: number) {
     const map = mapRef.current;
@@ -341,13 +391,14 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       }
     });
 
+    if (now - lastWakeDrawRef.current >= 80) updateWakePositions();
     if (now - lastLabelLayoutRef.current >= 150) updateLabelVisibilityRef.current();
     if (keepAnimating) animationFrameRef.current = requestAnimationFrame(animateMarkerFrame);
     else {
       animationFrameRef.current = undefined;
       lastAnimationFrameRef.current = undefined;
     }
-  }, []);
+  }, [updateWakePositions]);
 
   const startMarkerAnimation = useCallback(() => {
     if (animationFrameRef.current !== undefined) return;
@@ -552,6 +603,33 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     let mapInitialized = false;
     let receiverMarker: Marker | undefined;
 
+    let previousIconScale: string | undefined;
+    const updateIconSize = () => {
+      const scale = aircraftMapIconScale(map.getZoom()).toFixed(5);
+      if (scale === previousIconScale) return;
+      previousIconScale = scale;
+      // One inherited property updates existing and newly received markers.
+      // Follow the map's zoom easing directly, without a second CSS transition.
+      containerRef.current?.style.setProperty('--aircraft-icon-scale', scale);
+    };
+    updateIconSize();
+
+    let previousWakeAppearance: string | undefined;
+    const updateWakeVisibility = () => {
+      const opacity = aircraftWakeZoomOpacity(map.getZoom()).toFixed(3);
+      const profile = aircraftWakeZoomProfile(map.getZoom());
+      const middle = profile.middleOpacity.toFixed(3), tail = profile.tailOpacity.toFixed(3);
+      const appearance = `${opacity}:${middle}:${tail}`;
+      if (appearance === previousWakeAppearance) return;
+      previousWakeAppearance = appearance;
+      containerRef.current?.style.setProperty('--aircraft-wake-opacity', opacity);
+      containerRef.current?.style.setProperty('--aircraft-wake-middle-opacity', middle);
+      containerRef.current?.style.setProperty('--aircraft-wake-tail-opacity', tail);
+      // Only pause the flow at zero; keep the strokes mounted for the fade-out.
+      containerRef.current?.setAttribute('data-wake-visible', String(Number(opacity) > 0));
+    };
+    updateWakeVisibility();
+
     const updateLabelVisibility = () => {
       lastLabelLayoutRef.current = performance.now();
       const zoom = map.getZoom();
@@ -601,12 +679,14 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       actualRangeAvailableRef.current,
       actualRangeVisibleRef.current,
       aircraftShadowsVisibleRef.current,
+      aircraftWakesVisibleRef.current,
       distanceRingsVisibleRef.current,
       labelsVisibleRef.current,
       legTraceVisibleRef.current,
       historyOpenRef.current,
       () => onActualRangeVisibleChangeRef.current(!actualRangeVisibleRef.current),
       () => onAircraftShadowsVisibleChangeRef.current(!aircraftShadowsVisibleRef.current),
+      () => onAircraftWakesVisibleChangeRef.current(!aircraftWakesVisibleRef.current),
       () => onDistanceRingsVisibleChangeRef.current(!distanceRingsVisibleRef.current),
       () => onLabelsVisibleChangeRef.current(!labelsVisibleRef.current),
       () => onLegTraceVisibleChangeRef.current(!legTraceVisibleRef.current),
@@ -632,11 +712,14 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     map.on('click', () => onDeselectRef.current());
     map.on('moveend', updateLabelVisibility);
     map.on('zoomend', updateLabelVisibility);
+    map.on('zoom', updateIconSize);
+    map.on('zoom', updateWakeVisibility);
     map.on('resize', updateLabelVisibility);
     map.on('move', refreshMovingLabels);
     map.on('move', updateActualRangeOverlayPositions);
     map.on('move', updateDistanceRingOverlayPositions);
     map.on('move', updateTraceOverlayPositions);
+    map.on('move', updateWakePositions);
     map.on('rotate', () => {
       markersRef.current.forEach((aircraftMarker) => {
         if (aircraftMarker.aircraft) {
@@ -665,6 +748,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
         }
       });
       updateLabelVisibility();
+      updateWakePositions();
     });
 
     const initializeMap = () => {
@@ -717,7 +801,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       navigationControlRef.current = undefined;
       attributionObserver?.disconnect();
     };
-  }, [centerLatitude, centerLongitude, mapStyleUrl, updateActualRangeOverlayPositions, updateDistanceRingOverlayPositions, updateTraceOverlayPositions]);
+  }, [centerLatitude, centerLongitude, mapStyleUrl, updateActualRangeOverlayPositions, updateDistanceRingOverlayPositions, updateTraceOverlayPositions, updateWakePositions]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -874,6 +958,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       aircraftMarker.element.classList.toggle('selected', aircraftMarker.selected);
       aircraftMarker.element.classList.toggle('favorite', aircraftMarker.favorite);
       aircraftMarker.element.classList.toggle('helicopter', kind === 'helicopter' && !item.onGround);
+      aircraftMarker.element.dataset.iconMotion = aircraftIconMotionActive(item) ? 'running' : 'paused';
       aircraftMarker.element.classList.toggle('mlat', item.source === 'mlat');
       aircraftMarker.element.style.zIndex = String(aircraftMarkerZIndex(item, aircraftMarker.selected));
       aircraftMarker.element.setAttribute('aria-label', [
@@ -886,7 +971,8 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     });
 
     updateLabelVisibilityRef.current();
-  }, [aircraft, aircraftMotionEnabled, aircraftShadowsVisible, favoriteIds, historyOpen, labelsVisible, language, ready, selectedId, shadowTimestamp, startMarkerAnimation, theme, unitSystem]);
+    updateWakePositions();
+  }, [aircraft, aircraftMotionEnabled, aircraftShadowsVisible, favoriteIds, historyOpen, labelsVisible, language, ready, selectedId, shadowTimestamp, startMarkerAnimation, theme, unitSystem, updateWakePositions]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -943,7 +1029,9 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
 
   return (
     <>
-      <div className="maplibre-surface" ref={containerRef} />
+      <div className="maplibre-surface" data-icon-animation={live && !historyOpen ? 'running' : 'paused'}
+        data-wake-enabled={aircraftWakesVisible}
+        data-wake-tone={mapTheme === 'dark' || mapTheme === 'vector' && theme !== 'daylight' ? 'light' : 'dark'} ref={containerRef} />
       {!ready && !error && <div className="map-loading">{translate(language, 'mapLoading')}</div>}
       {error && <div className="map-error"><strong>{translate(language, 'mapUnavailable')}</strong><span>{error}</span></div>}
     </>

@@ -54,7 +54,7 @@ async function receiver(service, io) {
   const properties = await run('systemctl', ['show', service, '--property=MainPID,User,Group,DynamicUser,RootDirectory']);
   const info = Object.fromEntries(properties.trim().split('\n').map((line) => { const equals = line.indexOf('='); return [line.slice(0, equals), line.slice(equals + 1)]; }));
   if (!/^[1-9]\d*$/.test(info.MainPID || '')) throw new Error('Receiver service is not running');
-  if (info.DynamicUser === 'yes' || info.RootDirectory) throw new Error('Isolated receivers need a remote Vector/HTTP source');
+  if (info.DynamicUser === 'yes' || info.RootDirectory) throw new Error('Isolated receivers need a remote Vector source');
   const argv = (await readFile(`/proc/${info.MainPID}/cmdline`, 'utf8')).split('\0').filter(Boolean);
   const executable = await realpath(`/proc/${info.MainPID}/exe`);
   if (basename(executable) !== 'readsb' || !argv.length || basename(argv[0]) !== 'readsb') {
@@ -79,8 +79,9 @@ async function selectReceiver(environment, yes, io) {
   if (!available.length) return null;
   const addresses = Object.values(networkInterfaces()).flat().filter(Boolean).map((item) => item.address);
   if (environment.READSB_SOURCE !== 'local' && environment.READSB_LIVE_URL && !localUrl(environment.READSB_LIVE_URL, addresses)) {
-    const choice = await ask('Vector currently uses an external receiver. Which source should it use?', ['Keep the external source', 'Use readsb on this machine'], 0, yes);
-    if (choice === 0) return false;
+    const choice = await ask('Legacy HTTP sources are no longer supported. Which receiver should Vector use?', ['Connect another Vector receiver', 'Use readsb on this machine', 'Cancel installation'], undefined, yes);
+    if (choice === 2) throw new Error('Installation cancelled; receiver unchanged');
+    if (choice === 0) return null;
   }
   return available.length === 1 ? available[0] : available[await ask('Multiple receivers found. Choose one', available.map((item) => item.service), undefined, yes)];
 }
@@ -171,8 +172,11 @@ export async function install({ yes = false, keepSource = false } = {}, io = sys
   const original = (await snapshot(configPath))?.content;
   if (!original) throw new Error('Vector configuration is missing');
   const environment = parseEnv(original);
+  const legacy = environment.READSB_SOURCE === 'http' || (!environment.READSB_SOURCE && (environment.READSB_LIVE_URL || environment.READSB_HISTORY_URL));
+  if (keepSource && legacy) throw new Error('Legacy HTTP sources cannot be retained. Run the installer without --keep-source to migrate to readsb files or another Vector server.');
+  if (environment.READSB_SOURCE && !['local', 'vector', 'http'].includes(environment.READSB_SOURCE)) throw new Error('Unsupported READSB_SOURCE; configuration unchanged');
   const selected = keepSource ? false : await selectReceiver(environment, yes, io);
-  let candidate = original;
+  let candidate = patchEnvironment(original, {}, ['READSB_LIVE_URL', 'READSB_HISTORY_URL', 'READSB_TAR1090_URL']);
   let plan;
   if (selected) {
     const help = await run('runuser', ['-u', 'vector', '--', selected.executable, '--help']);
@@ -181,15 +185,11 @@ export async function install({ yes = false, keepSource = false } = {}, io = sys
     candidate = migrationSettings(original, plan.live, plan.history);
     log(`Detected ${selected.service}; using local readsb files.`);
   } else if (selected === null) {
-    const choice = environment.READSB_LIVE_URL && environment.READSB_SOURCE !== 'local'
-      ? await ask('No usable local readsb service found', ['Keep HTTP source (tar1090 may still be needed)', 'Connect another Vector receiver', 'Cancel installation'], 0, yes) : 1;
-    if (choice === 2) throw new Error('Installation cancelled; receiver unchanged');
-    if (choice === 1) {
-      const value = await ask('Enter the URL of another Vector receiver', undefined, undefined, yes);
-      const url = new URL(value);
-      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Enter a plain HTTP(S) Vector URL without credentials');
-      candidate = patchEnvironment(original, { READSB_SOURCE: 'vector', READSB_REMOTE_URL: url.href }, ['READSB_LIVE_URL', 'READSB_HISTORY_URL', 'READSB_TAR1090_URL']);
-    }
+    const value = await ask('Enter the URL of another Vector receiver (or cancel)', undefined, undefined, yes);
+    if (value.trim().toLowerCase() === 'cancel') throw new Error('Installation cancelled; receiver unchanged');
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error('Enter a plain HTTP(S) Vector URL without credentials');
+    candidate = patchEnvironment(original, { READSB_SOURCE: 'vector', READSB_REMOTE_URL: url.href }, ['READSB_LIVE_URL', 'READSB_HISTORY_URL', 'READSB_TAR1090_URL']);
   }
   const id = `${new Date().toISOString().replace(/[^0-9]/g, '')}-${randomUUID()}`;
   const transaction = new MigrationFiles(join(backups, id));
@@ -266,9 +266,8 @@ export async function install({ yes = false, keepSource = false } = {}, io = sys
     transaction.state.status = 'complete';
     await transaction.save();
     const source = parseEnv(candidate).READSB_SOURCE;
-    log(source === 'local' ? 'Migration complete: Vector reads readsb directly. tar1090 and recordings have not been removed.'
-      : source === 'vector' ? 'Installation complete: data comes from the configured Vector receiver.'
-        : 'Installation complete: existing HTTP source retained; it may still depend on tar1090.');
+    log(source === 'vector' ? 'Installation complete: data comes from the configured Vector receiver.'
+      : 'Migration complete: Vector reads readsb directly. Other applications and recordings have not been removed.');
   } catch (error) {
     try { await recover(transaction, io); } catch (recoveryError) { throw new Error(`${error.message}\nRecovery needs attention: ${recoveryError.message}\nBackup: ${transaction.directory}`); }
     throw new Error(`${error.message}\nPrevious configuration restored. Backup: ${transaction.directory}`);

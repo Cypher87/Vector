@@ -175,16 +175,44 @@ button { color: inherit; }
 .aircraft-altitude-shadow-icon { width: 32.4px; height: 36px; color: #020709; }
 .aircraft-altitude-shadow-icon .aircraft-icon-main { fill: currentColor; stroke: rgba(2,7,9,.72); }
 .aircraft-altitude-shadow-icon .aircraft-icon-accent { display: none; }
-.aircraft-map-marker { --aircraft-color: #d5e1e4; position: absolute; width: 32px; height: 34px; padding: 0; display: grid; place-items: center; overflow: visible; border: 0; background: transparent; color: #d5e1e4; cursor: pointer; filter: drop-shadow(0 2px 3px rgba(19,38,43,.46)); backface-visibility: hidden; will-change: transform; }
+.aircraft-map-marker { --aircraft-color: #d5e1e4; --aircraft-marker-filter: drop-shadow(0 2px 3px rgba(19,38,43,.46)); position: absolute; width: calc(32px * var(--aircraft-icon-scale, 1)); height: calc(34px * var(--aircraft-icon-scale, 1)); padding: 0; display: grid; place-items: center; overflow: visible; border: 0; background: transparent; color: #d5e1e4; cursor: pointer; backface-visibility: hidden; will-change: transform; }
+/* Keep shadow/selection glow off the wake, which is a sibling of the body. */
+.aircraft-map-marker > .map-aircraft-icon > .aircraft-icon-body,
+.aircraft-map-marker > .map-plane-label,
+.aircraft-map-marker > .favorite-map-target { filter: var(--aircraft-marker-filter); }
 .aircraft-icon-svg { display: block; overflow: visible; color: inherit; transform-origin: 50% 50%; }
 .list-aircraft-icon, .detail-aircraft-icon { transition: transform .24s linear; }
 .map-aircraft-icon { width: 32.4px; height: 36px; color: var(--aircraft-color); backface-visibility: hidden; will-change: transform; }
+/* Scale the silhouette about its GPS anchor, not the geographic wake geometry. */
+.maplibre-surface .map-aircraft-icon > .aircraft-icon-body { transform-box: view-box; transform-origin: 50% 50%; transform: scale(var(--aircraft-icon-scale, 1)); }
 .aircraft-icon-main { fill: currentColor; stroke: #071115; stroke-linejoin: round; }
 .aircraft-icon-accent { fill: none; stroke: #071115; stroke-linecap: round; stroke-linejoin: round; }
 .map-aircraft-icon .aircraft-icon-main, .map-aircraft-icon .aircraft-icon-accent { stroke: #183137; }
 .aircraft-altitude-shadow-icon[data-shape="unknown-contact-dot"] { visibility: hidden; }
-.aircraft-map-marker.helicopter::before { content: ''; position: absolute; z-index: 1; left: 50%; top: 48%; width: 29px; height: 1.5px; border-radius: 99px; background: linear-gradient(90deg, transparent, var(--aircraft-color) 18%, var(--aircraft-color) 82%, transparent); opacity: .5; filter: drop-shadow(0 0 2px color-mix(in srgb, var(--aircraft-color) 28%, transparent)); transform: translate(-50%, -50%); transform-origin: center; pointer-events: none; animation: helicopter-rotor .8s linear infinite; }
-@keyframes helicopter-rotor { to { transform: translate(-50%, -50%) rotate(360deg); } }
+.aircraft-icon-moving-part { fill: currentColor; stroke: #183137; stroke-width: .45; stroke-linejoin: round; transform-box: view-box; pointer-events: none; }
+.aircraft-icon-rotor { opacity: .65; }
+.aircraft-icon-propeller { opacity: .8; }
+.aircraft-altitude-shadow-icon .aircraft-icon-moving-part { fill: currentColor; stroke: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .aircraft-map-marker .aircraft-icon-rotor { animation: aircraft-rotor-turn 2.4s linear infinite paused; animation-delay: var(--icon-motion-phase, 0ms); }
+  .aircraft-map-marker .aircraft-icon-propeller { animation: aircraft-propeller-turn 1.2s linear infinite paused; animation-delay: var(--icon-motion-phase, 0ms); }
+  .maplibre-surface[data-icon-animation="running"][data-page-visible="true"] .aircraft-map-marker[data-icon-motion="running"] .aircraft-icon-moving-part { animation-play-state: running; }
+}
+@keyframes aircraft-rotor-turn { to { transform: rotate(360deg); } }
+@keyframes aircraft-propeller-turn { to { transform: rotate(360deg); } }
+.maplibre-surface { --aircraft-wake-color: #dce3df; }
+.maplibre-surface[data-wake-tone="dark"] { --aircraft-wake-color: #324a50; }
+.aircraft-speed-wake { display: none; opacity: var(--aircraft-wake-opacity, 0); fill: none; stroke-linecap: round; pointer-events: none; }
+.maplibre-surface[data-wake-enabled="false"] .aircraft-speed-wake { opacity: 0; }
+.aircraft-speed-wake-base { opacity: .45; }
+.aircraft-speed-wake-flow { opacity: .08; stroke-dasharray: 3 8; }
+@media (prefers-reduced-motion: no-preference) {
+  .aircraft-speed-wake { transition: opacity .18s ease-out; }
+  .maplibre-surface[data-icon-animation="running"][data-page-visible="true"] .aircraft-map-marker[data-icon-motion="running"] .aircraft-speed-wake { display: inline; }
+  .aircraft-speed-wake-flow { animation: aircraft-wake-flow var(--wake-duration, 2s) linear infinite paused; animation-delay: var(--icon-motion-phase, 0ms); }
+  .maplibre-surface[data-icon-animation="running"][data-page-visible="true"][data-wake-enabled="true"][data-wake-visible="true"] .aircraft-map-marker[data-icon-motion="running"] .aircraft-speed-wake-flow { animation-play-state: running; }
+}
+@keyframes aircraft-wake-flow { to { stroke-dashoffset: -22; } }
 .map-plane-label { position: absolute; left: calc(100% + 7px); top: 50%; width: max-content; min-width: 62px; padding: 6px 8px; display: grid; gap: 3px; border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); border-radius: 8px; background: linear-gradient(145deg, rgba(15,31,35,.94), rgba(7,17,20,.94)); box-shadow: 0 10px 25px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04); color: #d8e5e7; text-align: left; line-height: 1; white-space: nowrap; transform: translateY(-50%); pointer-events: none; backdrop-filter: blur(10px); transition: border-color .16s ease, box-shadow .16s ease, background .16s ease; }
 .map-plane-label::before, .map-plane-label::after { content: ''; position: absolute; top: 50%; border: 5px solid transparent; transform: translateY(-50%); }.map-plane-label::before { left: -10px; border-right-color: color-mix(in srgb, var(--accent) 32%, transparent); }.map-plane-label::after { left: -8px; border-right-color: rgba(11,24,28,.96); }
 .map-plane-label strong { color: #d8e5e7; font: 750 10.8px var(--font-geist-mono), monospace; letter-spacing: .035em; }
@@ -192,9 +220,9 @@ button { color: inherit; }
 .map-plane-label.label-hidden { visibility: hidden; }
 .aircraft-map-marker:hover, .aircraft-map-marker:focus-visible { outline: 0; }
 .aircraft-map-marker:hover .map-plane-label, .aircraft-map-marker:focus-visible .map-plane-label { border-color: color-mix(in srgb, var(--accent) 50%, transparent); box-shadow: 0 12px 28px rgba(0,0,0,.46), 0 0 16px color-mix(in srgb, var(--accent) 8%, transparent), inset 0 1px 0 rgba(255,255,255,.05); }.aircraft-map-marker:hover .map-plane-label::before, .aircraft-map-marker:focus-visible .map-plane-label::before { border-right-color: color-mix(in srgb, var(--accent) 50%, transparent); }
-.aircraft-map-marker.selected { z-index: 5; filter: drop-shadow(0 0 7px color-mix(in srgb, var(--aircraft-color) 68%, transparent)); }
+.aircraft-map-marker.selected { z-index: 5; --aircraft-marker-filter: drop-shadow(0 0 7px color-mix(in srgb, var(--aircraft-color) 68%, transparent)); }
 .aircraft-map-marker.selected .map-plane-label { border-color: color-mix(in srgb, var(--aircraft-color) 54%, transparent); background: linear-gradient(145deg, rgba(18,34,38,.98), rgba(7,17,20,.98)); box-shadow: 0 12px 30px rgba(0,0,0,.5), 0 0 17px color-mix(in srgb, var(--aircraft-color) 12%, transparent), inset 0 1px 0 rgba(255,255,255,.055); }.aircraft-map-marker.selected .map-plane-label::before { border-right-color: color-mix(in srgb, var(--aircraft-color) 54%, transparent); }.aircraft-map-marker.selected .map-plane-label strong { color: #edf6f7; }.aircraft-map-marker.selected .map-plane-label span { color: color-mix(in srgb, var(--aircraft-color) 72%, #d8e5e7); }
-.favorite-map-target { position: absolute; z-index: 2; left: 50%; top: 50%; width: 38px; height: 40px; display: none; transform: translate(-50%, -50%); pointer-events: none; }.aircraft-map-marker.favorite .favorite-map-target { display: block; }.aircraft-map-marker.favorite .map-plane-label { left: calc(100% + 10px); }.favorite-map-target i { position: absolute; width: 7px; height: 7px; border-color: var(--favorite); border-style: solid; }.favorite-map-target i:nth-child(1) { left: 0; top: 0; border-width: 1.5px 0 0 1.5px; }.favorite-map-target i:nth-child(2) { right: 0; top: 0; border-width: 1.5px 1.5px 0 0; }.favorite-map-target i:nth-child(3) { right: 0; bottom: 0; border-width: 0 1.5px 1.5px 0; }.favorite-map-target i:nth-child(4) { left: 0; bottom: 0; border-width: 0 0 1.5px 1.5px; }
+.favorite-map-target { position: absolute; z-index: 2; left: 50%; top: 50%; width: calc(38px * var(--aircraft-icon-scale, 1)); height: calc(40px * var(--aircraft-icon-scale, 1)); display: none; transform: translate(-50%, -50%); pointer-events: none; }.aircraft-map-marker.favorite .favorite-map-target { display: block; }.aircraft-map-marker.favorite .map-plane-label { left: calc(100% + 10px); }.favorite-map-target i { position: absolute; width: 7px; height: 7px; border-color: var(--favorite); border-style: solid; }.favorite-map-target i:nth-child(1) { left: 0; top: 0; border-width: 1.5px 0 0 1.5px; }.favorite-map-target i:nth-child(2) { right: 0; top: 0; border-width: 1.5px 1.5px 0 0; }.favorite-map-target i:nth-child(3) { right: 0; bottom: 0; border-width: 0 1.5px 1.5px 0; }.favorite-map-target i:nth-child(4) { left: 0; bottom: 0; border-width: 0 0 1.5px 1.5px; }
 .map-grid { position: absolute; inset: 0; opacity: .18; background-image: linear-gradient(rgba(139,169,175,.14) 1px, transparent 1px), linear-gradient(90deg, rgba(139,169,175,.14) 1px, transparent 1px); background-size: 74px 74px; mask-image: radial-gradient(circle, black, transparent 88%); }
 .river { position: absolute; width: 76%; height: 180px; border: 6px solid rgba(43,93,110,.17); border-left-color: transparent; border-right-color: transparent; border-radius: 50%; transform: rotate(-12deg); }.river-one { left: -8%; top: 48%; }.river-two { right: -30%; top: 22%; transform: rotate(48deg); }
 .map-place { position: absolute; color: rgba(150,171,177,.3); font-size: 9.6px; font-weight: 700; letter-spacing: .18em; }.place-amsterdam { left: 47%; top: 51%; }.place-utrecht { left: 68%; top: 68%; }.place-haarlem { left: 27%; top: 45%; }
@@ -241,7 +269,7 @@ button { color: inherit; }
 @media (max-width: 720px) { .workspace .detail-panel { display: block; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(18px); transition: opacity .18s ease, transform .26s cubic-bezier(.22, 1, .36, 1), visibility 0s linear .26s; }.workspace .detail-panel.mobile-expanded { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); transition-delay: 0s; }.workspace.details-closed .detail-panel { opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(18px); }.detail-panel.detail-empty { display: none; } }
 @media (max-width: 720px) { .workspace:not(.details-closed) .map .maplibregl-ctrl-top-right { right: var(--map-edge-inset); }.workspace:not(.details-closed) .map .maplibregl-ctrl-bottom-right { right: 0; }.workspace:not(.details-closed) .history-panel { left: 50%; width: calc(100% - 20px); } }
 @media (max-width: 720px) { .receiver-dashboard { position: fixed; top: 68px; right: 12px; width: calc(100vw - 24px); max-height: calc(100svh - 106px); }.receiver-dashboard-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }.receiver-dashboard-metrics article:nth-child(2) { border-right: 0; }.receiver-dashboard-metrics article:nth-child(-n+2) { border-bottom: 1px solid var(--line); }.receiver-dashboard-details > div { grid-template-columns: 108px minmax(0,1fr); } }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; }.workspace, .detail-panel { transition: none !important; }.aircraft-photo-loading span, .aircraft-map-marker.helicopter::before { animation: none; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; }.workspace, .detail-panel { transition: none !important; }.aircraft-photo-loading span { animation: none; } }
 .sync-popover { max-height: calc(100svh - 82px); overflow: hidden auto; scrollbar-color: rgba(132,151,158,.5) transparent; scrollbar-width: thin; }
 .sync-devices { display: grid; gap: 7px; }
 .sync-devices > strong { color: var(--muted-strong); font-size: 10.8px; font-weight: 700; }

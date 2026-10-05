@@ -6,7 +6,7 @@ export async function openFilterGroup(page: Page, group: 'categories' | 'flight'
   await expect(details).toHaveAttribute('open', '');
 }
 
-/** Synthetic tar1090 replay, using the same 16-byte record format as the receiver. */
+/** Synthetic readsb replay, using the same 16-byte record format as the receiver. */
 function replayFile(path: string) {
   const match = path.match(/^(\d{4})\/(\d{2})\/(\d{2})\/heatmap\/(\d{2})\.bin\.ttf$/);
   if (!match) throw new Error(`Unexpected replay path: ${path}`);

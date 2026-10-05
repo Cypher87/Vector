@@ -1,10 +1,10 @@
 # Vector ADS-B Radar
 
-A live aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre. **tar1090 is optional:** Vector can read receiver files directly and maintains its own aircraft metadata database.
+A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
 ## Features
 
-- Live map with type-specific aircraft icons, altitude colors, smooth motion, and collision-aware labels.
+- Live map with original aircraft-family icons, altitude colors, smooth motion, and collision-aware labels.
 - Search, advanced filters, saved views, and favorites.
 - Aircraft details with photos, routes, technical data, and interactive flight profiles.
 - Altitude-colored traces, receiver history replay, distance rings, and range outline.
@@ -59,11 +59,10 @@ PORT=3000
 
 The live directory contains `aircraft.json`, `receiver.json`, and optional `outline.json` and `traces/`. The history directory contains readsb replay files such as `YYYY/MM/DD/heatmap/NN.bin.ttf`. Traces, replay, and range outlines require the corresponding readsb output; Vector does not invent missing recordings.
 
-For an existing HTTP installation, use `READSB_SOURCE=http`, `READSB_LIVE_URL=http://receiver.local/tar1090/data/`, and `READSB_HISTORY_URL=http://receiver.local/tar1090/globe_history/`. The URLs are **directories**, not individual files. For another Vector server, use `READSB_SOURCE=vector` and `READSB_REMOTE_URL=http://receiver.local:3000/` instead.
+For another Vector server, use `READSB_SOURCE=vector` and `READSB_REMOTE_URL=http://receiver.local:3000/`. Only `local` and `vector` sources are supported. **Upgrading an old HTTP installation:** rerun the installer without `--keep-source`. It migrates a local receiver automatically; for an external receiver, it asks for a Vector server URL or a switch to local readsb. It never guesses a new server address. Old `READSB_LIVE_URL`, `READSB_HISTORY_URL`, and `READSB_TAR1090_URL` settings are removed from the migrated configuration, not used as fallbacks.
 
 | Optional setting | Purpose / default |
 | --- | --- |
-| `READSB_TAR1090_URL` | Legacy HTTP-mode metadata fallback only; defaults to the parent of the live-data URL. |
 | `VECTOR_RECEIVER_LATITUDE`, `VECTOR_RECEIVER_LONGITUDE` | Set both in decimal degrees to override the position from `receiver.json`. |
 | `VECTOR_MAP_STYLE_URL` | MapLibre style; defaults to `/map-style.json`. |
 | `VECTOR_SYNC_STORE` | Synchronization database; the installer sets `/var/lib/vector/sync.json`. |
@@ -140,7 +139,7 @@ READSB_SOURCE=vector
 READSB_REMOTE_URL=http://receiver.local:3000/
 ```
 
-Alternatively keep the legacy HTTP settings above while tar1090 still serves your receiver. Then run `pnpm dev` and open [localhost:3000](http://localhost:3000). Development synchronization defaults to `.vector/sync.json`; do not copy the Pi's `VECTOR_SYNC_STORE` value into development. A remote Vector source provides metadata as well as live data and history, so no local database download is necessary.
+Run `pnpm dev` and open [localhost:3000](http://localhost:3000). Replace old HTTP settings in `.env.local` with the Vector settings above. Development synchronization defaults to `.vector/sync.json`; do not copy the Pi's `VECTOR_SYNC_STORE` value into development. A remote Vector source provides metadata as well as live data and history, so no local database download is necessary.
 
 ### Checks
 
@@ -172,6 +171,6 @@ HOST=0.0.0.0 PORT=3000 pnpm start
 - [User guide](docs/USER_GUIDE.md): filters, map layers, traces, replay, connection status, and synchronization.
 - [Guided installation](docs/STANDALONE.md): automatic migration, recovery, metadata updates, and advanced configuration.
 - [Architecture](docs/ARCHITECTUUR.md) (Dutch): technical design and extension points.
-- [Licenses and attribution](THIRD_PARTY_NOTICES.md): aircraft shapes, type mappings, and downloaded metadata sources.
+- [Licenses and attribution](THIRD_PARTY_NOTICES.md): original aircraft icons and downloaded metadata sources.
 
 The included map styles use online OpenStreetMap tiles. Aircraft photos and route information depend on external services and may be unavailable.

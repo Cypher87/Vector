@@ -1,3 +1,5 @@
+import { aircraftMapIconScale } from './aircraft-map-size.ts';
+
 export type LabelSide = 'right' | 'left' | 'top' | 'bottom';
 export type LabelBox = { left: number; top: number; right: number; bottom: number };
 export type LabelCandidate = {
@@ -31,7 +33,9 @@ export function layoutAircraftLabels(candidates: LabelCandidate[], width: number
   const result = new Map<string, LabelPlacement>();
   const labels = new BoxGrid();
   const icons = new BoxGrid();
-  for (const candidate of candidates) icons.add({ left: candidate.x - 15, right: candidate.x + 15, top: candidate.y - 17, bottom: candidate.y + 17 });
+  const iconScale = aircraftMapIconScale(zoom);
+  for (const candidate of candidates) icons.add({ left: candidate.x - 15 * iconScale, right: candidate.x + 15 * iconScale,
+    top: candidate.y - 17 * iconScale, bottom: candidate.y + 17 * iconScale });
   const ordered = [...candidates].sort((a, b) => Number(b.selected) - Number(a.selected)
     || Number(b.focused) - Number(a.focused) || Number(b.favorite) - Number(a.favorite)
     || Number(Boolean(b.previous)) - Number(Boolean(a.previous)) || a.id.localeCompare(b.id));
@@ -43,8 +47,8 @@ export function layoutAircraftLabels(candidates: LabelCandidate[], width: number
     if (!important && !candidate.favorite && (zoom < 5 || ordinary >= budget)) continue;
     const sides = [...new Set([candidate.previous, 'right', 'left', 'top', 'bottom'].filter(Boolean))] as LabelSide[];
     const placements = sides.map((side): LabelPlacement => {
-      const x = side === 'right' ? 24 : side === 'left' ? -24 - candidate.width : -candidate.width / 2;
-      const y = side === 'bottom' ? 26 : side === 'top' ? -26 - candidate.height : -candidate.height / 2;
+      const x = side === 'right' ? 24 * iconScale : side === 'left' ? -24 * iconScale - candidate.width : -candidate.width / 2;
+      const y = side === 'bottom' ? 26 * iconScale : side === 'top' ? -26 * iconScale - candidate.height : -candidate.height / 2;
       return { side, x, y, box: { left: candidate.x + x, right: candidate.x + x + candidate.width, top: candidate.y + y, bottom: candidate.y + y + candidate.height } };
     }).filter(({ box }) => box.left >= 6 && box.top >= 6 && box.right <= width - 6 && box.bottom <= height - 6
       && !obstacles.some((other) => boxesOverlap(box, other)) && !labels.overlaps(box));

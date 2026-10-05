@@ -1,5 +1,3 @@
-import type { VectorServerConfig } from './vector-config';
-
 export type ReadsbSource = 'history' | 'live';
 
 export class ReadsbRequestError extends Error {}
@@ -77,20 +75,6 @@ export function parseReadsbProxyRequest(requestUrl: string): {
 
   const path = validateReadsbResourcePath(sourceValue, parameters.get('path') ?? '');
   return { path, source: sourceValue };
-}
-
-export function buildReadsbUpstreamUrl(
-  config: VectorServerConfig,
-  source: ReadsbSource,
-  path: string,
-): URL {
-  const validatedPath = validateReadsbResourcePath(source, path);
-  const base = source === 'live' ? config.liveBaseUrl : config.historyBaseUrl;
-  const upstream = new URL(validatedPath, base);
-  if (upstream.origin !== base.origin || !upstream.pathname.startsWith(base.pathname)) {
-    throw new ReadsbRequestError('The readsb resource escaped its configured base');
-  }
-  return upstream;
 }
 
 export const isRedirectStatus = (status: number) => status >= 300 && status < 400;

@@ -59,6 +59,22 @@ test('invalid preference values are discarded', () => {
   assert.deepEqual(normalizeSyncPreferences(null), {});
 });
 
+test('aircraft trail layer sync preserves booleans and independent preferences', () => {
+  for (const aircraftWakes of [true, false]) {
+    assert.deepEqual(normalizeSyncPreferences({ aircraftWakes }), { aircraftWakes });
+  }
+  for (const aircraftWakes of ['false', 0, null, undefined, {}]) {
+    assert.deepEqual(normalizeSyncPreferences({ aircraftWakes }), {});
+  }
+  const before = { aircraftWakes: true, aircraftShadows: true, aircraftMotion: true, legTrace: true };
+  const patch = createSyncPreferencePatch(before, { ...before, aircraftWakes: false });
+  assert.deepEqual(patch, { settings: { aircraftWakes: false } });
+  assert.deepEqual(applySyncPreferencePatch(before, patch), { ...before, aircraftWakes: false });
+  assert.deepEqual(applySyncPreferencePatch({ aircraftWakes: false }, { settings: { mapLabels: false } }), {
+    aircraftWakes: false, mapLabels: false,
+  });
+});
+
 test('preference patches merge independent device changes and favorite operations', () => {
   const original = {
     aircraftFilters: { adsbOnly: false, airborneOnly: false, favoritesOnly: false, positionOnly: false },

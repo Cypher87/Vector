@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { boxesOverlap, compactAircraftLabel, layoutAircraftLabels, type LabelCandidate } from '../src/map/label-layout.ts';
+import { aircraftMapIconScale } from '../src/map/aircraft-map-size.ts';
 
 const candidate = (id: string, overrides: Partial<LabelCandidate> = {}): LabelCandidate => ({
   id, x: 250, y: 200, width: 82, height: 32, selected: false, favorite: false, focused: false, ...overrides,
@@ -44,4 +45,22 @@ test('layout is deterministic regardless of feed order and becomes compact when 
   assert.equal(compactAircraftLabel(6, false), true);
   assert.equal(compactAircraftLabel(6, true), false);
   assert.equal(compactAircraftLabel(8, false), false);
+});
+
+test('labels leave room for enlarged map icons on every side without resizing text', () => {
+  for (const side of ['right', 'left', 'top', 'bottom'] as const) {
+    const item = candidate('plane', { previous: side });
+    const small = layoutAircraftLabels([item], 600, 500, 7.2).get(item.id)!;
+    const large = layoutAircraftLabels([item], 600, 500, 12).get(item.id)!;
+    assert.equal(large.side, side);
+    assert.equal(large.box.right - large.box.left, item.width);
+    assert.equal(large.box.bottom - large.box.top, item.height);
+    const scale = aircraftMapIconScale(12);
+    assert.equal(boxesOverlap(large.box, { left: item.x - 19 * scale, right: item.x + 19 * scale,
+      top: item.y - 20 * scale, bottom: item.y + 20 * scale }), false);
+    if (side === 'right') assert.ok(large.x > small.x);
+    if (side === 'left') assert.ok(large.x < small.x);
+    if (side === 'top') assert.ok(large.y < small.y);
+    if (side === 'bottom') assert.ok(large.y > small.y);
+  }
 });

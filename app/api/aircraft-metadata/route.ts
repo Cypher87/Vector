@@ -1,4 +1,4 @@
-import { parseAircraftMetadataRequest, Tar1090DatabaseError } from '../../../src/server/tar1090-database.ts';
+import { parseAircraftMetadataRequest } from '../../../src/server/aircraft-metadata-parser.ts';
 import { loadVectorAircraftMetadata } from '../../../src/server/aircraft-metadata-source.ts';
 import { readVectorServerConfig } from '../../../src/server/vector-config.ts';
 import { rejectProxyLoop } from '../../../src/server/readsb-source.ts';
@@ -14,8 +14,8 @@ export async function GET(request: Request) {
     config = readVectorServerConfig();
     rejectProxyLoop(request, config);
   } catch (error) {
-    return Response.json({ error: error instanceof Tar1090DatabaseError || error instanceof ResourceError ? error.message : 'Vector server configuration is invalid' },
-      { status: error instanceof Tar1090DatabaseError ? 400 : error instanceof ResourceError ? error.status : 500 });
+    return Response.json({ error: error instanceof ResourceError ? error.message : 'Vector server configuration is invalid' },
+      { status: error instanceof ResourceError ? error.status : 500 });
   }
   const signal = AbortSignal.any([request.signal, AbortSignal.timeout(8_000)]);
   try {

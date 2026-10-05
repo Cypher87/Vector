@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  buildReadsbUpstreamUrl,
   isRedirectStatus,
   parseReadsbProxyRequest,
   ReadsbRequestError,
@@ -91,32 +90,23 @@ test('the client request can name only a source and relative resource path', () 
   );
 });
 
-test('upstream URLs are built only from server-side configured bases', () => {
+test('only the configured Vector base is available to the server, not the browser', () => {
   const config = readVectorServerConfig({
-    READSB_LIVE_URL: 'http://127.0.0.1/tar1090/data/',
-    READSB_HISTORY_URL: 'http://127.0.0.1/tar1090/globe_history/',
+    READSB_SOURCE: 'vector', READSB_REMOTE_URL: 'https://receiver.example/vector/',
   });
-  assert.equal(
-    buildReadsbUpstreamUrl(config, 'live', 'aircraft.json').toString(),
-    'http://127.0.0.1/tar1090/data/aircraft.json',
-  );
-  assert.equal(
-    buildReadsbUpstreamUrl(config, 'history', '2024/02/29/heatmap/47.bin.ttf').toString(),
-    'http://127.0.0.1/tar1090/globe_history/2024/02/29/heatmap/47.bin.ttf',
-  );
-  assert.equal(config.tar1090BaseUrl.toString(), 'http://127.0.0.1/tar1090/');
+  assert.equal(config.remoteBaseUrl?.href, 'https://receiver.example/vector/');
+  assert.equal('remoteBaseUrl' in config.publicConfig, false);
   assert.equal(config.publicConfig.dataBaseUrl, '/api/readsb?source=live');
   assert.equal(config.publicConfig.historyBaseUrl, '/api/readsb?source=history');
   assert.equal(config.publicConfig.receiverLatitude, undefined);
   assert.equal(config.publicConfig.receiverLongitude, undefined);
 });
 
-test('tar1090 database base can be configured independently from live data', () => {
+test('obsolete metadata bases are never validated or used in standalone mode', () => {
   const config = readVectorServerConfig({
-    READSB_LIVE_URL: 'http://readsb.local/custom-data/',
-    READSB_TAR1090_URL: 'https://tar1090.local/radar/',
+    READSB_SOURCE: 'local', READSB_TAR1090_URL: 'file:///obsolete/',
   });
-  assert.equal(config.tar1090BaseUrl.toString(), 'https://tar1090.local/radar/');
+  assert.equal('tar1090BaseUrl' in config, false);
 });
 
 test('receiver coordinates are read as a validated environment pair', () => {
@@ -149,8 +139,8 @@ test('receiver coordinates are read as a validated environment pair', () => {
 
 test('server base URLs reject credentials, unexpected protocols, queries and fragments', () => {
   assert.equal(
-    parseUpstreamBaseUrl('https://readsb.local/tar1090/data', 'READSB_LIVE_URL').toString(),
-    'https://readsb.local/tar1090/data/',
+    parseUpstreamBaseUrl('https://receiver.example/vector', 'READSB_REMOTE_URL').toString(),
+    'https://receiver.example/vector/',
   );
   for (const url of [
     'file:///var/run/readsb/aircraft.json',

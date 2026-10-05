@@ -6,6 +6,7 @@ const mapControlLabels = (
   language: Language,
   actualRangeVisible: boolean,
   aircraftShadowsVisible: boolean,
+  aircraftWakesVisible: boolean,
   distanceRingsVisible: boolean,
   labelsVisible: boolean,
   legTraceVisible: boolean,
@@ -15,6 +16,8 @@ const mapControlLabels = (
   aircraftLabels: translate(language, 'aircraftLabels'),
   aircraftShadowsName: translate(language, 'aircraftShadows'),
   aircraftShadows: translate(language, aircraftShadowsVisible ? 'hideAircraftShadows' : 'showAircraftShadows'),
+  aircraftWakesName: translate(language, 'aircraftWakes'),
+  aircraftWakes: translate(language, aircraftWakesVisible ? 'hideAircraftWakes' : 'showAircraftWakes'),
   center: translate(language, 'centerReceiver'),
   distanceRingsName: translate(language, 'distanceRings'),
   distanceRings: translate(language, distanceRingsVisible ? 'hideDistanceRings' : 'showDistanceRings'),
@@ -33,12 +36,14 @@ export const createMapNavigationControl = (
   actualRangeAvailable: boolean,
   actualRangeVisible: boolean,
   aircraftShadowsVisible: boolean,
+  aircraftWakesVisible: boolean,
   distanceRingsVisible: boolean,
   labelsVisible: boolean,
   legTraceVisible: boolean,
   historyOpen: boolean,
   onActualRangeToggle: () => void,
   onAircraftShadowsToggle: () => void,
+  onAircraftWakesToggle: () => void,
   onDistanceRingsToggle: () => void,
   onLabelsToggle: () => void,
   onLegTraceToggle: () => void,
@@ -50,6 +55,7 @@ export const createMapNavigationControl = (
   let controls: {
     actualRange: HTMLButtonElement;
     aircraftShadows: HTMLButtonElement;
+    aircraftWakes: HTMLButtonElement;
     center: HTMLButtonElement;
     distanceRings: HTMLButtonElement;
     history: HTMLButtonElement;
@@ -63,6 +69,7 @@ export const createMapNavigationControl = (
   let currentActualRangeAvailable = actualRangeAvailable;
   let currentActualRangeVisible = actualRangeVisible;
   let currentAircraftShadowsVisible = aircraftShadowsVisible;
+  let currentAircraftWakesVisible = aircraftWakesVisible;
   let currentDistanceRingsVisible = distanceRingsVisible;
   let currentLabelsVisible = labelsVisible;
   let currentLegTraceVisible = legTraceVisible;
@@ -116,6 +123,7 @@ export const createMapNavigationControl = (
       currentLanguage,
       currentActualRangeVisible,
       currentAircraftShadowsVisible,
+      currentAircraftWakesVisible,
       currentDistanceRingsVisible,
       currentLabelsVisible,
       currentLegTraceVisible,
@@ -130,11 +138,13 @@ export const createMapNavigationControl = (
     if (layerHeading) layerHeading.textContent = labels.mapLayers;
     setLayerButtonState(controls.labels, labels.aircraftLabels, labels.labels, currentLabelsVisible);
     setLayerButtonState(controls.aircraftShadows, labels.aircraftShadowsName, labels.aircraftShadows, currentAircraftShadowsVisible);
+    setLayerButtonState(controls.aircraftWakes, labels.aircraftWakesName, labels.aircraftWakes, currentAircraftWakesVisible);
     setLayerButtonState(controls.legTrace, labels.legTraceName, labels.legTrace, currentLegTraceVisible);
     setLayerButtonState(controls.actualRange, labels.actualRangeName, labels.actualRange, currentActualRangeVisible);
     setLayerButtonState(controls.distanceRings, labels.distanceRingsName, labels.distanceRings, currentDistanceRingsVisible);
     controls.actualRange.disabled = !currentActualRangeAvailable;
     controls.legTrace.disabled = currentHistoryOpen;
+    controls.aircraftWakes.disabled = currentHistoryOpen;
     controls.history.setAttribute('aria-label', labels.history);
     controls.history.setAttribute('aria-pressed', String(currentHistoryOpen));
     controls.history.title = labels.history;
@@ -146,6 +156,7 @@ export const createMapNavigationControl = (
     nextActualRangeAvailable: boolean,
     nextActualRangeVisible: boolean,
     nextAircraftShadowsVisible: boolean,
+    nextAircraftWakesVisible: boolean,
     nextDistanceRingsVisible: boolean,
     nextLabelsVisible: boolean,
     nextLegTraceVisible: boolean,
@@ -155,6 +166,7 @@ export const createMapNavigationControl = (
     currentActualRangeAvailable = nextActualRangeAvailable;
     currentActualRangeVisible = nextActualRangeVisible;
     currentAircraftShadowsVisible = nextAircraftShadowsVisible;
+    currentAircraftWakesVisible = nextAircraftWakesVisible;
     currentDistanceRingsVisible = nextDistanceRingsVisible;
     currentLabelsVisible = nextLabelsVisible;
     currentLegTraceVisible = nextLegTraceVisible;
@@ -170,6 +182,7 @@ export const createMapNavigationControl = (
         currentLanguage,
         currentActualRangeVisible,
         currentAircraftShadowsVisible,
+        currentAircraftWakesVisible,
         currentDistanceRingsVisible,
         currentLabelsVisible,
         currentLegTraceVisible,
@@ -193,6 +206,7 @@ export const createMapNavigationControl = (
         }), 'center'),
         actualRange: layerButton('vector-map-actual-range', labels.actualRange, onActualRangeToggle, 'range'),
         aircraftShadows: layerButton('vector-map-aircraft-shadows', labels.aircraftShadows, onAircraftShadowsToggle, 'shadows'),
+        aircraftWakes: layerButton('vector-map-aircraft-wakes', labels.aircraftWakes, onAircraftWakesToggle, 'wakes'),
         distanceRings: layerButton('vector-map-distance-rings', labels.distanceRings, onDistanceRingsToggle, 'rings'),
         layers: button('vector-map-toggle vector-map-layers', labels.mapLayers, () => setMenuOpen(!menuOpen), 'layers'),
         labels: layerButton('vector-map-labels', labels.labels, onLabelsToggle, 'labels'),
@@ -203,6 +217,7 @@ export const createMapNavigationControl = (
       controls.layers.setAttribute('aria-expanded', 'false');
       layerMenu.appendChild(controls.labels);
       layerMenu.appendChild(controls.aircraftShadows);
+      layerMenu.appendChild(controls.aircraftWakes);
       layerMenu.appendChild(controls.legTrace);
       layerMenu.appendChild(controls.actualRange);
       layerMenu.appendChild(controls.distanceRings);

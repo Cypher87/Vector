@@ -1,5 +1,5 @@
 import type { VectorServerConfig } from './vector-config.ts';
-import { buildReadsbUpstreamUrl, validateReadsbResourcePath, type ReadsbSource } from './readsb-proxy.ts';
+import { validateReadsbResourcePath, type ReadsbSource } from './readsb-proxy.ts';
 import { decompressResource, readBoundedFile, readBoundedResponse, ResourceError } from './bounded-resource.ts';
 import { lookupLocalAircraftMetadata } from './aircraft-database.ts';
 
@@ -18,12 +18,9 @@ export async function loadReadsbResource(config: VectorServerConfig, source: Rea
   if (config.source === 'local') {
     body = await readBoundedFile(source === 'live' ? config.liveDirectory : config.historyDirectory, path, maximumReadsbBytes, signal);
   } else {
-    let url: URL;
-    if (config.source === 'vector') {
-      url = new URL('api/readsb', config.remoteBaseUrl!);
-      url.searchParams.set('source', source);
-      url.searchParams.set('path', path);
-    } else url = buildReadsbUpstreamUrl(config, source, path);
+    const url = new URL('api/readsb', config.remoteBaseUrl!);
+    url.searchParams.set('source', source);
+    url.searchParams.set('path', path);
     body = await readBoundedResponse(await fetch(url, {
       signal, redirect: 'manual', cache: 'no-store', headers: { [vectorProxyHeader]: '1' },
     }), maximumReadsbBytes, signal);

@@ -38,11 +38,10 @@ test('remote database status uses only the configured Vector, limits response si
   ]) await assert.rejects(() => loadAircraftDatabaseStatus(config, signal, (async () => response) as typeof fetch));
 });
 
-test('HTTP metadata without a local database shows unknown external updates, not a fabricated date', async () => {
+test('missing local metadata does not fabricate an update date', async () => {
   const root = await mkdtemp(join(tmpdir(), 'vector-db-status-'));
   try {
-    const config = readVectorServerConfig({ READSB_SOURCE: 'http', VECTOR_AIRCRAFT_DATABASE: join(root, 'missing.csv.gz') });
-    assert.deepEqual(await loadAircraftDatabaseStatus(config), { state: 'external', location: 'local', updatedAt: null, records: null });
-    assert.deepEqual(await loadAircraftDatabaseStatus({ ...config, source: 'local' }), { state: 'missing', location: 'local', updatedAt: null, records: null });
+    const config = readVectorServerConfig({ READSB_SOURCE: 'local', VECTOR_AIRCRAFT_DATABASE: join(root, 'missing.csv.gz') });
+    assert.deepEqual(await loadAircraftDatabaseStatus(config), { state: 'missing', location: 'local', updatedAt: null, records: null });
   } finally { await rm(root, { recursive: true, force: true }); }
 });
