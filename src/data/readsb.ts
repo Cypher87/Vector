@@ -466,24 +466,27 @@ export function mergeAircraftTraces(
   ];
 }
 
-export async function loadAircraftLegTrace(baseUrl: string, aircraftId: string, signal?: AbortSignal): Promise<AircraftTracePoint[]> {
+async function loadAircraftTraceFile(baseUrl: string, aircraftId: string, kind: 'full' | 'recent', signal?: AbortSignal): Promise<AircraftTracePoint[]> {
   const normalizedId = aircraftId.toLowerCase();
   if (!/^~?[0-9a-f]{6}$/.test(normalizedId)) return [];
-
   const bucket = normalizedId.slice(-2);
-  const loadTraceFile = async (kind: 'full' | 'recent') => {
-    try {
-      const path = `traces/${bucket}/trace_${kind}_${normalizedId}.json`;
-      return parseAircraftTrace(await fetchJson(dataRequestUrl(baseUrl, path), signal));
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      return [];
-    }
-  };
+  try {
+    const path = `traces/${bucket}/trace_${kind}_${normalizedId}.json`;
+    return parseAircraftTrace(await fetchJson(dataRequestUrl(baseUrl, path), signal));
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return [];
+  }
+}
 
+export function loadAircraftRecentTrace(baseUrl: string, aircraftId: string, signal?: AbortSignal): Promise<AircraftTracePoint[]> {
+  return loadAircraftTraceFile(baseUrl, aircraftId, 'recent', signal);
+}
+
+export async function loadAircraftLegTrace(baseUrl: string, aircraftId: string, signal?: AbortSignal): Promise<AircraftTracePoint[]> {
   const [fullTrace, recentTrace] = await Promise.all([
-    loadTraceFile('full'),
-    loadTraceFile('recent'),
+    loadAircraftTraceFile(baseUrl, aircraftId, 'full', signal),
+    loadAircraftRecentTrace(baseUrl, aircraftId, signal),
   ]);
   return mergeAircraftTraces(fullTrace, recentTrace);
 }

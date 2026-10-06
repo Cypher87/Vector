@@ -223,7 +223,7 @@ export default function Home() {
   }, []);
 
   const unitSystem = unitOverride ?? feed.config.unitSystem;
-  const altitudeLegend = altitudeLegendScale(unitSystem);
+  const altitudeLegend = altitudeLegendScale(unitSystem, language);
   const seconds = new Intl.NumberFormat(localeForLanguage[language], { maximumFractionDigits: 1 });
   const t = (key: TranslationKey) => translate(language, key);
   const changeUnitSystem = (value: UnitSystem) => {

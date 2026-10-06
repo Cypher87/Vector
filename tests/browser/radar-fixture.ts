@@ -45,6 +45,7 @@ export class RadarFixture {
   replayRequests: string[] = [];
   traceRequests: string[] = [];
   traceUnavailable = false;
+  traceResponses = new Map<string, unknown>();
   traceSpeed: number | null = 200;
   extraAircraft: Record<string, unknown>[] = [];
   private started = Date.now();
@@ -91,6 +92,7 @@ export class RadarFixture {
         if (path.startsWith('traces/')) {
           this.traceRequests.push(path);
           if (this.traceUnavailable) return json({}, 404);
+          if (this.traceResponses.has(path)) return json(this.traceResponses.get(path));
           const balloon = path.includes('def456');
           const altitude = balloon ? 2000 : 20000;
           return json({ icao: balloon ? 'def456' : 'abc123', timestamp: Date.now() / 1_000 - 120,

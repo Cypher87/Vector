@@ -15,6 +15,7 @@ type WakeElement = {
   paths?: SVGPathElement[][];
 };
 const elements = new WeakMap<SVGSVGElement, WakeElement>();
+export const hasAircraftWake = (icon: SVGSVGElement) => !!elements.get(icon)?.wake;
 let nextGradient = 0;
 
 /** Only live map icons call this; React list/detail icons and shadows stay clean. */

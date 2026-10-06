@@ -1,4 +1,5 @@
 import type { AircraftTracePoint } from '../domain/aircraft.ts';
+import { receiverWakeIntervalSeconds, wakeTraceWindowSeconds, type WakeTracePoint } from '../domain/wake-trace.ts';
 import { aircraftPositionDistanceMetres, type AircraftPosition } from './aircraft-motion.ts';
 import type { AircraftWake } from './aircraft-wake.ts';
 
@@ -21,20 +22,20 @@ export const aircraftWakeOrigins = (wake: AircraftWake, iconScale: number): [num
 
 /** Recent measured positions, projected into the rotating icon's coordinate space. */
 export function aircraftWakeRoute(
-  trace: readonly AircraftTracePoint[], now: number, position: AircraftPosition,
+  trace: readonly WakeTracePoint[], now: number, position: AircraftPosition,
   project: (position: AircraftPosition) => WakePoint, rotation: number, maximumLength: number,
 ): WakePoint[] {
   const origin = project(position);
   const angle = rotation * Math.PI / 180;
   const cos = Math.cos(angle), sin = Math.sin(angle);
   const route: WakePoint[] = [{ x: 0, y: 0 }];
-  let newer: AircraftTracePoint | undefined;
+  let newer: WakeTracePoint | undefined;
   let length = 0;
   // Reuse the whole bounded local trace buffer (600 samples at ~2 seconds).
   for (let index = trace.length - 1; index >= Math.max(0, trace.length - 600); index--) {
     const point = trace[index];
     if (!Number.isFinite(point.timestamp) || point.timestamp > now + 1) continue;
-    if (point.stale || point.onGround || now - point.timestamp > 1_200
+    if (point.stale || point.onGround || now - point.timestamp > wakeTraceWindowSeconds
       || !Number.isFinite(point.latitude) || Math.abs(point.latitude) > 90
       || !Number.isFinite(point.longitude) || Math.abs(point.longitude) > 180) break;
     if (!newer && now - point.timestamp > 15) break;
@@ -42,13 +43,13 @@ export function aircraftWakeRoute(
     if (!newer && aircraftPositionDistanceMetres(position, coordinate) > 2_500) break;
     if (newer) {
       const elapsed = newer.timestamp - point.timestamp;
-      if (newer.startsLeg || elapsed > 15 || elapsed <= 0) break;
+      if (newer.startsLeg || elapsed > (newer.receiverInterval ? receiverWakeIntervalSeconds : 15) || elapsed <= 0) break;
       const segment = geometry(newer);
       if (segment.olderPosition !== coordinate) {
         segment.olderPosition = coordinate;
         segment.distance = aircraftPositionDistanceMetres(coordinate, segment.position);
       }
-      if (segment.distance! > Math.max(2_000, elapsed * 1_200)) break;
+      if (segment.distance! > Math.max(2_000, elapsed * (newer.receiverInterval ? 400 : 1_200))) break;
     }
     newer = point;
     // Use the same wrapped world as the marker, including at the date line.

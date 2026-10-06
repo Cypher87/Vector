@@ -9,6 +9,8 @@ type WakeDetailProbe = Element & {
 };
 
 test.beforeEach(async ({ page, radar }) => {
+  // These rendering/fallback tests intentionally build their route from live data.
+  radar.traceUnavailable = true;
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.addInitScript(() => localStorage.setItem('vector.aircraftMotion', 'false'));
   radar.extraAircraft = [
@@ -305,7 +307,7 @@ test('paired trail preferences override local state and layer changes synchroniz
   await expect.poll(() => preferences.aircraftWakes).toBe(true);
 });
 
-test('trails follow received turns without extra trace requests', async ({ page, radar }, testInfo) => {
+test('trails fall back to live measured turns when receiver traces are unavailable', async ({ page, radar }, testInfo) => {
   Object.assign(radar.extraAircraft[0], { lat: 52.3, lon: 4.8, track: 90 });
   await page.goto('/');
   const marker = page.getByRole('button', { name: /^JET,/ });
@@ -337,7 +339,9 @@ test('trails follow received turns without extra trace requests', async ({ page,
   expect(geometry.length).toBeGreaterThan(10);
   expect(Math.abs(geometry.cross)).toBeGreaterThan(5);
   expect(geometry.end.x).toBeLessThan(-1);
-  expect(radar.traceRequests).toEqual([]);
+  expect(radar.traceRequests.length).toBeGreaterThan(0);
+  expect(radar.traceRequests.every((path) => path.includes('trace_recent_'))).toBe(true);
+  expect(new Set(radar.traceRequests).size).toBe(radar.traceRequests.length);
   await page.screenshot({ path: testInfo.outputPath('measured-turn-trails.png') });
   Object.assign(radar.extraAircraft[0], { lon: 4.4, lat: 52.3 });
   await expect(wake).toHaveAttribute('data-route', 'pending');

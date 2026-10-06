@@ -1,5 +1,10 @@
 import { test, expect } from './radar-fixture';
 
+// Isolate selected full/recent trace loading from decorative viewport prefetch.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('vector.aircraftWakes', 'false'));
+});
+
 test('profile shares trace loading, supports touch/keyboard and maps measured positions', async ({ page, radar, isMobile }, testInfo) => {
   await page.goto('/');
   await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);

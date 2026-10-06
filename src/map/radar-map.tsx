@@ -6,7 +6,8 @@ import { createVectorIconElement } from '../components/vector-icon';
 import { createMapNavigationControl } from './map-navigation-control';
 import type { Aircraft, AircraftTracePoint, UnitSystem } from '../domain/aircraft';
 import { aircraftKind, aircraftKindLabel } from '../domain/aircraft-kind';
-import { loadActualRangeOutline, type ActualRangeOutline } from '../data/readsb';
+import { loadActualRangeOutline, loadAircraftRecentTrace, type ActualRangeOutline } from '../data/readsb';
+import { createWakeTraceCache } from '../data/wake-trace-cache';
 import { compactAircraftLabel, layoutAircraftLabels, type LabelSide } from './label-layout';
 import { translate, type Language } from '../i18n';
 import type { Theme } from '../theme';
@@ -28,7 +29,7 @@ import { createDistanceRings, type DistanceRing } from './distance-rings';
 import { aircraftIconRotation } from './heading';
 import { aircraftIconMotionActive } from './icon-animation';
 import { aircraftWakeZoomOpacity, aircraftWakeZoomProfile, maximumAircraftWakeScreenLength } from './aircraft-wake';
-import { drawAircraftWakeRoute, updateAircraftWakeRouteElement } from './aircraft-wake-element';
+import { drawAircraftWakeRoute, hasAircraftWake, updateAircraftWakeRouteElement } from './aircraft-wake-element';
 import { createFrameProjector } from './frame-projector';
 import { mapThemePaint, openStreetMapRasterLayerId, type MapTheme, type MapThemePaint } from './map-theme';
 
@@ -219,6 +220,8 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const aircraftShadowsVisibleRef = useRef(aircraftShadowsVisible);
   const aircraftWakesVisibleRef = useRef(aircraftWakesVisible);
   const wakeTracesRef = useRef(wakeTraces);
+  const wakeTraceCacheRef = useRef<ReturnType<typeof createWakeTraceCache> | undefined>(undefined);
+  const lastWakeDemandRef = useRef(-Infinity);
   const lastWakeDrawRef = useRef(0);
   const wakeDrawFrameRef = useRef<number | undefined>(undefined);
   const pendingWakeDrawRef = useRef<(() => void) | undefined>(undefined);
@@ -302,6 +305,8 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
         || containerRef.current?.dataset.iconAnimation !== 'running'
         || window.matchMedia('(prefers-reduced-motion: reduce)').matches
         || aircraftWakeZoomOpacity(map.getZoom()) === 0) {
+        wakeTraceCacheRef.current?.setWanted([]);
+        lastWakeDemandRef.current = -Infinity;
         containerRef.current?.setAttribute('data-wake-renderer', 'svg');
         return;
       }
@@ -319,12 +324,20 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
         flowTime: zoomingRef.current ? 0 : performance.now() };
       const iconScale = iconScaleRef.current;
       const margin = maximumAircraftWakeScreenLength * lengthScale + 40;
+      // Reuse this frame's projection, but never schedule work per animation frame
+      // or during zoom gestures. Load only aircraft whose trails could be visible.
+      const refreshDemand = !zoomingRef.current && performance.now() - lastWakeDemandRef.current >= 1_000;
+      const demand: { id: string; distance: number }[] = [];
       let hasVisibleWakes = false;
       for (const [id, marker] of markersRef.current) {
         if (!marker.aircraft || !marker.displayedPosition) continue;
         const point = project(marker.displayedPosition);
         const inView = point.x >= -margin && point.x <= width + margin && point.y >= -margin && point.y <= height + margin;
-        const trace = inView ? wakeTracesRef.current.get(id) ?? [] : [];
+        if (refreshDemand && inView && hasAircraftWake(marker.wakeIcon)) {
+          demand.push({ id, distance: id === selectedIdRef.current ? -1 : Math.hypot(point.x - width / 2, point.y - height / 2) });
+        }
+        const local = inView ? wakeTracesRef.current.get(id) : undefined;
+        const trace = inView ? wakeTraceCacheRef.current?.get(id, local) ?? local ?? [] : [];
         const rotation = aircraftIconRotation(aircraftKind(marker.aircraft), marker.displayedTrackDeg, map.getBearing());
         if (canvas) {
           if (inView) {
@@ -337,6 +350,10 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
             marker.displayedPosition, project, rotation, lengthScale, iconScale);
         }
       }
+      if (refreshDemand) {
+        lastWakeDemandRef.current = performance.now();
+        wakeTraceCacheRef.current?.setWanted(demand.sort((a, b) => a.distance - b.distance).map(({ id }) => id));
+      }
       // Switch only once the replacement is painted, also when traffic subsides.
       containerRef.current?.setAttribute('data-wake-renderer', canvas ? 'canvas' : 'svg');
       // Faint airflow needs only 12.5 fps at rest. Camera movement still requests
@@ -348,10 +365,23 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   }, []);
 
   useEffect(() => {
+    const cache = createWakeTraceCache({
+      load: (id, signal) => loadAircraftRecentTrace(dataBaseUrl, id, signal),
+      onChange: updateWakePositions,
+    });
+    wakeTraceCacheRef.current = cache;
+    lastWakeDemandRef.current = -Infinity;
+    updateWakePositions();
+    return () => { cache.dispose(); wakeTraceCacheRef.current = undefined; };
+  }, [dataBaseUrl, updateWakePositions]);
+
+  useEffect(() => {
     const container = containerRef.current;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     const updateVisibility = () => {
       if (container) container.dataset.pageVisible = String(!document.hidden);
+      if (document.hidden || reducedMotion.matches) wakeTraceCacheRef.current?.setWanted([]);
+      lastWakeDemandRef.current = -Infinity;
       updateWakePositions();
     };
     updateVisibility();
@@ -365,6 +395,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
 
   useEffect(() => {
     wakeTracesRef.current = wakeTraces;
+    if (!aircraftWakesVisible || historyOpen || !live) wakeTraceCacheRef.current?.setWanted([]);
     updateWakePositions();
   }, [wakeTraces, aircraftWakesVisible, historyOpen, live, ready, updateWakePositions]);
 
@@ -823,12 +854,14 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     map.on('moveend', updateLabelVisibility);
     map.on('zoomstart', () => {
       zoomingRef.current = true;
+      wakeTraceCacheRef.current?.setWanted([]);
       container.dataset.cameraZooming = 'true';
       iconSizer.zoomStart();
       updateWakePositions();
     });
     map.on('zoomend', () => {
       zoomingRef.current = false;
+      lastWakeDemandRef.current = -Infinity;
       container.dataset.cameraZooming = 'false';
       iconSizer.zoomEnd(map.getZoom());
       updateWakePositions();

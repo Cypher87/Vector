@@ -1,5 +1,6 @@
 import type { Aircraft, UnitSystem } from './domain/aircraft';
-import { localeForLanguage, translate, type Language } from './i18n';
+import { altitudeColorMaximumFt, altitudeColorMaximumKm } from './domain/altitude-scale.ts';
+import { localeForLanguage, translate, type Language } from './i18n.ts';
 
 export type UnitValue = {
   unit: string;
@@ -80,7 +81,7 @@ export function mapAltitudeLabel(aircraft: Aircraft, unitSystem: UnitSystem, lan
   return `${decimal.format(aircraft.altitudeFt / 1_000)}k ft${trend}`;
 }
 
-export const altitudeLegendScale = (unitSystem: UnitSystem) => unitSystem === 'metric'
+export const altitudeLegendScale = (unitSystem: UnitSystem, language: Language = 'nl') => unitSystem === 'metric'
   ? {
       unit: 'km',
       ticks: [
@@ -88,16 +89,16 @@ export const altitudeLegendScale = (unitSystem: UnitSystem) => unitSystem === 'm
         { label: '3', position: 25 },
         { label: '6', position: 50 },
         { label: '9', position: 75 },
-        { label: '12', position: 100 },
+        { label: `${altitudeColorMaximumKm}+`, position: 100 },
       ],
     }
   : {
       unit: 'k ft',
       ticks: [
         { label: '0', position: 0 },
-        { label: '10', position: 25 },
-        { label: '20', position: 50 },
-        { label: '30', position: 75 },
-        { label: '40', position: 100 },
+        { label: '10', position: 10_000 / altitudeColorMaximumFt * 100 },
+        { label: '20', position: 20_000 / altitudeColorMaximumFt * 100 },
+        { label: '30', position: 30_000 / altitudeColorMaximumFt * 100 },
+        { label: `${numberFormats[language].decimal.format(altitudeColorMaximumFt / 1_000)}+`, position: 100 },
       ],
     };

@@ -608,7 +608,9 @@ html[data-theme] :is(.technical-card, .technical-toggle, .technical-data) { back
 html[data-theme] .altitude-legend { width: 180px; padding: 10px 12px; border-radius: 6px; background: var(--theme-control); }
 .altitude-legend > span { color: var(--text-secondary-color); font-weight: 550; letter-spacing: .065em; }
 .altitude-legend > span em, .altitude-legend small { color: var(--text-secondary-color); }
-.altitude-legend > div { height: 5px; margin: 8px 0 7px; border-radius: 2px; }
+.altitude-legend > div { height: 9px; margin: 8px 0 7px; border-radius: 3px; }
+.altitude-legend > div i { height: 100%; background: color-mix(in srgb, var(--theme-control) 55%, transparent); }
+.altitude-legend small { height: 11px; font-size: 10px; }
 html[data-theme] .map-plane-label { border-color: color-mix(in srgb, var(--ink) 22%, transparent); border-radius: 5px; background: var(--theme-panel); box-shadow: var(--shadow-control); color: var(--ink); }
 html[data-theme] .map-plane-label::before { border-right-color: color-mix(in srgb, var(--ink) 22%, transparent); }
 html[data-theme] .map-plane-label::after { border-right-color: var(--theme-panel); }
