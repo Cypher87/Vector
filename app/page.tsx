@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AircraftPhoto } from '../src/components/aircraft-photo';
 import { AircraftActiveFilters } from '../src/components/aircraft-active-filters';
 import { AircraftFilterMenu } from '../src/components/aircraft-filter-menu';
+import { AircraftSortControls } from '../src/components/aircraft-sort-controls';
 import { AircraftRoute, AircraftRouteSummary, useAircraftRoute } from '../src/components/aircraft-route';
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
 import { EventCenter } from '../src/components/event-center';
@@ -31,6 +32,7 @@ import {
   type AircraftSort,
 } from '../src/domain/aircraft-filter-preset';
 import { mergeAircraftMetadata } from '../src/domain/aircraft-metadata';
+import { aircraftFavoritesFirstStorageKey, aircraftSortField, isAircraftSort, sortAircraft } from '../src/domain/aircraft-sort';
 import { defaultLegTracePeriod, parseLegTracePeriod, type LegTracePeriod } from '../src/domain/aircraft-trace';
 import {
   favoriteAircraftStorageKey,
@@ -142,6 +144,7 @@ export default function Home() {
   const [radarEventPreferences, setRadarEventPreferences] = useState<RadarEventPreferences>(defaultRadarEventPreferences);
   const [aircraftFilters, setAircraftFilters] = useState<AircraftFilters>(emptyAircraftFilters);
   const [aircraftSort, setAircraftSort] = useState<AircraftSort>('altitude-desc');
+  const [aircraftFavoritesFirst, setAircraftFavoritesFirst] = useState(false);
   const [aircraftFilterPresets, setAircraftFilterPresets] = useState<AircraftFilterPreset[]>([]);
   const [favoriteAircraftIds, setFavoriteAircraftIds] = useState<string[]>([]);
   const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
@@ -176,9 +179,10 @@ export default function Home() {
       setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
       setAircraftFilterPresets(parseAircraftFilterPresets(window.localStorage.getItem(aircraftFilterPresetStorageKey)));
       const savedSort = window.localStorage.getItem('vector.aircraftSort');
-      if (savedSort === 'altitude-desc' || savedSort === 'callsign-asc' || savedSort === 'distance-asc' || savedSort === 'seen-asc') {
+      if (isAircraftSort(savedSort)) {
         setAircraftSort(savedSort);
       }
+      setAircraftFavoritesFirst(window.localStorage.getItem(aircraftFavoritesFirstStorageKey) === 'true');
       try {
         setAircraftFilters(normalizeAircraftFilters(JSON.parse(window.localStorage.getItem('vector.aircraftFilters') ?? '{}')));
       } catch {
@@ -308,9 +312,14 @@ export default function Home() {
     setAircraftSort(value);
     window.localStorage.setItem('vector.aircraftSort', value);
   };
+  const changeAircraftFavoritesFirst = (value: boolean) => {
+    setAircraftFavoritesFirst(value);
+    window.localStorage.setItem(aircraftFavoritesFirstStorageKey, String(value));
+  };
   const applyAircraftFilterPreset = (preset: AircraftFilterPreset) => {
     setAircraftFilters(preset.filters);
     setAircraftSort(preset.sort);
+    changeAircraftFavoritesFirst(preset.favoritesFirst ?? false);
     window.localStorage.setItem('vector.aircraftFilters', JSON.stringify(preset.filters));
     window.localStorage.setItem('vector.aircraftSort', preset.sort);
   };
@@ -318,7 +327,7 @@ export default function Home() {
     setAircraftFilterPresets((current) => {
       const next = normalizeAircraftFilterPresets([
         ...current,
-        { id: createAircraftFilterPresetId(), name, filters: aircraftFilters, sort: aircraftSort },
+        { id: createAircraftFilterPresetId(), name, filters: aircraftFilters, sort: aircraftSort, favoritesFirst: aircraftFavoritesFirst },
       ]);
       window.localStorage.setItem(aircraftFilterPresetStorageKey, JSON.stringify(next));
       return next;
@@ -353,6 +362,7 @@ export default function Home() {
     aircraftWakes: aircraftWakesVisible,
     aircraftFilters,
     aircraftSort,
+    aircraftFavoritesFirst,
     autoHideDetails,
     distanceRings: distanceRingsVisible,
     favoriteAircraft: favoriteAircraftIds,
@@ -365,7 +375,7 @@ export default function Home() {
     mapTheme,
     theme,
     unitSystem,
-  }), [actualRangeVisible, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, mapTheme, radarEventPreferences, theme, unitSystem]);
+  }), [actualRangeVisible, aircraftFavoritesFirst, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, mapTheme, radarEventPreferences, theme, unitSystem]);
 
   useEffect(() => {
     if (!syncProfileId) {
@@ -457,6 +467,10 @@ export default function Home() {
         setAircraftSort(saved.aircraftSort);
         window.localStorage.setItem('vector.aircraftSort', saved.aircraftSort);
       }
+      if (saved.aircraftFavoritesFirst !== undefined) {
+        setAircraftFavoritesFirst(saved.aircraftFavoritesFirst);
+        window.localStorage.setItem(aircraftFavoritesFirstStorageKey, String(saved.aircraftFavoritesFirst));
+      }
       if (saved.aircraftFilters) {
         setAircraftFilters(saved.aircraftFilters);
         window.localStorage.setItem('vector.aircraftFilters', JSON.stringify(saved.aircraftFilters));
@@ -533,22 +547,11 @@ export default function Home() {
         .some((value) => value!.toLowerCase().includes(normalizedQuery)),
     ) : [...filterMatchedAircraft];
 
-    return matches.sort((left, right) => {
-      if (aircraftSort === 'callsign-asc') {
-        return left.flight.localeCompare(right.flight, language, { numeric: true });
-      }
-      if (aircraftSort === 'distance-asc') {
-        const leftDistance = distanceKilometres(centerLat, centerLon, left.latitude, left.longitude) ?? Number.POSITIVE_INFINITY;
-        const rightDistance = distanceKilometres(centerLat, centerLon, right.latitude, right.longitude) ?? Number.POSITIVE_INFINITY;
-        return leftDistance - rightDistance || left.flight.localeCompare(right.flight, language, { numeric: true });
-      }
-      if (aircraftSort === 'seen-asc') {
-        return left.seenSeconds - right.seenSeconds || left.flight.localeCompare(right.flight, language, { numeric: true });
-      }
-      return (right.altitudeFt ?? Number.NEGATIVE_INFINITY) - (left.altitudeFt ?? Number.NEGATIVE_INFINITY)
-        || left.flight.localeCompare(right.flight, language, { numeric: true });
+    return sortAircraft(matches, aircraftSort, {
+      language, favoritesFirst: aircraftFavoritesFirst, favoriteIds: favoriteAircraftIdSet,
+      distanceKm: (item) => distanceKilometres(receiverLat, receiverLon, item.latitude, item.longitude),
     });
-  }, [aircraftSort, centerLat, centerLon, filterMatchedAircraft, language, query]);
+  }, [aircraftSort, aircraftFavoritesFirst, favoriteAircraftIdSet, receiverLat, receiverLon, filterMatchedAircraft, language, query]);
 
   const selected = selectedId === null
     ? undefined
@@ -583,20 +586,25 @@ export default function Home() {
   const selectedOnMap = mapAircraft.some((aircraft) => aircraft.id === selected?.id);
   const listReadingFor = (item: Aircraft) => {
     const altitude = formatAltitude(item, unitSystem, language);
-    if (aircraftSort === 'distance-asc') {
-      const distance = distanceValue(distanceKilometres(centerLat, centerLon, item.latitude, item.longitude), unitSystem, language);
+    const field = aircraftSortField(aircraftSort);
+    if (field === 'distance') {
+      const distance = distanceValue(distanceKilometres(receiverLat, receiverLon, item.latitude, item.longitude), unitSystem, language);
       return {
         primary: `${distance.value} ${distance.unit}`,
         secondary: `${t('altitude')} ${altitude}`,
       };
     }
-    if (aircraftSort === 'seen-asc') {
+    if (field === 'seen') {
       return {
-        primary: `${seconds.format(item.seenSeconds)} s`,
+        primary: Number.isFinite(item.seenSeconds) ? `${seconds.format(item.seenSeconds)} s` : '—',
         secondary: `${t('altitude')} ${altitude}`,
       };
     }
     const speed = speedValue(item.groundSpeedKts, unitSystem, language);
+    if (field === 'speed') return {
+      primary: `${speed.value} ${speed.unit}`,
+      secondary: `${t('altitude')} ${altitude}`,
+    };
     return {
       primary: altitude,
       secondary: `${speed.value} ${speed.unit}`,
@@ -710,6 +718,7 @@ export default function Home() {
                 receiverPositionKnown={Number.isFinite(receiverLat) && Number.isFinite(receiverLon)}
                 presets={aircraftFilterPresets}
                 sort={aircraftSort}
+                favoritesFirst={aircraftFavoritesFirst}
                 onApplyPreset={applyAircraftFilterPreset}
                 onChangeFilter={changeAircraftFilter}
                 onDeletePreset={deleteAircraftFilterPreset}
@@ -748,17 +757,8 @@ export default function Home() {
 
           <div className="list-meta">
             <span>{filteredAircraft.length} {t(filteredAircraft.length === 1 ? 'resultSingular' : 'results')}</span>
-            <select
-              className="sort-select"
-              aria-label={t('sortAircraft')}
-              value={aircraftSort}
-              onChange={(event) => changeAircraftSort(event.target.value as AircraftSort)}
-            >
-              <option value="altitude-desc">{t('altitude')} ↓</option>
-              <option value="distance-asc">{t('distance')} ↑</option>
-              <option value="callsign-asc">{t('callsign')} A–Z</option>
-              <option value="seen-asc">{t('lastSeen')}</option>
-            </select>
+            <AircraftSortControls sort={aircraftSort} favoritesFirst={aircraftFavoritesFirst} language={language}
+              onSortChange={changeAircraftSort} onFavoritesFirstChange={changeAircraftFavoritesFirst} />
           </div>
 
           <div className="aircraft-list">

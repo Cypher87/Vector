@@ -25,6 +25,8 @@ export type VectorIconName =
   | 'save'
   | 'settings'
   | 'shadows'
+  | 'sortAscending'
+  | 'sortDescending'
   | 'sync'
   | 'tablet'
   | 'trace'
@@ -74,6 +76,8 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
     'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
   ],
   shadows: ['M4 18c4.5 2 11.5 2 16 0', 'M12 3v11', 'm7 8 5 2 5-2', 'm9.5 5.5 2.5 1.5 2.5-1.5'],
+  sortAscending: ['M7 19V5', 'm3 9 4-4 4 4', 'M14 7h3M14 12h5M14 17h7'],
+  sortDescending: ['M7 5v14', 'm3 15 4 4 4-4', 'M14 7h7M14 12h5M14 17h3'],
   sync: ['M20 7h-5V2', 'M4 17h5v5', 'M19.1 12a7 7 0 0 0-11.9-5L5 10', 'M4.9 12a7 7 0 0 0 11.9 5L19 14'],
   tablet: ['M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z', 'M11 17h2'],
   trace: ['M6 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z', 'M18 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z', 'M7.8 14.6c1.1-3.4 4-5.3 8.4-5.2'],

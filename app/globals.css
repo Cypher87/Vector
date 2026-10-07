@@ -542,6 +542,26 @@ html[data-theme] .logo-mark { width: 32px; height: 36px; border: 0; border-radiu
 .search-box:focus-within { box-shadow: none; }
 .list-meta { padding: 0 16px 12px 18px; font-size: 11px; }
 .sort-select { font-size: 11px; }
+.list-meta > span { flex-shrink: 0; white-space: nowrap; }
+.aircraft-sort-controls { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; max-width: 200px; }
+.aircraft-sort-field { position: relative; flex: 1; min-width: 0; }
+.aircraft-sort-controls .sort-select { display: block; appearance: none; min-width: 0; max-width: none; width: 100%; height: 32px; border-color: var(--line); border-radius: 5px; color: var(--ink); }
+.aircraft-sort-field .sort-chevron { position: absolute; top: 50%; right: 7px; width: 12px; height: 12px; transform: translateY(-50%); pointer-events: none; color: var(--text-secondary-color); }
+.aircraft-sort-controls button { position: relative; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 5px; background: var(--theme-input); color: var(--text-secondary-color); cursor: pointer; }
+.aircraft-sort-controls button .vector-icon { width: 16px; height: 16px; }
+.aircraft-sort-controls button:hover { border-color: var(--accent); color: var(--ink); }
+.aircraft-sort-controls :is(button, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.aircraft-sort-controls .sort-favorites[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.aircraft-sort-controls .sort-favorites[aria-pressed="true"] .vector-icon { fill: currentColor; }
+.aircraft-sort-controls button::after { content: attr(data-tooltip); position: absolute; z-index: 10; top: calc(100% + 7px); right: 0; width: max-content; max-width: 205px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--theme-popover); color: var(--ink); box-shadow: var(--shadow-control); font-size: 11px; line-height: 1.4; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .15s ease; }
+.aircraft-sort-controls button:focus-visible::after { opacity: 1; visibility: visible; }
+@media (hover: hover) { .aircraft-sort-controls button:hover::after { opacity: 1; visibility: visible; transition-delay: .2s; } }
+@media (max-width: 720px) {
+  .aircraft-sort-controls { max-width: 245px; }
+  .aircraft-sort-controls button { flex-basis: 40px; width: 40px; height: 40px; }
+  .aircraft-sort-controls .sort-select { height: 40px; font-size: 12px; }
+}
+@media (hover: none) { .aircraft-sort-controls button::after { display: none; } }
 .aircraft-row { min-height: 73px; padding: 13px 16px; gap: 9px; border-top-color: var(--line); }
 .aircraft-identity { gap: 5px; }
 .aircraft-identity strong { font-size: 13px; font-weight: 600; letter-spacing: .025em; }

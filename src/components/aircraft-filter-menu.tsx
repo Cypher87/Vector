@@ -23,6 +23,7 @@ type AircraftFilterMenuProps = {
   receiverPositionKnown: boolean;
   presets: AircraftFilterPreset[];
   sort: AircraftSort;
+  favoritesFirst: boolean;
   onApplyPreset: (preset: AircraftFilterPreset) => void;
   onChangeFilter: ChangeAircraftFilter;
   onDeletePreset: (presetId: string) => void;
@@ -40,6 +41,7 @@ export function AircraftFilterMenu({
   receiverPositionKnown,
   presets,
   sort,
+  favoritesFirst,
   onApplyPreset,
   onChangeFilter,
   onDeletePreset,
@@ -50,7 +52,7 @@ export function AircraftFilterMenu({
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
   const menuRef = useRef<HTMLDetailsElement>(null);
   const groupName = useId();
-  const activePreset = presets.find((preset) => aircraftFilterPresetMatches(preset, filters, sort));
+  const activePreset = presets.find((preset) => aircraftFilterPresetMatches(preset, filters, sort, favoritesFirst));
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
 
@@ -164,7 +166,7 @@ export function AircraftFilterMenu({
           {presets.length > 0 && (
             <div className="filter-preset-list">
               {presets.map((preset) => {
-                const active = aircraftFilterPresetMatches(preset, filters, sort);
+                const active = aircraftFilterPresetMatches(preset, filters, sort, favoritesFirst);
                 if (editingPresetId === preset.id) {
                   return (
                     <form className="filter-preset-form" key={preset.id} onSubmit={saveName}>

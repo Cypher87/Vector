@@ -14,6 +14,8 @@ Labels avoid other labels and map controls. Selected, keyboard-focused/hovered, 
 
 Groups show active choices in their headings. Opening one closes the previous group without changing filters or unfinished edits. The menu floats above the map and closes when you click outside or press Escape. Active filter chips below search can be removed individually; saved views retain all filter groups and sorting.
 
+Choose altitude, distance from the receiver, speed, callsign, or last reception in the list's sort selector. The adjacent arrow reverses the order; its tooltip describes the current direction. The star puts favorites first without hiding other aircraft. Missing sort values always stay at the bottom, including favorites. Equal values use callsign and ICAO ID as a stable tie-breaker. The displayed list reading follows the selected criterion. Sorting and favorite priority are saved locally, included in saved views, and synchronized with paired devices; existing saved views remain compatible.
+
 Filter rules:
 
 - Choices within a category or type-code group use **OR**; different groups use **AND**.

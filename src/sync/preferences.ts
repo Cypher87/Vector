@@ -1,4 +1,5 @@
 import type { UnitSystem } from '../domain/aircraft.ts';
+import { isAircraftSort } from '../domain/aircraft-sort.ts';
 import { aircraftFilterKeys, emptyAircraftFilters, normalizeAircraftFilterPatch } from '../domain/aircraft-filters.ts';
 import {
   normalizeAircraftFilterPresetIds,
@@ -25,6 +26,7 @@ export type SyncPreferences = {
   aircraftWakes?: boolean;
   aircraftFilters?: SyncedAircraftFilters;
   aircraftSort?: SyncedAircraftSort;
+  aircraftFavoritesFirst?: boolean;
   autoHideDetails?: boolean;
   distanceRings?: boolean;
   favoriteAircraft?: string[];
@@ -72,7 +74,7 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
     preferences.radarEventPreferences = normalizeRadarEventPreferences(value.radarEventPreferences);
   }
 
-  for (const key of ['actualRangeOutline', 'aircraftMotion', 'aircraftShadows', 'aircraftWakes', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
+  for (const key of ['actualRangeOutline', 'aircraftMotion', 'aircraftShadows', 'aircraftWakes', 'aircraftFavoritesFirst', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels'] as const) {
     if (typeof value[key] === 'boolean') preferences[key] = value[key];
   }
 
@@ -80,12 +82,7 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
     preferences.legTracePeriod = value.legTracePeriod as LegTracePeriod;
   }
 
-  if (
-    value.aircraftSort === 'altitude-desc'
-    || value.aircraftSort === 'callsign-asc'
-    || value.aircraftSort === 'distance-asc'
-    || value.aircraftSort === 'seen-asc'
-  ) {
+  if (isAircraftSort(value.aircraftSort)) {
     preferences.aircraftSort = value.aircraftSort;
   }
 
@@ -112,6 +109,7 @@ const scalarPreferenceKeys = [
   'aircraftShadows',
   'aircraftWakes',
   'aircraftSort',
+  'aircraftFavoritesFirst',
   'autoHideDetails',
   'distanceRings',
   'language',

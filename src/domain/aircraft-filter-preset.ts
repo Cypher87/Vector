@@ -1,13 +1,15 @@
 import { normalizeAircraftFilters, filterValueEqual, type AircraftFilters } from './aircraft-filters.ts';
+import { isAircraftSort, type AircraftSort } from './aircraft-sort.ts';
 export { emptyAircraftFilters, normalizeAircraftFilters, type AircraftFilterKey, type AircraftFilters } from './aircraft-filters.ts';
 
-export type AircraftSort = 'altitude-desc' | 'callsign-asc' | 'distance-asc' | 'seen-asc';
+export { isAircraftSort, type AircraftSort } from './aircraft-sort.ts';
 
 export type AircraftFilterPreset = {
   id: string;
   name: string;
   filters: AircraftFilters;
   sort: AircraftSort;
+  favoritesFirst?: boolean;
 };
 
 export const aircraftFilterPresetStorageKey = 'vector.aircraftFilterPresets';
@@ -15,13 +17,10 @@ export const maxAircraftFilterPresets = 20;
 export const maxAircraftFilterPresetNameLength = 40;
 
 const presetIdPattern = /^[a-zA-Z0-9_-]{1,64}$/;
-const aircraftSorts: AircraftSort[] = ['altitude-desc', 'callsign-asc', 'distance-asc', 'seen-asc'];
 
 const isObject = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
 );
-
-export const isAircraftSort = (value: unknown): value is AircraftSort => aircraftSorts.includes(value as AircraftSort);
 
 export function normalizeAircraftFilterPresetName(value: unknown): string {
   return typeof value === 'string'
@@ -49,6 +48,7 @@ export function normalizeAircraftFilterPresets(value: unknown): AircraftFilterPr
       name,
       filters: normalizeAircraftFilters(item.filters),
       sort: item.sort,
+      ...(typeof item.favoritesFirst === 'boolean' ? { favoritesFirst: item.favoritesFirst } : {}),
     });
     if (presets.length === maxAircraftFilterPresets) break;
   }
@@ -68,4 +68,6 @@ export const aircraftFilterPresetMatches = (
   preset: AircraftFilterPreset,
   filters: AircraftFilters,
   sort: AircraftSort,
-) => preset.sort === sort && filterValueEqual(normalizeAircraftFilters(preset.filters), normalizeAircraftFilters(filters));
+  favoritesFirst = false,
+) => preset.sort === sort && (preset.favoritesFirst ?? false) === favoritesFirst
+  && filterValueEqual(normalizeAircraftFilters(preset.filters), normalizeAircraftFilters(filters));

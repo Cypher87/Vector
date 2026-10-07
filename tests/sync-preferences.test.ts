@@ -59,6 +59,20 @@ test('invalid preference values are discarded', () => {
   assert.deepEqual(normalizeSyncPreferences(null), {});
 });
 
+test('new sorting preferences synchronize independently and retain false values', () => {
+  const before = { aircraftSort: 'distance-asc' as const, aircraftFavoritesFirst: true };
+  const patch = createSyncPreferencePatch(before, { ...before, aircraftSort: 'speed-desc' });
+  assert.deepEqual(patch, { settings: { aircraftSort: 'speed-desc' } });
+  const priority = createSyncPreferencePatch(before, { ...before, aircraftFavoritesFirst: false });
+  assert.deepEqual(priority, { settings: { aircraftFavoritesFirst: false } });
+  assert.deepEqual(applySyncPreferencePatch(applySyncPreferencePatch(before, patch), priority), {
+    aircraftSort: 'speed-desc', aircraftFavoritesFirst: false,
+  });
+  assert.deepEqual(normalizeSyncPreferences({ aircraftSort: 'seen-desc', aircraftFavoritesFirst: 'true' }), { aircraftSort: 'seen-desc' });
+  const preset = { id: 'favorites', name: 'Fast favorites', filters: emptyAircraftFilters, sort: 'speed-desc' as const, favoritesFirst: true };
+  assert.deepEqual(applySyncPreferencePatch({}, { filterPresets: { upsert: [preset] } }), { filterPresets: [preset] });
+});
+
 test('aircraft trail layer sync preserves booleans and independent preferences', () => {
   for (const aircraftWakes of [true, false]) {
     assert.deepEqual(normalizeSyncPreferences({ aircraftWakes }), { aircraftWakes });

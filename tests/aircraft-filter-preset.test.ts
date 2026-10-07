@@ -41,3 +41,17 @@ test('filter preset parsing survives invalid local storage and detects the activ
   assert.equal(aircraftFilterPresetMatches(preset, preset.filters, 'altitude-desc'), false);
   assert.equal(aircraftFilterPresetMatches(preset, emptyAircraftFilters, 'seen-asc'), false);
 });
+
+test('saved views retain new sort directions and favorite priority; legacy views default to no priority', () => {
+  const [modern, legacy, invalid] = normalizeAircraftFilterPresets([
+    { id: 'modern', name: 'Fast favorites', filters: {}, sort: 'speed-asc', favoritesFirst: true },
+    { id: 'legacy', name: 'Old view', filters: {}, sort: 'altitude-desc' },
+    { id: 'invalid', name: 'Bad priority', filters: {}, sort: 'callsign-desc', favoritesFirst: 'true' },
+  ]);
+  assert.equal(modern.favoritesFirst, true);
+  assert.equal(aircraftFilterPresetMatches(modern, emptyAircraftFilters, 'speed-asc', true), true);
+  assert.equal(aircraftFilterPresetMatches(modern, emptyAircraftFilters, 'speed-asc', false), false);
+  assert.equal(aircraftFilterPresetMatches(legacy, emptyAircraftFilters, 'altitude-desc', false), true);
+  assert.equal(aircraftFilterPresetMatches(legacy, emptyAircraftFilters, 'altitude-desc', true), false);
+  assert.equal(invalid.favoritesFirst, undefined);
+});

@@ -167,7 +167,7 @@ test('reload restores saved filters and units after a temporary configuration fa
   await expect(page.locator('.aircraft-map-marker')).toContainText('VECTOR');
   if (isMobile) await page.locator('.mobile-list-button').click();
   await expect(page.locator('.active-filter-chip')).toHaveCount(4);
-  await expect(page.locator('.sort-select')).toHaveValue('callsign-asc');
+  await expect(page.locator('.sort-select')).toHaveValue('callsign');
   await page.locator('.filter-menu > summary').click();
   await openFilterGroup(page, 'flight');
   await expect(page.getByRole('spinbutton', { name: 'Altitude · From (ft)', exact: true })).toHaveValue('3000');

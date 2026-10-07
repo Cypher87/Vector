@@ -108,7 +108,7 @@ for (const language of ['en', 'nl']) {
     await page.getByRole('button', { name: `${remove}: ${favorites}`, exact: true }).click();
     await expect(chips).toHaveCount(2);
     await expect(search).toHaveValue('VECTOR');
-    await expect(page.locator('.sort-select')).toHaveValue('distance-asc');
+    await expect(page.locator('.sort-select')).toHaveValue('distance');
     await expect(page.locator('.aircraft-map-marker')).toHaveCount(1);
     await expect(page.locator('.aircraft-row')).toHaveCount(1);
     await search.fill('');
