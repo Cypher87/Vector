@@ -2,7 +2,7 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.0.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.1.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
@@ -13,6 +13,7 @@ A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/reads
 - Receiver dashboard and events for favorite arrivals, emergencies, and connection changes.
 - Desktop and mobile layouts, Dutch/English, coordinated dark/light/automatic appearance, and three unit systems.
 - Optional live synchronization between devices, without accounts or passwords.
+- Optional administrator-protected browser updates, with staged builds and recovery.
 
 ## Install on Raspberry Pi
 
@@ -22,7 +23,7 @@ Install or migrate with the same command:
 
 ```bash
 curl -fsSLo /tmp/vector-install.sh \
-  https://raw.githubusercontent.com/Cypher87/Vector/main/scripts/install-debian.sh
+  https://raw.githubusercontent.com/Cypher87/Vector/main/scripts/install-debian.sh &&
 sudo bash /tmp/vector-install.sh
 ```
 
@@ -68,6 +69,7 @@ For another Vector server, use `READSB_SOURCE=vector` and `READSB_REMOTE_URL=htt
 | `VECTOR_RECEIVER_LATITUDE`, `VECTOR_RECEIVER_LONGITUDE` | Set both in decimal degrees to override the position from `receiver.json`. |
 | `VECTOR_MAP_STYLE_URL` | MapLibre style; defaults to `/map-style.json`. |
 | `VECTOR_SYNC_STORE` | Synchronization database; the installer sets `/var/lib/vector/sync.json`. |
+| `VECTOR_UPDATES_ENABLED` | Enables the browser update menu; `false` by default. Requires a separate administrator password. |
 
 Units accept `metric`, `aeronautical`, or `imperial`. See the [complete configuration example](packaging/vector.env.example).
 
@@ -91,11 +93,11 @@ sudo journalctl -u vector-aircraft-db -n 30 --no-pager
 
 ### Update
 
-Download and run the latest installer again:
+Download a fresh installer for each terminal update. Reusing an older downloaded script can miss helper files required by newer application code:
 
 ```bash
 curl -fsSLo /tmp/vector-install.sh \
-  https://raw.githubusercontent.com/Cypher87/Vector/main/scripts/install-debian.sh
+  https://raw.githubusercontent.com/Cypher87/Vector/main/scripts/install-debian.sh &&
 sudo bash /tmp/vector-install.sh
 ```
 
@@ -109,7 +111,19 @@ sudo bash /tmp/vector-install.sh --rollback
 
 The installer also recovers interrupted updates when run again. Rollback does not delete receiver recordings, synchronized preferences or downloaded metadata.
 
-**Optional browser updates:** the installer also installs a separate update service. It is disabled at the API level unless `VECTOR_UPDATES_ENABLED=true` is set in `/etc/vector/vector.env`, and requires a separate administrator password. **Settings → Updates** can then check for updates and install an explicitly confirmed build. Pairing codes do not grant administrator access. See [setup and security](docs/STANDALONE.md#browser-updates).
+### Browser updates (optional)
+
+First run the current installer once on your Pi to install the separate update service. Then set an administrator password (12–128 characters; hidden input, stored as a salted hash):
+
+```bash
+sudo /opt/vector/runtime/node/bin/node /usr/local/lib/vector-updater/set-update-password.mjs
+```
+
+Set `VECTOR_UPDATES_ENABLED=true` in `/etc/vector/vector.env`, run `sudo systemctl restart vector`, and refresh the browser. **Updates** then appears at the bottom of **Settings**. Setting a password alone does not enable the menu. Use the same password command to change it later.
+
+Unlock **Settings → Updates**, choose **Check for updates**, then confirm the proposed build. **Checks and installation are manual**: Vector does not check at startup or on a schedule. Closing the browser does not cancel an accepted update.
+
+Browser updates apply to the Vector server you opened, not a remote receiver or local development server. Pairing codes do not grant administrator access. Use HTTPS outside a trusted LAN. See [setup, security and troubleshooting](docs/STANDALONE.md#browser-updates).
 
 ### Remove
 
@@ -119,7 +133,7 @@ Use the downloaded installer (download it again if `/tmp/vector-install.sh` is m
 sudo bash /tmp/vector-install.sh --uninstall
 ```
 
-This removes the application, service, and database-update timer but keeps configuration, state, and the service account. To remove **all Vector data**, including the aircraft database, synchronized preferences, and device sessions, back up anything needed first, then run:
+This removes the application, its services (including the browser updater), and the database-update timer but keeps configuration, state, and the service account. To remove **all Vector data**, including the aircraft database, synchronized preferences, and device sessions, back up anything needed first, then run:
 
 ```bash
 sudo bash /tmp/vector-install.sh --uninstall --purge

@@ -77,9 +77,11 @@ Run the current installer once to install `vector-updater.service`. Browser upda
 
 2. In `/etc/vector/vector.env`, set `VECTOR_UPDATES_ENABLED=true`. Leave the generated `VECTOR_UPDATE_PASSWORD_HASH` intact. The default is `false`.
 3. Restart the webapp: `sudo systemctl restart vector`.
-4. Open **Settings → Updates**, unlock with the administrator password, check for updates, and confirm the proposed build.
+4. Refresh the browser, open **Settings → Updates**, unlock with the administrator password, check for updates, and confirm the proposed build.
 
-The version remains **0.9.0**; a short Git revision distinguishes builds. Checks use the official `Cypher87/Vector` `main` branch. Each installation is pinned to the exact revision shown at confirmation. A browser cannot supply a different URL, repository, branch, installer flag or shell command. The worker uses the installer's shared lock, stages a separate release, preserves the source configuration, and checks fresh data after restarting. Source changes that need interactive decisions must be performed from the terminal instead.
+The menu is hidden while updates are disabled; setting a password alone does not enable it. Checks are manual: there is no automatic startup or scheduled check. The open dialog polls local progress every 2.5 seconds, not GitHub. Use the password command again to change the administrator password.
+
+The installed version and short Git revision distinguish releases and builds. Checks use the official `Cypher87/Vector` `main` branch. Each installation is pinned to the exact revision shown at confirmation. A browser cannot supply a different URL, repository, branch, installer flag or shell command. The worker uses the installer's shared lock, stages a separate release, preserves the source configuration, and checks fresh data after restarting. Source changes that need interactive decisions must be performed from the terminal instead.
 
 The webapp remains unprivileged. The separate root-owned service accepts only bounded requests through a local Unix socket restricted to `root:vector`, checks the opt-in and password independently, and keeps its jobs/status outside the webapp. Password attempts are rate-limited, administrator sessions expire after 15 minutes, and changing the password or disabling updates invalidates sessions when next checked. Device synchronization sessions grant no update rights. Administrator tokens are scoped HTTP-only, same-site cookies, with `Secure` on HTTPS. **Use HTTPS outside a trusted LAN**; on plain HTTP a password can be intercepted. A reverse proxy must forward the correct host and protocol so same-origin checks continue to work.
 
