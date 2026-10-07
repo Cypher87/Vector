@@ -1,6 +1,44 @@
 import { test, expect } from './radar-fixture';
 import { applySyncPreferencePatch, type SyncPreferences, type SyncPreferencePatch } from '../../src/sync/preferences';
 
+test('light mode keeps the receiver marker and distance rings the same gold as the actual range outline', async ({ page }, testInfo) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.addInitScript(() => {
+    localStorage.setItem('vector.actualRangeOutline', 'true');
+    localStorage.setItem('vector.distanceRings', 'true');
+  });
+  await page.route('**/api/readsb?**', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path');
+    if (path === 'receiver.json') return route.fulfill({ json: {
+      refresh: 1000, lat: 52.3, lon: 4.8, outlineJson: true,
+    } });
+    if (path === 'outline.json') return route.fulfill({ json: {
+      points: [[52.1, 4.5], [52.6, 4.5], [52.6, 5.1], [52.1, 5.1]],
+    } });
+    return route.fallback();
+  });
+  await page.goto('/');
+  const marker = page.locator('.receiver-map-marker');
+  const outline = page.locator('.map-actual-range-overlay polyline');
+  await expect(marker).toBeVisible();
+  await expect(outline).toBeVisible();
+  await expect(page.locator('.distance-ring-line').first()).toBeVisible();
+  for (const colorScheme of ['light', 'dark', 'light'] as const) {
+    await page.emulateMedia({ colorScheme });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', colorScheme);
+    await expect(outline).toHaveCSS('stroke', 'rgb(227, 173, 91)');
+    const accent = colorScheme === 'light' ? 'rgb(227, 173, 91)' : 'rgb(213, 170, 104)';
+    await expect(marker).toHaveCSS('color', accent);
+    await expect(page.locator('.distance-ring-line').first()).toHaveCSS('stroke', accent);
+    await expect(page.locator('.distance-ring-line').first()).toHaveCSS('stroke-opacity', colorScheme === 'light' ? '0.95' : '0.78');
+    await expect(page.locator('.distance-ring-line').first()).toHaveCSS('stroke-width', colorScheme === 'light' ? '1.8px' : '1.45px');
+    await expect(page.locator('.distance-ring-casing').first()).toHaveCSS('display', colorScheme === 'light' ? 'none' : 'inline');
+    await expect(page.locator('.distance-ring-label-backdrop').first()).toHaveCSS('stroke', accent);
+    await expect(page.locator('.distance-ring-label-text').first()).toHaveCSS('fill', accent);
+  }
+  await page.screenshot({ path: testInfo.outputPath('light-receiver-outline.png') });
+});
+
 test('automatic appearance follows the device live without resetting the map or layers', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await page.addInitScript(() => {

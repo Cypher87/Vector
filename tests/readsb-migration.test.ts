@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, unlink, statfs, rename, symlink, chmod, readdir, realpath } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm, lstat, unlink, statfs, rename, symlink, chmod, readdir, realpath, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseEnv } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { dataDirectory, argumentValue, patchEnvironment, planReadsb, readerAcl, readerCanAccess, migrationSettings } from '../scripts/lib/readsb-migration.mjs';
 import { MigrationFiles, snapshot, atomicWrite } from '../scripts/lib/migration-files.mjs';
-import { install } from '../scripts/migrate-install.mjs';
+import { install, recover } from '../scripts/migrate-install.mjs';
+import { ReleaseSwitch } from '../scripts/lib/release-switch.mjs';
 import { grantReadAccess, restoreAccess } from '../scripts/readsb-access.mjs';
 
 const help = '--write-json --write-globe-history --heatmap --json-trace-hist-only --write-json-binCraft-only';
@@ -117,7 +118,7 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
   const map = (path: string) => join(root, path.replaceAll('\\', '/').replace(/^\/+/, ''));
   const calls: string[] = [];
   const verifications: string[][] = [];
-  const state = { argv, failHealth: false, failCheck: false, failDatabase: false, failVerify: false, services: ['readsb.service'], choice: 0, remoteUrl: 'http://vector-receiver.example:3000/' };
+  const state = { argv, failHealth: false, failCheck: false, failDatabase: false, failVerify: false, sourceUid: 0, services: ['readsb.service'], choice: 0, remoteUrl: 'http://vector-receiver.example:3000/' };
   const put = async (path: string, body: string) => { await mkdir(join(map(path), '..'), { recursive: true }); await writeFile(map(path), body); };
   await put('/etc/vector/vector.env', env);
   await put('/etc/default/readsb', defaults);
@@ -128,17 +129,25 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
     constructor(directory: string, initial?: ConstructorParameters<typeof MigrationFiles>[1]) { super(map(directory), initial); }
     async write(path: string, content: string, mode = 0o644) { return super.write(map(path), content, mode); }
   }
+  class Releases extends ReleaseSwitch {
+    constructor(transaction: MigrationFiles) { super(transaction, map('/opt/vector')); }
+    async prepare(directory: string, runtime: string) { return super.prepare(map(directory), map(runtime)); }
+  }
   const io = {
     log: () => {}, sleep: async () => {},
     ask: async (_question: string, choices?: string[]) => { calls.push('question'); return choices ? state.choice : state.remoteUrl; },
     readFile: async (path: string) => path.startsWith('/proc/5678/') ? '/usr/bin/python3\0/usr/share/readsb-mqtt/main.py\0' : path.startsWith('/proc/') ? `${state.argv.join('\0')}\0` : readFile(map(path), 'utf8'),
     snapshot: (path: string) => snapshot(map(path)),
     atomicWrite: (path: string, content: string) => atomicWrite(map(path), content),
-    lstat: (path: string) => lstat(map(path)),
+    lstat: async (path: string) => {
+      const info = await lstat(map(path));
+      if (path.startsWith('/opt/vector/.source-')) info.uid = state.sourceUid;
+      return info;
+    },
     realpath: async (path: string) => path.startsWith('/proc/5678/') ? '/usr/bin/python3' : '/usr/bin/readsb',
     mkdir: (path: string, options: { recursive: boolean; mode: number }) => mkdir(map(path), options),
     unlink: (path: string) => unlink(map(path)),
-    chown: async () => {}, statfs: () => statfs(root), MigrationFiles: Files,
+    chown: async () => {}, statfs: () => statfs(root), MigrationFiles: Files, ReleaseSwitch: Releases,
     grantReadAccess: async () => { calls.push('grant ACL'); },
     run: async (command: string, args: string[]) => {
       calls.push(`${command} ${args.join(' ')}`);
@@ -177,8 +186,96 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
     const { id } = JSON.parse(await readFile(map('/var/lib/vector-installer/latest.json'), 'utf8'));
     return JSON.parse(await readFile(map(`/var/lib/vector-installer/${id}/journal.json`), 'utf8'));
   };
-  return { root, map, calls, verifications, state, migrate, journal, cleanup: () => rm(root, { recursive: true, force: true }) };
+  const stage = async (protectedSource = false) => {
+    const release: { directory: string; runtime: string; sourceDirectory?: string } = { directory: '/opt/vector/releases/new', runtime: '/opt/vector/runtime/new' };
+    await put(`${release.directory}/dist/standalone/server.js`, 'new build');
+    await put(`${release.directory}/package.json`, '{"version":"0.9.0"}');
+    await put(`${release.runtime}/bin/node`, 'new runtime');
+    await put('/opt/vector/runtime/old/bin/node', 'old runtime');
+    await symlink(map('/opt/vector/runtime/old'), map('/opt/vector/runtime/node'));
+    await put('/opt/vector/app/old-build', 'old build');
+    for (const name of [...vectorUnits, 'vector-updater.service']) await put(`${release.directory}/packaging/systemd/${name}`, await readFile(new URL(`../packaging/systemd/${name}`, import.meta.url), 'utf8'));
+    for (const name of ['lib/release-switch.mjs', 'lib/migration-files.mjs', 'lib/readsb-migration.mjs', 'readsb-access.mjs', 'migrate-install.mjs', 'lib/update-auth.mjs', 'lib/update-control.mjs', 'set-update-password.mjs', 'update-service.mjs']) {
+      await put(`${release.directory}/scripts/${name}`, await readFile(new URL(`../scripts/${name}`, import.meta.url), 'utf8'));
+    }
+    if (protectedSource) {
+      release.sourceDirectory = '/opt/vector/.source-test';
+      await cp(map(release.directory), map(release.sourceDirectory), { recursive: true });
+      await chmod(map(release.sourceDirectory), 0o700);
+    }
+    return release;
+  };
+  const rollback = async () => {
+    const { id } = JSON.parse(await readFile(map('/var/lib/vector-installer/latest.json'), 'utf8'));
+    await recover(new Files(`/var/lib/vector-installer/${id}`, await journal()), io as unknown as Parameters<typeof recover>[1]);
+  };
+  return { root, map, calls, verifications, state, migrate, journal, stage, rollback, cleanup: () => rm(root, { recursive: true, force: true }) };
 }
+
+test('Linux release migration switches the complete build and manual rollback restores the legacy installation', { skip: process.platform !== 'linux' }, async () => {
+  const sim = await simulation();
+  try {
+    const release = await sim.stage();
+    await sim.migrate({ release });
+    assert.equal(await realpath(sim.map('/opt/vector/app')), sim.map(release.directory));
+    assert.equal(await realpath(sim.map('/opt/vector/runtime/node')), sim.map(release.runtime));
+    assert.equal((await sim.journal()).status, 'complete');
+    await sim.rollback();
+    assert.equal(await readFile(sim.map('/opt/vector/app/old-build'), 'utf8'), 'old build');
+    assert.equal(await realpath(sim.map('/opt/vector/runtime/node')), sim.map('/opt/vector/runtime/old'));
+    assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
+    assert.equal(await readFile(sim.map('/etc/systemd/system/vector.service'), 'utf8'), 'old unit');
+    assert.equal((await sim.journal()).status, 'rolled-back');
+  } finally { await sim.cleanup(); }
+});
+
+test('Linux failed post-start health check restores app, runtime and config, without deleting receiver recordings', { skip: process.platform !== 'linux' }, async () => {
+  const sim = await simulation();
+  try {
+    const release = await sim.stage();
+    await writeFile(sim.map('/var/globe_history/recording'), 'keep');
+    sim.state.failHealth = true;
+    await assert.rejects(() => sim.migrate({ release }), /Previous installation and configuration restored/);
+    assert.equal(await readFile(sim.map('/opt/vector/app/old-build'), 'utf8'), 'old build');
+    assert.equal(await realpath(sim.map('/opt/vector/runtime/node')), sim.map('/opt/vector/runtime/old'));
+    assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
+    assert.equal(await readFile(sim.map('/var/globe_history/recording'), 'utf8'), 'keep');
+    assert.equal((await sim.journal()).status, 'rolled-back');
+  } finally { await sim.cleanup(); }
+});
+
+test('privileged helpers and units come from the protected source, never from modified build files', { skip: process.platform !== 'linux' }, async () => {
+  const sim = await simulation();
+  try {
+    const release = await sim.stage(true);
+    await writeFile(sim.map(`${release.directory}/scripts/update-service.mjs`), 'untrusted build change');
+    await writeFile(sim.map(`${release.directory}/packaging/systemd/vector-updater.service`), 'untrusted unit change');
+    await sim.migrate({ release });
+    for (const [installed, source] of [
+      ['/usr/local/lib/vector-updater/update-service.mjs', 'scripts/update-service.mjs'],
+      ['/etc/systemd/system/vector-updater.service', 'packaging/systemd/vector-updater.service'],
+    ]) {
+      assert.equal(await readFile(sim.map(installed), 'utf8'), await readFile(sim.map(`${release.sourceDirectory}/${source}`), 'utf8'));
+    }
+    await sim.rollback();
+    assert.equal((await sim.journal()).status, 'rolled-back');
+  } finally { await sim.cleanup(); }
+});
+
+test('unsafe protected-source ownership or permissions abort before configuration changes', { skip: process.platform !== 'linux' }, async () => {
+  const sim = await simulation();
+  try {
+    const release = await sim.stage(true);
+    await chmod(sim.map(release.sourceDirectory!), 0o755);
+    await assert.rejects(() => sim.migrate({ release }), /root-only checkout/);
+    await chmod(sim.map(release.sourceDirectory!), 0o700);
+    sim.state.sourceUid = 900;
+    await assert.rejects(() => sim.migrate({ release }), /root-only checkout/);
+    assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
+    assert.equal(await readFile(sim.map('/etc/systemd/system/vector.service'), 'utf8'), 'old unit');
+    assert.equal(sim.calls.length, 0);
+  } finally { await sim.cleanup(); }
+});
 
 test('guided migration detects a ready receiver without questions, preserves preferences and is repeatable', async () => {
   const sim = await simulation();
@@ -344,7 +441,7 @@ test('failed post-restart health check restores config, unit and readsb options'
   const sim = await simulation(['/usr/bin/readsb', '--write-json=/run/readsb']);
   sim.state.failHealth = true;
   try {
-    await assert.rejects(() => sim.migrate(), /Previous configuration restored/);
+    await assert.rejects(() => sim.migrate(), /Previous installation and configuration restored/);
     assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
     assert.equal(await readFile(sim.map('/etc/systemd/system/vector.service'), 'utf8'), 'old unit');
     assert.equal(await readFile(sim.map('/etc/default/readsb'), 'utf8'), defaults);
@@ -358,7 +455,7 @@ test('a missing database stops migration before changing receiver options or pub
   sim.state.failDatabase = true;
   sim.state.failCheck = true;
   try {
-    await assert.rejects(() => sim.migrate(), /Previous configuration restored/);
+    await assert.rejects(() => sim.migrate(), /Previous installation and configuration restored/);
     assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
     assert.equal(await readFile(sim.map('/etc/default/readsb'), 'utf8'), defaults);
     assert.equal(sim.calls.includes('grant ACL'), false);
@@ -455,7 +552,7 @@ test('failed Vector unit verification restores configuration before enabling new
   const sim = await simulation();
   sim.state.failVerify = true;
   try {
-    await assert.rejects(() => sim.migrate(), /systemd-analyze failed: invalid Vector unit[\s\S]*Previous configuration restored/);
+    await assert.rejects(() => sim.migrate(), /systemd-analyze failed: invalid Vector unit[\s\S]*Previous installation and configuration restored/);
     assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
     assert.equal(await readFile(sim.map('/etc/systemd/system/vector.service'), 'utf8'), 'old unit');
     assert.equal(sim.calls.some((call) => call.startsWith('systemctl enable --now')), false);

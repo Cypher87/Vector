@@ -69,6 +69,7 @@ test('local and remote production runtimes serve live, metadata, outline, traces
       READSB_SOURCE: 'local',
       READSB_LIVE_DIR: live, READSB_HISTORY_DIR: history, VECTOR_AIRCRAFT_DATABASE: database,
       VECTOR_SYNC_STORE: join(root, 'sync.json'),
+      VECTOR_UPDATES_ENABLED: 'false',
       // Deliberately unusable: a local installation must not need either legacy upstream.
       READSB_LIVE_URL: 'http://127.0.0.1:1/no-tar1090/', READSB_HISTORY_URL: 'http://127.0.0.1:1/no-tar1090/',
       READSB_TAR1090_URL: 'http://127.0.0.1:1/no-tar1090/',
@@ -87,6 +88,7 @@ test('local and remote production runtimes serve live, metadata, outline, traces
       const config = await (await get('/api/config')).json();
       assert.equal(config.dataBaseUrl, '/api/readsb?source=live');
       assert.equal(JSON.stringify(config).includes(root), false);
+      assert.equal((await (await get('/api/updates')).json()).enabled, false);
       const databaseResponse = await get('/api/aircraft-database-status');
       assert.equal(databaseResponse.headers.get('cache-control'), 'no-store');
       const databaseStatus = await databaseResponse.json();

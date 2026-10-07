@@ -12,6 +12,8 @@ Review the downloaded script before running it if desired. Once installation com
 
 ## What happens automatically
 
+The installer checks for at least 2 GiB free and builds the candidate in a separate `/opt/vector/releases/build-*` directory. It does not check out code or install dependencies over the running app. Privileged helper code and service units come from a separate root-only source checkout, never from the build directory writable by the webapp user. After the build, root owns the candidate and the installer logs its version and Git revision. The existing `/opt/vector/app` directory is migrated automatically to the release layout without losing its build.
+
 1. Detect the running readsb systemd service and its actual live/history output paths.
 2. Back up configuration and affected service files in root-only `/var/lib/vector-installer/`.
 3. Prepare the aircraft database, preserving the last valid copy if downloading fails.
@@ -49,17 +51,46 @@ Only running readsb decoder processes count as receivers; companion services suc
 
 ## Recovery
 
-A failed migration restores the previous configuration and affected service state. Recorded data and downloaded metadata are never deleted during recovery. If installation is interrupted, rerunning the installer first recovers the unfinished migration. Concurrent installer runs are blocked.
+A failed build does not change the active application. A failed migration or post-start data check restores the previous application, Node runtime, configuration, root-owned receiver helpers and affected service state. Recorded data, synchronization state and downloaded metadata are not reverted or deleted during recovery. If installation is interrupted, rerunning the installer first recovers the unfinished transaction. Concurrent installer runs are blocked.
 
-To restore the most recent migration manually while Vector is still installed:
+To undo the most recent installation/update manually:
 
 ```bash
 sudo bash /tmp/vector-install.sh --rollback
 ```
 
-This is configuration recovery, not a Git/build version downgrade. Later administrator edits are not silently overwritten: if a conflict is found, recovery stops and reports the protected backup location. Keep backups private because they may contain local URLs and receiver settings.
+The app and runtime links are journaled before activation and restored before the old service is restarted. A separate root-owned recovery runner under `/usr/local/lib/vector-installer/` remains usable even when the active app/runtime links are interrupted or reverted. Later administrator edits are not silently overwritten: recovery stops and reports the protected backup location if it finds a conflict. Keep backups private because they may contain receiver settings. Backups made by older installers still offer configuration-only recovery; they do not contain a previous app build.
+
+The previous builds are retained under `/opt/vector/releases/` for recovery; they are not receiver history. Do not manually remove the active or previous release while a rollback may still be needed. Vector 0.9 defaults to the development branch `main`, not a claimed stable 1.0 release. `VECTOR_REF` may select an existing installer-compatible tag or commit instead.
 
 Uninstall removes the Vector permission hook before removing its runtime. readsb's recording options, history, and the independent retention job remain; `--purge` also removes Vector configuration, state, helper code, and migration backups. It does not purge receiver history.
+
+## Browser updates
+
+Run the current installer once to install `vector-updater.service`. Browser updates work on an official installer-managed instance, not on a development server or custom repository. They update the Vector server you opened, not a remote receiver supplying its data.
+
+1. Set a separate administrator password (12–128 characters). Input is hidden and only a salted scrypt hash is saved; no password is passed through command arguments or shell history:
+
+   ```bash
+   sudo /opt/vector/runtime/node/bin/node /usr/local/lib/vector-updater/set-update-password.mjs
+   ```
+
+2. In `/etc/vector/vector.env`, set `VECTOR_UPDATES_ENABLED=true`. Leave the generated `VECTOR_UPDATE_PASSWORD_HASH` intact. The default is `false`.
+3. Restart the webapp: `sudo systemctl restart vector`.
+4. Open **Settings → Updates**, unlock with the administrator password, check for updates, and confirm the proposed build.
+
+The version remains **0.9.0**; a short Git revision distinguishes builds. Checks use the official `Cypher87/Vector` `main` branch. Each installation is pinned to the exact revision shown at confirmation. A browser cannot supply a different URL, repository, branch, installer flag or shell command. The worker uses the installer's shared lock, stages a separate release, preserves the source configuration, and checks fresh data after restarting. Source changes that need interactive decisions must be performed from the terminal instead.
+
+The webapp remains unprivileged. The separate root-owned service accepts only bounded requests through a local Unix socket restricted to `root:vector`, checks the opt-in and password independently, and keeps its jobs/status outside the webapp. Password attempts are rate-limited, administrator sessions expire after 15 minutes, and changing the password or disabling updates invalidates sessions when next checked. Device synchronization sessions grant no update rights. Administrator tokens are scoped HTTP-only, same-site cookies, with `Secure` on HTTPS. **Use HTTPS outside a trusted LAN**; on plain HTTP a password can be intercepted. A reverse proxy must forward the correct host and protocol so same-origin checks continue to work.
+
+Closing the browser does not cancel an accepted update. Progress reconnects after the brief webapp restart. The worker records the outcome before restarting itself with the new code. Interrupted jobs attempt the installer's pending recovery on worker startup; a recovery conflict is reported as requiring administrator attention rather than claiming success.
+
+```bash
+systemctl status vector-updater --no-pager
+sudo journalctl -u vector-updater -n 100 --no-pager
+```
+
+Disable browser updates by setting `VECTOR_UPDATES_ENABLED=false` and restarting `vector`. This blocks new requests; it does not abort an already accepted installation halfway through. Full installer logs stay in the administrator's journal and are not exposed in the browser.
 
 ## Aircraft database
 

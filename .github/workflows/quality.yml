@@ -30,7 +30,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y acl
       - run: pnpm test
       - run: pnpm build
-      - run: bash -n scripts/install-debian.sh
+      - run: bash -n scripts/install-debian.sh && bash -n scripts/recover-install.sh
       - run: pnpm test:standalone
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e

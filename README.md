@@ -2,6 +2,8 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
+**Current version: 0.9.0.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+
 ## Features
 
 - Live map with original aircraft-family icons, altitude colors, smooth motion, and collision-aware labels.
@@ -14,7 +16,7 @@ A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/reads
 
 ## Install on Raspberry Pi
 
-**Requirements:** Debian 13 (`arm64` or `amd64`), systemd, a running compatible readsb installation (or another Vector receiver), internet access, and approximately 1 GB of free disk space for Vector, plus space for recorded history.
+**Requirements:** Debian 13 (`arm64` or `amd64`), systemd, a running compatible readsb installation (or another Vector receiver), internet access, and at least **2 GiB free** to build a release alongside the existing installation, plus space for recorded history.
 
 Install or migrate with the same command:
 
@@ -28,7 +30,7 @@ Vector is installed under `/opt/vector` and runs as the unprivileged `vector` us
 
 The installer detects readsb and its data directories, configures read access, migrates local tar1090 URLs, and downloads the aircraft database. It preserves your labels, location, preferences, and recordings. Missing readsb recording options are added after asking about the required brief receiver restart. SDR and feeder settings stay unchanged. tar1090 is not removed.
 
-No `.env` editing is needed for a standard installation. Questions appear only when a choice is necessary, such as multiple receivers or an intentional external source. Configuration backups and automatic recovery protect against failed migration checks. See [installation details and recovery](docs/STANDALONE.md).
+No `.env` editing is needed for a standard installation. Questions appear only when a choice is necessary, such as multiple receivers or an intentional external source. Updates build separately while the current app keeps running, then switch over and verify fresh receiver data. Failed activation restores the previous app, runtime, configuration and service state. See [installation details and recovery](docs/STANDALONE.md).
 
 Open **`http://<pi-address>:3000`** from your local network. Allow port 3000 through your firewall if necessary. Use HTTPS through a reverse proxy before exposing Vector beyond a trusted network; set `HOST=127.0.0.1` if only that local proxy should reach it.
 
@@ -94,10 +96,20 @@ Download and run the latest installer again:
 ```bash
 curl -fsSLo /tmp/vector-install.sh \
   https://raw.githubusercontent.com/Cypher87/Vector/main/scripts/install-debian.sh
-sudo VECTOR_REF=main bash /tmp/vector-install.sh
+sudo bash /tmp/vector-install.sh
 ```
 
-Updates preserve synchronization data, the last valid aircraft database, and settings unrelated to the data-source migration. Local source changes in `/opt/vector/app` cause the update to stop rather than overwrite them. Set `VECTOR_REF` to an existing branch, tag, or commit to install that revision. Use `--keep-source` to update without automatic source migration, or `--rollback` to restore the previous migration's configuration.
+Updates preserve synchronization data, the last valid aircraft database, and settings unrelated to the data-source migration. Local source changes in `/opt/vector/app` stop the update rather than being overwritten. During 0.9 development the default source remains `main`; set `VECTOR_REF` to an existing tag or commit for a pinned revision. Use `--keep-source` to retain the current data source without detection.
+
+To undo the last installation/update, including the app and runtime:
+
+```bash
+sudo bash /tmp/vector-install.sh --rollback
+```
+
+The installer also recovers interrupted updates when run again. Rollback does not delete receiver recordings, synchronized preferences or downloaded metadata.
+
+**Optional browser updates:** the installer also installs a separate update service. It is disabled at the API level unless `VECTOR_UPDATES_ENABLED=true` is set in `/etc/vector/vector.env`, and requires a separate administrator password. **Settings → Updates** can then check for updates and install an explicitly confirmed build. Pairing codes do not grant administrator access. See [setup and security](docs/STANDALONE.md#browser-updates).
 
 ### Remove
 

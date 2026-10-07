@@ -1,0 +1,28 @@
+[Unit]
+Description=Vector authenticated update service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=vector
+ExecStart=/opt/vector/runtime/node/bin/node /usr/local/lib/vector-updater/update-service.mjs
+Restart=always
+RestartSec=2s
+RuntimeDirectory=vector-updater
+RuntimeDirectoryMode=0750
+StateDirectory=vector-updater
+StateDirectoryMode=0700
+UMask=0027
+TimeoutStopSec=25s
+KillMode=control-group
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target

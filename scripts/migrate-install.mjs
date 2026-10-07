@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { configPath, ownedHistory, planReadsb, migrationSettings, patchEnvironment, serviceName, dataDirectory } from './lib/readsb-migration.mjs';
 import { MigrationFiles, atomicWrite, snapshot } from './lib/migration-files.mjs';
 import { grantReadAccess, restoreAccess } from './readsb-access.mjs';
+import { ReleaseSwitch } from './lib/release-switch.mjs';
 
 const app = '/opt/vector/app';
 const node = '/opt/vector/runtime/node/bin/node';
@@ -18,7 +19,7 @@ const unitRoot = '/etc/systemd/system';
 const log = (message) => console.log(`[Vector] ${message}`);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const system = { run, ask, readFile, mkdir, chown, lstat, realpath, statfs, unlink, snapshot, atomicWrite,
-  MigrationFiles, grantReadAccess, fetch: (...args) => fetch(...args), sleep, log };
+  MigrationFiles, ReleaseSwitch, grantReadAccess, fetch: (...args) => fetch(...args), sleep, log };
 
 export function run(command, args, input, timeout = 60_000) {
   return new Promise((resolve, reject) => {
@@ -86,17 +87,18 @@ async function selectReceiver(environment, yes, io) {
   return available.length === 1 ? available[0] : available[await ask('Multiple receivers found. Choose one', available.map((item) => item.service), undefined, yes)];
 }
 
-async function asVector(script, file, io, args = []) {
+async function asVector(script, file, io, args = [], release) {
   const { run } = io;
-  return run('runuser', ['-u', 'vector', '--', 'env', '-i', `--chdir=${app}`, 'HOME=/var/lib/vector', 'PATH=/usr/bin:/bin', 'LANG=C.UTF-8',
-    node, '--experimental-strip-types', `--env-file=${file}`, `${app}/scripts/${script}`, ...args], undefined, 180_000);
+  const directory = release?.directory || app;
+  return run('runuser', ['-u', 'vector', '--', 'env', '-i', `--chdir=${directory}`, 'HOME=/var/lib/vector', 'PATH=/usr/bin:/bin', 'LANG=C.UTF-8',
+    release ? `${release.runtime}/bin/node` : node, '--experimental-strip-types', `--env-file=${file}`, `${directory}/scripts/${script}`, ...args], undefined, 180_000);
 }
 
-async function readableReceiver(file, requireReplay, io) {
+async function readableReceiver(file, requireReplay, io, release) {
   const { run } = io;
   // This check runs with exactly the service user's permissions, not root's.
   const code = `const fs=require('node:fs'); const p=require('node:path'); const d=process.env.READSB_LIVE_DIR; const a=JSON.parse(fs.readFileSync(p.join(d,'aircraft.json'))); const r=JSON.parse(fs.readFileSync(p.join(d,'receiver.json'))); if(!Array.isArray(a.aircraft)||!Number.isFinite(a.now)||Math.abs(Date.now()/1000-a.now)>60)throw Error('Receiver snapshot is not fresh'); if(${requireReplay}&&!r.haveReplay)throw Error('Receiver replay is not enabled');`;
-  await run('runuser', ['-u', 'vector', '--', 'env', '-i', `--chdir=${app}`, node, `--env-file=${file}`, '-e', code], undefined, 5000);
+  await run('runuser', ['-u', 'vector', '--', 'env', '-i', `--chdir=${release?.directory || app}`, release ? `${release.runtime}/bin/node` : node, `--env-file=${file}`, '-e', code], undefined, 5000);
 }
 
 async function waitFor(check, seconds, io) {
@@ -131,12 +133,22 @@ async function serviceState(name, io) {
     enabled: await run('systemctl', ['is-enabled', '--quiet', name]).then(() => true, () => false) };
 }
 
+async function stopVector(io) {
+  for (const name of ['vector-aircraft-db.timer', 'vector-aircraft-db.service', 'vector.service']) {
+    const load = (await io.run('systemctl', ['show', name, '--property=LoadState', '--value'])).trim();
+    if (load !== 'not-found') await io.run('systemctl', ['stop', name]);
+  }
+}
+
 export async function recover(transaction, io = system) {
   const { run, log } = io;
-  log('Restoring the previous configuration. Recorded receiver data will not be deleted.');
-  await transaction.rollback();
+  log('Restoring the previous installation and configuration. Recorded receiver data will not be deleted.');
   transaction.state.status = 'recovering';
   await transaction.save();
+  // Stop writers before restoring configuration/runtime. Keep recovery pending until all services recover.
+  await stopVector(io);
+  await transaction.rollback({ complete: false });
+  if (transaction.state.release) await new io.ReleaseSwitch(transaction).restore();
   for (const acl of [...(transaction.state.acls || [])].reverse()) {
     try { await restoreAccess(acl, run); } catch { log(`Could not restore access on ${acl.path}; later changes preserved and backup retained.`); }
   }
@@ -145,6 +157,8 @@ export async function recover(transaction, io = system) {
   for (const state of transaction.state.services || []) {
     if (state.enabled) await run('systemctl', ['enable', state.name]);
     else await run('systemctl', ['disable', state.name]).catch(() => {});
+    // A web update's parent worker must survive until it records the outcome.
+    if (state.name === 'vector-updater.service' && process.env.VECTOR_WEB_UPDATE === '1') continue;
     if (state.active) await run('systemctl', ['restart', state.name]);
     else await run('systemctl', ['stop', state.name]).catch(() => {});
   }
@@ -162,8 +176,15 @@ async function latest(io) {
   } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 
-export async function install({ yes = false, keepSource = false } = {}, io = system) {
+export async function install({ yes = false, keepSource = false, release } = {}, io = system) {
   const { run, ask, readFile, mkdir, chown, lstat, statfs, unlink, snapshot, atomicWrite, MigrationFiles, grantReadAccess, log } = io;
+  const privilegedSource = release?.sourceDirectory || release?.directory || app;
+  if (release?.sourceDirectory) {
+    const info = await lstat(privilegedSource);
+    if (!/^\/opt\/vector\/\.source-[A-Za-z0-9]+$/.test(privilegedSource) || !info.isDirectory() || info.isSymbolicLink() || info.uid !== 0 || (info.mode & 0o077)) {
+      throw new Error('Privileged installer source must be a root-only checkout');
+    }
+  }
   const prior = await latest(io);
   if (['pending', 'recovering'].includes(prior?.state.status)) {
     log('An interrupted migration was found; recovering it before continuing.');
@@ -193,19 +214,29 @@ export async function install({ yes = false, keepSource = false } = {}, io = sys
   }
   const id = `${new Date().toISOString().replace(/[^0-9]/g, '')}-${randomUUID()}`;
   const transaction = new MigrationFiles(join(backups, id));
-  transaction.state.services = await Promise.all(['vector.service', 'vector-aircraft-db.timer', 'vector-readsb-history-clean.timer'].map((name) => serviceState(name, io)));
+  transaction.state.services = await Promise.all(['vector.service', 'vector-aircraft-db.timer', 'vector-readsb-history-clean.timer', ...(release ? ['vector-updater.service'] : [])].map((name) => serviceState(name, io)));
   transaction.state.acls = [];
   await transaction.save();
   await atomicWrite(join(backups, 'latest.json'), JSON.stringify({ id }));
   log(`Recovery backup: ${transaction.directory}`);
   const stagedConfig = `/etc/vector/.migration-${id}.env`;
   try {
+    if (release) {
+      await new io.ReleaseSwitch(transaction).prepare(release.directory, release.runtime);
+      // Dependencies first, entry point last. Hooks execute only root-owned helper copies.
+      for (const name of ['lib/release-switch.mjs', 'lib/migration-files.mjs', 'lib/readsb-migration.mjs', 'readsb-access.mjs', 'migrate-install.mjs']) {
+        await transaction.write(join(admin, name), await readFile(join(privilegedSource, 'scripts', name), 'utf8'), 0o644, { uid: 0, gid: 0 });
+      }
+      for (const name of ['lib/update-auth.mjs', 'lib/update-control.mjs', 'lib/migration-files.mjs', 'lib/readsb-migration.mjs', 'set-update-password.mjs', 'update-service.mjs']) {
+        await transaction.write(join('/usr/local/lib/vector-updater', name), await readFile(join(privilegedSource, 'scripts', name), 'utf8'), 0o644, { uid: 0, gid: 0 });
+      }
+    }
     // Running Vector continues using its original configuration until preflight passes.
     const gid = Number((await run('id', ['-g', 'vector'])).trim());
     await transaction.write(stagedConfig, candidate, 0o640, { uid: 0, gid });
-    try { log((await asVector('update-aircraft-db.mjs', stagedConfig, io)).trim()); }
+    try { log((await asVector('update-aircraft-db.mjs', stagedConfig, io, [], release)).trim()); }
     catch { log('Database download unavailable; checking the last valid copy.'); }
-    log((await asVector('check-readsb.mjs', stagedConfig, io, ['--database-only'])).trim());
+    log((await asVector('check-readsb.mjs', stagedConfig, io, ['--database-only'], release)).trim());
     if (plan) {
       const roots = [...new Set([plan.live, plan.history, plan.recording])];
       for (const root of roots) {
@@ -234,7 +265,7 @@ export async function install({ yes = false, keepSource = false } = {}, io = sys
       const dropinPath = join(unitRoot, `${selected.service}.d/90-vector-access.conf`);
       const existingDropin = await snapshot(dropinPath);
       if (existingDropin && !existingDropin.content.startsWith('# Managed by Vector;')) throw new Error('An unrelated receiver integration already occupies the Vector drop-in path');
-      await transaction.write(dropinPath, `# Managed by Vector; receiver command and SDR settings remain unchanged.\n[Service]\nReadWritePaths=${roots.join(' ')}\nExecStartPost=+${node} ${admin}/readsb-access.mjs\n`, 0o644);
+      await transaction.write(dropinPath, `# Managed by Vector; receiver command and SDR settings remain unchanged.\n[Service]\nReadWritePaths=${roots.join(' ')}\nExecStartPost=+${release ? `${release.runtime}/bin/node` : node} ${admin}/readsb-access.mjs\n`, 0o644);
       await run('systemd-analyze', ['verify', selected.service]);
       if (plan.restart) {
         const old = await snapshot('/etc/default/readsb');
@@ -244,18 +275,24 @@ export async function install({ yes = false, keepSource = false } = {}, io = sys
       }
       await run('systemctl', ['daemon-reload']);
       if (plan.restart) await run('systemctl', ['restart', selected.service]);
-      await waitFor(() => readableReceiver(stagedConfig, true, io), 45, io);
+      await waitFor(() => readableReceiver(stagedConfig, true, io, release), 45, io);
       if (transaction.state.ownedHistory) {
         await transaction.write('/etc/tmpfiles.d/vector-readsb-history.conf', `# Only the history directory created by Vector; existing receiver history is untouched.\ne ${ownedHistory} - - - 7d -\n`);
         await transaction.write(join(unitRoot, 'vector-readsb-history-clean.service'), `[Unit]\nDescription=Clean Vector-created readsb history\n[Service]\nType=oneshot\nExecStart=/usr/bin/systemd-tmpfiles --clean /etc/tmpfiles.d/vector-readsb-history.conf\n`);
         await transaction.write(join(unitRoot, 'vector-readsb-history-clean.timer'), '[Unit]\nDescription=Daily cleanup of Vector-created history\n[Timer]\nOnCalendar=daily\nPersistent=true\n[Install]\nWantedBy=timers.target\n');
       }
     }
-    log((await asVector('check-readsb.mjs', stagedConfig, io)).trim());
+    log((await asVector('check-readsb.mjs', stagedConfig, io, [], release)).trim());
+    if (release) {
+      log('Activating the new application.');
+      await stopVector(io);
+      await new io.ReleaseSwitch(transaction).activate();
+    }
     await transaction.write(configPath, candidate, 0o640, { uid: 0, gid });
     const units = ['vector.service', 'vector-aircraft-db.service', 'vector-aircraft-db.timer'];
+    if (release) units.push('vector-updater.service');
     for (const name of units) {
-      await transaction.write(join(unitRoot, name), await readFile(join(app, 'packaging/systemd', name), 'utf8'));
+      await transaction.write(join(unitRoot, name), await readFile(join(privilegedSource, 'packaging/systemd', name), 'utf8'));
     }
     if (transaction.state.ownedHistory) units.push('vector-readsb-history-clean.service', 'vector-readsb-history-clean.timer');
     // The rollback journal omits unchanged files; repeat installs must still verify every unit.
@@ -265,6 +302,8 @@ export async function install({ yes = false, keepSource = false } = {}, io = sys
     if (transaction.state.ownedHistory) await run('systemctl', ['enable', '--now', 'vector-readsb-history-clean.timer']);
     await run('systemctl', ['enable', 'vector.service']);
     await run('systemctl', ['restart', 'vector.service']);
+    if (release) await run('systemctl', ['enable', '--now', 'vector-updater.service']);
+    log('Checking receiver data.');
     await health(parseEnv(candidate), io);
     transaction.state.status = 'complete';
     await transaction.save();
@@ -273,7 +312,7 @@ export async function install({ yes = false, keepSource = false } = {}, io = sys
       : 'Migration complete: Vector reads readsb directly. Other applications and recordings have not been removed.');
   } catch (error) {
     try { await recover(transaction, io); } catch (recoveryError) { throw new Error(`${error.message}\nRecovery needs attention: ${recoveryError.message}\nBackup: ${transaction.directory}`); }
-    throw new Error(`${error.message}\nPrevious configuration restored. Backup: ${transaction.directory}`);
+    throw new Error(`${error.message}\nPrevious installation and configuration restored. Backup: ${transaction.directory}`);
   } finally { await unlink(stagedConfig).catch((error) => { if (error.code !== 'ENOENT') throw error; }); }
 }
 
@@ -303,6 +342,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   try {
     if (process.getuid?.() !== 0) throw new Error('Installation requires root');
     const args = process.argv.slice(2);
+    const releaseIndex = args.indexOf('--release');
+    let release;
+    if (releaseIndex >= 0) {
+      const values = args.splice(releaseIndex, 3);
+      if (values.length !== 3) throw new Error('--release requires the release and runtime directories');
+      release = { directory: values[1], runtime: values[2] };
+    }
+    const sourceIndex = args.indexOf('--source');
+    if (sourceIndex >= 0) {
+      const values = args.splice(sourceIndex, 2);
+      if (!release || values.length !== 2) throw new Error('--source requires a release and protected source directory');
+      release.sourceDirectory = values[1];
+    }
+    if (release && !release.sourceDirectory) throw new Error('Release installation requires a protected source checkout');
     if (args.some((arg) => !['--yes', '--keep-source', '--rollback', '--recover-pending', '--detach'].includes(arg))) throw new Error('Unknown installer option');
     if (args.includes('--detach')) await detach();
     else if (args.includes('--recover-pending')) {
@@ -313,7 +366,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const transaction = await latest(system);
       if (!transaction || transaction.state.status === 'rolled-back') throw new Error('No migration is available to restore');
       await recover(transaction);
-      log('Previous configuration restored. New recordings and downloaded metadata are retained.');
-    } else await install({ yes: args.includes('--yes'), keepSource: args.includes('--keep-source') });
+      log('Previous installation and configuration restored. New recordings and downloaded metadata are retained.');
+    } else await install({ yes: args.includes('--yes'), keepSource: args.includes('--keep-source'), release });
   } catch (error) { console.error(`[Vector] ${error.message}`); process.exitCode = 1; }
 }

@@ -6,6 +6,8 @@ import { parseLegTracePeriod, type LegTracePeriod } from '../domain/aircraft-tra
 import { translate, type Language, type TranslationKey } from '../i18n';
 import type { ThemeMode } from '../theme';
 import { VectorIcon } from './vector-icon';
+import { vectorVersion, vectorRevision } from '../version';
+import { UpdateMenu } from './update-menu';
 
 type SettingsMenuProps = {
   language: Language;
@@ -137,6 +139,10 @@ export function SettingsMenu({
             <option value="full">{t('traceFull')}</option>
           </select>
         </label>
+        <div className="settings-version" aria-label={language === 'nl' ? 'Vector-versie' : 'Vector version'}>
+          <span>Vector</span><span>{vectorVersion}{vectorRevision && <small> · {vectorRevision.slice(0, 7)}</small>}</span>
+        </div>
+        <UpdateMenu language={language} />
       </div>
     </details>
   );

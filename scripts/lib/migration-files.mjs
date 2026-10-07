@@ -39,7 +39,7 @@ export class MigrationFiles {
     await this.save();
     await atomicWrite(path, content, mode, owner);
   }
-  async rollback() {
+  async rollback({ complete = true } = {}) {
     const conflicts = [];
     for (const file of this.state.files) {
       const current = await snapshot(file.path);
@@ -53,7 +53,7 @@ export class MigrationFiles {
         await chmod(file.path, file.before.mode);
       } else await unlink(file.path).catch((error) => { if (error.code !== 'ENOENT') throw error; });
     }
-    this.state.status = 'rolled-back';
+    if (complete) this.state.status = 'rolled-back';
     await this.save();
   }
 }

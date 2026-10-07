@@ -108,7 +108,6 @@ const shortestAngleDifference = (from: number, to: number) => ((to - from + 540)
 const normalizeAngle = (value: number) => ((value % 360) + 360) % 360;
 const aircraftMarkerZIndex = (aircraft: Aircraft, selected: boolean) =>
   selected ? 100_000 : 10 + Math.max(0, Math.round(aircraft.altitudeFt ?? 0));
-const receiverAccentColor = '#e3ad5b';
 const markerCorrectionDurationMs = 320;
 const minimumMarkerMovementMetres = 0.35;
 
@@ -530,7 +529,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     actualRangeElementsRef.current = coordinates.map(() => {
       const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
       line.setAttribute('fill', 'none');
-      line.setAttribute('stroke', receiverAccentColor);
+      line.setAttribute('stroke', 'var(--actual-range-color)');
       line.setAttribute('stroke-linecap', 'round');
       line.setAttribute('stroke-linejoin', 'round');
       line.setAttribute('stroke-opacity', '0.95');

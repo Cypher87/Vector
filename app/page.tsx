@@ -13,6 +13,7 @@ import { FlightProfile } from '../src/components/flight-profile';
 import { ReceiverDashboard } from '../src/components/receiver-dashboard';
 import { SyncMenu } from '../src/components/sync-menu';
 import { SettingsMenu } from '../src/components/settings-menu';
+import { vectorVersion } from '../src/version';
 import { VectorIcon } from '../src/components/vector-icon';
 import { useAircraftFeed } from '../src/data/use-aircraft-feed';
 import { useAircraftHistory } from '../src/data/use-aircraft-history';
@@ -1046,7 +1047,7 @@ export default function Home() {
         <span className="status-spacer" />
         <span>{centerLat.toFixed(2)}° N, {centerLon.toFixed(2)}° E</span>
         <a href="/credits.html" target="_blank" rel="noreferrer">{t('dataCredits')}</a>
-        <span className="desktop-only">readsb {feed.receiver?.version ?? '—'}</span>
+        <span className="desktop-only">Vector {vectorVersion}</span>
       </footer>
     </main>
   );
