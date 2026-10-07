@@ -54,7 +54,6 @@ import { altitudeColor, altitudeLegendGradient } from '../src/map/altitude-color
 import { AircraftIcon } from '../src/map/aircraft-icon';
 import { RadarMap } from '../src/map/radar-map';
 import { aircraftIconRotation } from '../src/map/heading';
-import { defaultMapTheme, parseMapTheme, type MapTheme } from '../src/map/map-theme';
 import {
   applySyncPreferencePatch,
   createSyncPreferencePatch,
@@ -62,7 +61,8 @@ import {
   type SyncPreferences,
 } from '../src/sync/preferences';
 import { useVectorSync } from '../src/sync/use-vector-sync';
-import { defaultTheme, parseTheme, type Theme } from '../src/theme';
+import { defaultThemeMode, parseThemeMode, themeStorageKey, type ThemeMode } from '../src/theme';
+import { useResolvedTheme } from '../src/use-resolved-theme';
 import { altitudeLegendScale, altitudeValue, distanceKilometres, distanceValue, formatNumber, speedValue, verticalRateValue } from '../src/units';
 
 const formatCallsign = (value: string) => value.replace(/^([A-Z]{2,3})(\d.*)$/i, '$1 $2');
@@ -139,8 +139,7 @@ export default function Home() {
   const [mapFocus, setMapFocus] = useState<{ latitude?: number; longitude?: number; request: number }>();
   const [unitOverride, setUnitOverride] = useState<UnitSystem>();
   const [language, setLanguage] = useState<Language>('nl');
-  const [theme, setTheme] = useState<Theme>(defaultTheme);
-  const [mapTheme, setMapTheme] = useState<MapTheme>(defaultMapTheme);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(defaultThemeMode);
   const [radarEventPreferences, setRadarEventPreferences] = useState<RadarEventPreferences>(defaultRadarEventPreferences);
   const [aircraftFilters, setAircraftFilters] = useState<AircraftFilters>(emptyAircraftFilters);
   const [aircraftSort, setAircraftSort] = useState<AircraftSort>('altitude-desc');
@@ -148,6 +147,7 @@ export default function Home() {
   const [aircraftFilterPresets, setAircraftFilterPresets] = useState<AircraftFilterPreset[]>([]);
   const [favoriteAircraftIds, setFavoriteAircraftIds] = useState<string[]>([]);
   const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
+  const theme = useResolvedTheme(themeMode, localPreferencesReady);
   const syncPreferencesAppliedForRef = useRef<string | undefined>(undefined);
   const syncPreferencesLastRemoteRef = useRef<SyncPreferences | undefined>(undefined);
   const syncPreferencesPendingForRef = useRef<string | undefined>(undefined);
@@ -162,10 +162,7 @@ export default function Home() {
         setLanguage(savedLanguage);
         document.documentElement.lang = savedLanguage;
       }
-      const savedTheme = parseTheme(window.localStorage.getItem('vector.theme'));
-      setTheme(savedTheme);
-      document.documentElement.dataset.theme = savedTheme;
-      setMapTheme(parseMapTheme(window.localStorage.getItem('vector.mapTheme')));
+      setThemeMode(parseThemeMode(window.localStorage.getItem(themeStorageKey)));
       setRadarEventPreferences(parseRadarEventPreferences(window.localStorage.getItem(radarEventPreferencesStorageKey)));
       if (window.localStorage.getItem('vector.mapLabels') === 'false') setLabelsVisible(false);
       if (window.localStorage.getItem('vector.aircraftMotion') === 'false') setAircraftMotionEnabled(false);
@@ -239,15 +236,7 @@ export default function Home() {
     document.documentElement.lang = value;
     window.localStorage.setItem('vector.language', value);
   };
-  const changeTheme = (value: Theme) => {
-    setTheme(value);
-    document.documentElement.dataset.theme = value;
-    window.localStorage.setItem('vector.theme', value);
-  };
-  const changeMapTheme = (value: MapTheme) => {
-    setMapTheme(value);
-    window.localStorage.setItem('vector.mapTheme', value);
-  };
+  const changeTheme = (value: ThemeMode) => setThemeMode(value);
   const changeRadarEventPreference = (key: RadarEventPreferenceKey, enabled: boolean) => {
     setRadarEventPreferences((current) => {
       const next = { ...current, [key]: enabled };
@@ -372,10 +361,9 @@ export default function Home() {
     legTrace: legTraceVisible,
     legTracePeriod,
     mapLabels: labelsVisible,
-    mapTheme,
-    theme,
+    theme: themeMode,
     unitSystem,
-  }), [actualRangeVisible, aircraftFavoritesFirst, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, mapTheme, radarEventPreferences, theme, unitSystem]);
+  }), [actualRangeVisible, aircraftFavoritesFirst, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, labelsVisible, language, legTracePeriod, legTraceVisible, radarEventPreferences, themeMode, unitSystem]);
 
   useEffect(() => {
     if (!syncProfileId) {
@@ -410,13 +398,7 @@ export default function Home() {
         window.localStorage.setItem('vector.language', saved.language);
       }
       if (saved.theme) {
-        setTheme(saved.theme);
-        document.documentElement.dataset.theme = saved.theme;
-        window.localStorage.setItem('vector.theme', saved.theme);
-      }
-      if (saved.mapTheme) {
-        setMapTheme(saved.mapTheme);
-        window.localStorage.setItem('vector.mapTheme', saved.mapTheme);
+        setThemeMode(parseThemeMode(saved.theme));
       }
       if (saved.radarEventPreferences) {
         const normalized = normalizeRadarEventPreferences(saved.radarEventPreferences);
@@ -685,14 +667,12 @@ export default function Home() {
           </div>
           <SettingsMenu
             language={language}
-            theme={theme}
-            mapTheme={mapTheme}
+            themeMode={themeMode}
             unitSystem={unitSystem}
             autoHideDetails={autoHideDetails}
             aircraftMotionEnabled={aircraftMotionEnabled}
             legTracePeriod={legTracePeriod}
             changeTheme={changeTheme}
-            changeMapTheme={changeMapTheme}
             changeUnitSystem={changeUnitSystem}
             changeLanguage={changeLanguage}
             changeAutoHideDetails={changeAutoHideDetails}
@@ -833,7 +813,6 @@ export default function Home() {
               ? profileHighlight?.point : undefined}
             language={language}
             mapStyleUrl={feed.config.mapStyleUrl}
-            mapTheme={mapTheme}
             onDeselect={clearAircraftSelection}
             onActualRangeVisibleChange={changeActualRangeVisible}
             onAircraftShadowsVisibleChange={changeAircraftShadowsVisible}

@@ -15,11 +15,8 @@ const baseColors: readonly RgbColor[] = [
 
 // Themes may tune contrast, but never give the same altitude a different hue.
 const themeTone: Record<Theme, { saturation: number; tint: number }> = {
-  vector: { saturation: 1, tint: 0 },
-  midnight: { saturation: .98, tint: .08 },
-  radar: { saturation: .96, tint: .04 },
-  amber: { saturation: .92, tint: .02 },
-  daylight: { saturation: 1.08, tint: 0 },
+  dark: { saturation: 1, tint: 0 },
+  light: { saturation: 1.08, tint: 0 },
 };
 
 const altitudeColors = Object.fromEntries(themes.map((theme) => [theme, baseColors.map((color): RgbColor => {
@@ -42,7 +39,7 @@ const interpolate = (start: number, end: number, progress: number) =>
 export function altitudeColorForValue(altitudeFt?: number, onGround = false, theme: Theme = defaultTheme) {
   const stops = altitudeStops[theme];
   if (onGround) return `rgb(${stops[0].color.join(', ')})`;
-  if (altitudeFt === undefined) return '#d5e1e4';
+  if (altitudeFt === undefined) return theme === 'light' ? '#637573' : '#d5e1e4';
 
   const clampedAltitudeFt = Math.min(
     stops.at(-1)!.altitudeFt,

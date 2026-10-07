@@ -30,7 +30,7 @@ test('legend and aircraft share the altitude palette across themes', async ({ pa
       const marker = page.getByRole('button', { name: new RegExp(`^ALT${km},`) });
       await expect(marker).toHaveCSS('--aircraft-color', altitudeColorForValue(km * feetPerKilometre, false, theme));
     }
-    if (theme === 'vector' || theme === 'daylight') await page.screenshot({ path: testInfo.outputPath(`altitude-${theme}.png`) });
+    if (theme === 'dark' || theme === 'light') await page.screenshot({ path: testInfo.outputPath(`altitude-${theme}.png`) });
   }
   await page.locator('.settings-menu summary').click();
   await page.getByRole('combobox', { name: 'Unit system', exact: true }).selectOption('aeronautical');

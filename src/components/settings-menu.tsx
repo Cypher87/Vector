@@ -4,20 +4,17 @@ import { useEffect, useRef } from 'react';
 import type { UnitSystem } from '../domain/aircraft';
 import { parseLegTracePeriod, type LegTracePeriod } from '../domain/aircraft-trace';
 import { translate, type Language, type TranslationKey } from '../i18n';
-import type { MapTheme } from '../map/map-theme';
-import type { Theme } from '../theme';
+import type { ThemeMode } from '../theme';
 import { VectorIcon } from './vector-icon';
 
 type SettingsMenuProps = {
   language: Language;
-  theme: Theme;
-  mapTheme: MapTheme;
+  themeMode: ThemeMode;
   unitSystem: UnitSystem;
   autoHideDetails: boolean;
   aircraftMotionEnabled: boolean;
   legTracePeriod: LegTracePeriod;
-  changeTheme: (value: Theme) => void;
-  changeMapTheme: (value: MapTheme) => void;
+  changeTheme: (value: ThemeMode) => void;
   changeUnitSystem: (value: UnitSystem) => void;
   changeLanguage: (value: Language) => void;
   changeAutoHideDetails: (value: boolean) => void;
@@ -27,14 +24,12 @@ type SettingsMenuProps = {
 
 export function SettingsMenu({
   language,
-  theme,
-  mapTheme,
+  themeMode,
   unitSystem,
   autoHideDetails,
   aircraftMotionEnabled,
   legTracePeriod,
   changeTheme,
-  changeMapTheme,
   changeUnitSystem,
   changeLanguage,
   changeAutoHideDetails,
@@ -73,28 +68,12 @@ export function SettingsMenu({
           <span>{t('theme')}</span>
           <select
             aria-label={t('theme')}
-            value={theme}
-            onChange={(event) => changeTheme(event.target.value as Theme)}
+            value={themeMode}
+            onChange={(event) => changeTheme(event.target.value as ThemeMode)}
           >
-            <option value="vector">{t('themeVector')}</option>
-            <option value="midnight">{t('themeMidnight')}</option>
-            <option value="radar">{t('themeRadar')}</option>
-            <option value="amber">{t('themeAmber')}</option>
-            <option value="daylight">{t('themeDaylight')}</option>
-          </select>
-        </label>
-        <label className="settings-field">
-          <span>{t('mapTheme')}</span>
-          <select
-            aria-label={t('mapTheme')}
-            value={mapTheme}
-            onChange={(event) => changeMapTheme(event.target.value as MapTheme)}
-          >
-            <option value="vector">{t('mapThemeVector')}</option>
-            <option value="standard">{t('mapThemeStandard')}</option>
-            <option value="light">{t('mapThemeLight')}</option>
-            <option value="dark">{t('mapThemeDark')}</option>
-            <option value="contrast">{t('mapThemeContrast')}</option>
+            <option value="dark">{t('themeDark')}</option>
+            <option value="light">{t('themeLight')}</option>
+            <option value="auto">{t('themeAuto')}</option>
           </select>
         </label>
         <label className="settings-field">

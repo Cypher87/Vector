@@ -15,18 +15,18 @@
     {
       "id": "background",
       "type": "background",
-      "paint": { "background-color": "#132126" }
+      "paint": { "background-color": "#202321" }
     },
     {
       "id": "openstreetmap",
       "type": "raster",
       "source": "openstreetmap",
       "paint": {
-        "raster-opacity": 0.82,
-        "raster-saturation": -0.78,
-        "raster-contrast": 0.18,
-        "raster-brightness-min": 0.08,
-        "raster-brightness-max": 0.62
+        "raster-opacity": 1,
+        "raster-saturation": -0.92,
+        "raster-contrast": 0,
+        "raster-brightness-min": 0.62,
+        "raster-brightness-max": 0.07
       }
     }
   ]

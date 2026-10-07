@@ -133,10 +133,10 @@ test('paired sort preferences synchronize and Dutch controls fit dark and daylig
   await page.locator('.sort-favorites').click();
   await expect.poll(() => preferences.aircraftSort).toBe('speed-asc');
   await expect.poll(() => preferences.aircraftFavoritesFirst).toBe(false);
-  preferences = { ...preferences, theme: 'daylight' };
+  preferences = { ...preferences, theme: 'light' };
   await page.reload();
   if (isMobile) await page.locator('.mobile-list-button').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'daylight');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(select).toHaveValue('speed');
   await expect(page.locator('.sort-direction')).toHaveAccessibleName('Sorteerrichting: Langzaamste eerst');
   await expect(page.locator('.sort-favorites')).toHaveAttribute('aria-pressed', 'false');

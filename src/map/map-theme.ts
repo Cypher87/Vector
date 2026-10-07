@@ -1,10 +1,5 @@
+import type { Map as MapLibreMap } from 'maplibre-gl';
 import type { Theme } from '../theme.ts';
-
-export const mapThemes = ['vector', 'standard', 'light', 'dark', 'contrast'] as const;
-
-export type MapTheme = (typeof mapThemes)[number];
-
-export const defaultMapTheme: MapTheme = 'vector';
 
 export type MapThemePaint = {
   'raster-brightness-max': number;
@@ -14,61 +9,26 @@ export type MapThemePaint = {
   'raster-saturation': number;
 };
 
-const mapThemePaintValues: Record<MapTheme, MapThemePaint> = {
-  vector: {
-    'raster-opacity': 0.82,
-    'raster-saturation': -0.78,
-    'raster-contrast': 0.18,
-    'raster-brightness-min': 0.08,
-    'raster-brightness-max': 0.62,
-  },
-  standard: {
+const paints: Record<Theme, MapThemePaint> = {
+  dark: {
     'raster-opacity': 1,
-    'raster-saturation': 0,
+    'raster-saturation': -0.92,
     'raster-contrast': 0,
-    'raster-brightness-min': 0,
-    'raster-brightness-max': 1,
+    // MapLibre interpolates between these endpoints. Reverse them so light land
+    // becomes dark and dark street labels remain legible, using the same tiles.
+    'raster-brightness-min': 0.62,
+    'raster-brightness-max': 0.07,
   },
   light: {
-    'raster-opacity': 0.94,
-    'raster-saturation': -0.62,
-    'raster-contrast': -0.08,
-    'raster-brightness-min': 0.2,
-    'raster-brightness-max': 0.94,
-  },
-  dark: {
-    'raster-opacity': 0.9,
-    'raster-saturation': -0.88,
-    'raster-contrast': 0.26,
-    'raster-brightness-min': 0.03,
-    'raster-brightness-max': 0.43,
-  },
-  contrast: {
-    'raster-opacity': 0.96,
-    'raster-saturation': -0.24,
-    'raster-contrast': 0.42,
-    'raster-brightness-min': 0.07,
-    'raster-brightness-max': 0.86,
+    'raster-opacity': 1,
+    'raster-saturation': -0.58,
+    'raster-contrast': -0.04,
+    'raster-brightness-min': 0.06,
+    'raster-brightness-max': 0.98,
   },
 };
 
-export function parseMapTheme(value: unknown): MapTheme {
-  return mapThemes.includes(value as MapTheme) ? value as MapTheme : defaultMapTheme;
-}
-
-// Only Default follows the interface theme; an explicit map-style choice is preserved.
-const daylightDefaultPaint: MapThemePaint = {
-  'raster-opacity': 1,
-  'raster-saturation': -0.58,
-  'raster-contrast': -0.04,
-  'raster-brightness-min': 0.06,
-  'raster-brightness-max': 0.98,
-};
-
-export function mapThemePaint(theme: MapTheme, interfaceTheme: Theme = 'vector'): MapThemePaint {
-  if (theme === 'vector' && interfaceTheme === 'daylight') return daylightDefaultPaint;
-  return mapThemePaintValues[theme];
-}
+export const mapThemePaint = (theme: Theme): Readonly<MapThemePaint> => paints[theme];
 
 export function openStreetMapRasterLayerId(style: unknown): string | undefined {
   if (typeof style !== 'object' || style === null || !('layers' in style) || !Array.isArray(style.layers)) {
@@ -84,4 +44,20 @@ export function openStreetMapRasterLayerId(style: unknown): string | undefined {
     && candidate.id === 'openstreetmap'
   ));
   return layer && 'id' in layer && typeof layer.id === 'string' ? layer.id : undefined;
+}
+
+/** Change the existing layer in place, keeping tiles, overlays and camera position. */
+export function applyMapTheme(map: Pick<MapLibreMap, 'getStyle' | 'setPaintProperty'>, theme: Theme) {
+  const style = map.getStyle();
+  const rasterLayerId = openStreetMapRasterLayerId(style);
+  if (!rasterLayerId) return;
+  const paint = mapThemePaint(theme);
+  for (const property of Object.keys(paint) as (keyof MapThemePaint)[]) {
+    // Avoid a washed-out grey midpoint when swapping the brightness endpoints.
+    map.setPaintProperty(rasterLayerId, `${property}-transition`, { duration: 0, delay: 0 });
+    map.setPaintProperty(rasterLayerId, property, paint[property]);
+  }
+  if (style?.layers?.some((layer) => layer.id === 'background' && layer.type === 'background')) {
+    map.setPaintProperty('background', 'background-color', theme === 'dark' ? '#202321' : '#dddeda');
+  }
 }

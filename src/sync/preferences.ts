@@ -13,8 +13,7 @@ import { legTracePeriods, type LegTracePeriod } from '../domain/aircraft-trace.t
 import { normalizeFavoriteAircraftIds } from '../domain/favorite-aircraft.ts';
 import { normalizeRadarEventPreferences, type RadarEventPreferences } from '../domain/radar-event.ts';
 import type { Language } from '../i18n.ts';
-import { mapThemes, type MapTheme } from '../map/map-theme.ts';
-import { themes, type Theme } from '../theme.ts';
+import { normalizeThemeMode, type ThemeMode } from '../theme.ts';
 
 export type SyncedAircraftFilters = AircraftFilters;
 export type SyncedAircraftSort = AircraftSort;
@@ -35,9 +34,8 @@ export type SyncPreferences = {
   legTrace?: boolean;
   legTracePeriod?: LegTracePeriod;
   mapLabels?: boolean;
-  mapTheme?: MapTheme;
   radarEventPreferences?: RadarEventPreferences;
-  theme?: Theme;
+  theme?: ThemeMode;
   unitSystem?: UnitSystem;
 };
 
@@ -68,8 +66,8 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
     preferences.unitSystem = value.unitSystem;
   }
   if (value.language === 'nl' || value.language === 'en') preferences.language = value.language;
-  if (themes.includes(value.theme as Theme)) preferences.theme = value.theme as Theme;
-  if (mapThemes.includes(value.mapTheme as MapTheme)) preferences.mapTheme = value.mapTheme as MapTheme;
+  const theme = normalizeThemeMode(value.theme);
+  if (theme !== undefined) preferences.theme = theme;
   if (isObject(value.radarEventPreferences)) {
     preferences.radarEventPreferences = normalizeRadarEventPreferences(value.radarEventPreferences);
   }
@@ -116,7 +114,6 @@ const scalarPreferenceKeys = [
   'legTrace',
   'legTracePeriod',
   'mapLabels',
-  'mapTheme',
   'radarEventPreferences',
   'theme',
   'unitSystem',

@@ -4,7 +4,7 @@ test('dropdown fields and native options have opaque, contrasting colors in ever
   await page.goto('/');
   await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);
   if (isMobile) await page.locator('.mobile-list-button').click();
-  for (const theme of ['vector', 'midnight', 'radar', 'amber', 'daylight']) {
+  for (const theme of ['dark', 'light']) {
     await page.locator('.settings-menu summary').click();
     await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption(theme);
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
@@ -29,12 +29,12 @@ test('dropdown fields and native options have opaque, contrasting colors in ever
       const a = luminance(foreground);
       const b = luminance(background);
       expect((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05), `Contrast for ${theme}: ${color.text}`).toBeGreaterThanOrEqual(4.5);
-      expect(color.scheme).toBe(theme === 'daylight' ? 'light' : 'dark');
+      expect(color.scheme).toBe(theme === 'light' ? 'light' : 'dark');
     }
     await distance.selectOption('25');
     await expect(distance).toHaveValue('25');
     await distance.selectOption('');
-    if (theme === 'vector' || theme === 'daylight') {
+    if (theme === 'dark' || theme === 'light') {
       await page.screenshot({ path: testInfo.outputPath(`dropdowns-${theme}.png`) });
     }
     await page.locator('.filter-close').click();

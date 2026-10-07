@@ -40,11 +40,13 @@ History replay uses readsb's `globe_history` files, read directly or through ano
 
 ## Appearance and layers
 
-Settings offers five interface themes: **Vector**, **Midnight**, **Radar**, **Amber**, and **Daylight**. All share the same altitude color order, with theme-specific contrast: green → turquoise → blue → violet → rose → coral/orange from low to high. The legend, aircraft, and traces use this same linear 0–12 km scale; colors above 12 km stay at its upper endpoint.
+Settings offers one appearance choice: **Dark**, **Light**, or **Automatic**. It controls the interface and map together, including the legend, aircraft, labels and trails. Automatic is the default for new users and follows the device's system color scheme, including changes while Vector is open. Explicit Dark or Light choices override the system setting.
 
-The independent **Map style** setting offers **Default**, **Original**, **Light**, **Dark**, and **High contrast**. Default is brighter and softly desaturated in Daylight, and muted in dark interface themes. Explicit map-style choices remain independent of the interface theme; they do not change aircraft colors or move/reload the map.
+Existing Vector, Midnight, Radar and Amber preferences migrate to Dark; Daylight migrates to Light. The separate map-style preference is retired. Paired devices synchronize the chosen mode, not its resolved colors: Automatic may be dark on one device and light on another. System color changes never overwrite this shared preference.
 
-These styles adjust the raster layer named `openstreetmap` in the style configured by `VECTOR_MAP_STYLE_URL`. Custom styles without that layer remain unchanged. All included variants use the same online OpenStreetMap tiles.
+The map uses the same online OpenStreetMap tiles in both modes, with dark land/light labels at night and a softly desaturated light presentation by day. Switching appearance updates the raster layer named `openstreetmap` in the style configured by `VECTOR_MAP_STYLE_URL`, without reloading tiles or moving the map. Custom styles without that layer are not recolored automatically.
+
+Both modes share the same altitude color order, with adjusted contrast: green → turquoise → blue → violet → rose → coral/orange from low to high. The legend, aircraft, and traces use the same linear 0–12 km scale; colors above 12 km stay at its upper endpoint.
 
 Map layers include aircraft labels, altitude shadows, aircraft trails, leg trace, actual range outline, and distance rings. **Aircraft trails** is on by default; its switch controls only the decorative speed trails, not leg traces, shadows, rotor/propeller animation or position smoothing. Your choice is saved locally and synchronized across paired devices. Settings also controls position animation, unit system, language, and detail-panel behavior.
 
@@ -84,7 +86,7 @@ Synchronization is optional. Without it, preferences stay in the current browser
 2. Choose **Connect a new device** on a connected device.
 3. Enter the six-character code on another device using the same server. The code expires after ten minutes and works only once.
 
-Themes, map style, units, language, detail-panel behavior, map layers, trace period, filters, sorting, event preferences, and favorites synchronize live, normally within a second. Independent settings and favorite additions/removals merge separately; conflicting changes to the same setting use the last server-processed update.
+Appearance mode, units, language, detail-panel behavior, map layers, trace period, filters, sorting, event preferences, and favorites synchronize live, normally within a second. Independent settings and favorite additions/removals merge separately; conflicting changes to the same setting use the last server-processed update.
 
 The event log and read state remain local and can be cleared in the event center. It keeps the latest notification per aircraft/event type and one receiver-status row, for up to 24 hours and 100 entries. Existing duplicates are consolidated automatically. Repeats update the row instead of adding another; a read notification only becomes unread again after a 30-minute quiet period.
 

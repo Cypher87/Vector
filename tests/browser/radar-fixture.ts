@@ -51,6 +51,8 @@ export class RadarFixture {
   private started = Date.now();
 
   async install(page: Page) {
+    // Keep existing visual regressions deterministic; appearance tests override this explicitly.
+    await page.emulateMedia({ colorScheme: 'dark' });
     await page.addInitScript(() => {
       localStorage.setItem('vector.language', 'en');
     });

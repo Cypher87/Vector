@@ -9,7 +9,7 @@ A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/reads
 - Aircraft details with photos, routes, technical data, and interactive flight profiles.
 - Altitude-colored traces, receiver history replay, distance rings, and range outline.
 - Receiver dashboard and events for favorite arrivals, emergencies, and connection changes.
-- Desktop and mobile layouts, Dutch/English, five interface themes, five map styles, and three unit systems.
+- Desktop and mobile layouts, Dutch/English, coordinated dark/light/automatic appearance, and three unit systems.
 - Optional live synchronization between devices, without accounts or passwords.
 
 ## Install on Raspberry Pi

@@ -27,7 +27,7 @@ test.beforeEach(async ({ page, radar }) => {
   }));
 });
 
-for (const theme of ['vector', 'daylight']) {
+for (const theme of ['dark', 'light']) {
   test(`speed trails follow aircraft families and leave bodies and GPS stable in ${theme}`, async ({ page, radar }, testInfo) => {
     await page.addInitScript((theme) => localStorage.setItem('vector.theme', theme), theme);
     await page.goto('/');
@@ -44,7 +44,7 @@ for (const theme of ['vector', 'daylight']) {
       await expect(page.getByRole('button', { name: new RegExp(`^${flight},`) }).locator('.aircraft-speed-wake')).toHaveCount(0);
     }
     await expect(page.locator('.aircraft-altitude-shadow-icon .aircraft-speed-wake, .list-aircraft-icon .aircraft-speed-wake')).toHaveCount(0);
-    await expect(jet.locator('stop').first()).toHaveCSS('stop-color', theme === 'daylight' ? 'rgb(50, 74, 80)' : 'rgb(220, 227, 223)');
+    await expect(jet.locator('stop').first()).toHaveCSS('stop-color', theme === 'light' ? 'rgb(50, 74, 80)' : 'rgb(220, 227, 223)');
     // Guard against almost invisible strokes on detailed map tiles.
     await expect(jet.locator('stop').first()).toHaveCSS('stop-opacity', '0.42');
     await expect(jet.locator('stop').nth(1)).toHaveAttribute('offset', '45%');

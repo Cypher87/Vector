@@ -40,11 +40,19 @@ test('synchronized preferences retain only supported values', () => {
     legTrace: true,
     legTracePeriod: 240,
     mapLabels: false,
-    mapTheme: 'dark',
     radarEventPreferences: { emergency: true, favorite: false, receiver: true },
-    theme: 'midnight',
+    theme: 'dark',
     unitSystem: 'metric',
   });
+});
+
+test('appearance migrates old profiles, ignores retired map styles and syncs mode rather than system colors', () => {
+  assert.deepEqual(normalizeSyncPreferences({ theme: 'daylight', mapTheme: 'dark' }), { theme: 'light' });
+  assert.deepEqual(normalizeSyncPreferences({ theme: 'auto', mapTheme: 'standard' }), { theme: 'auto' });
+  assert.deepEqual(normalizeSyncPreferences({ theme: 'invalid', mapTheme: 'light' }), {});
+  assert.deepEqual(normalizeSyncPreferencePatch({ settings: { theme: 'amber', mapTheme: 'contrast' } }), { settings: { theme: 'dark' } });
+  assert.deepEqual(applySyncPreferencePatch({ theme: 'dark' }, { settings: { theme: 'auto' } }), { theme: 'auto' });
+  assert.deepEqual(createSyncPreferencePatch({ theme: 'auto' }, { theme: 'auto' }), {});
 });
 
 test('invalid preference values are discarded', () => {

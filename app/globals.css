@@ -41,55 +41,7 @@
   color-scheme: dark;
 }
 
-html[data-theme='midnight'] {
-  --ink: #edf0f3;
-  --muted: #98a3af;
-  --muted-strong: #bfc8d1;
-  --panel: #202833;
-  --panel-deep: #171e27;
-  --line: rgba(183, 198, 214, .15);
-  --accent: #a5bfd5;
-  --accent-soft: rgba(165, 191, 213, .11);
-  --receiver-accent: #d5b389;
-  --favorite: var(--receiver-accent);
-  --favorite-soft: rgba(213, 179, 137, .12);
-  --green: #9cbba9;
-  --map: #252f3a;
-}
-
-html[data-theme='radar'] {
-  --ink: #edf0e6;
-  --muted: #9da592;
-  --muted-strong: #c3cbb9;
-  --panel: #252c22;
-  --panel-deep: #1c211a;
-  --line: rgba(192, 207, 165, .15);
-  --accent: #b8c693;
-  --accent-soft: rgba(184, 198, 147, .11);
-  --receiver-accent: #d6b87a;
-  --favorite: var(--receiver-accent);
-  --favorite-soft: rgba(217, 198, 109, .13);
-  --green: #afc398;
-  --map: #2b3427;
-}
-
-html[data-theme='amber'] {
-  --ink: #f5ede2;
-  --muted: #b0a08e;
-  --muted-strong: #d0c0ad;
-  --panel: #2d2721;
-  --panel-deep: #231e19;
-  --line: rgba(221, 198, 163, .16);
-  --accent: #d7ad78;
-  --accent-soft: rgba(215, 173, 120, .11);
-  --receiver-accent: #dc947a;
-  --favorite: var(--receiver-accent);
-  --favorite-soft: rgba(240, 128, 104, .13);
-  --green: #b3be92;
-  --map: #393027;
-}
-
-html[data-theme='daylight'] {
+html[data-theme='light'] {
   --ink: #272c29;
   --muted: #6d736c;
   --muted-strong: #50584f;
@@ -387,11 +339,11 @@ html[data-theme] .filter-preset-row.active { background: color-mix(in srgb, var(
 html[data-theme] .technical-toggle:hover,
 html[data-theme] .technical-card.open .technical-toggle { background: color-mix(in srgb, var(--accent) 4.5%, transparent); }
 html[data-theme] .technical-data { border-top-color: color-mix(in srgb, var(--accent) 18%, transparent); }
-html[data-theme='daylight'] :is(.technical-card, .technical-toggle, .technical-data) { background: var(--theme-card); }
-html[data-theme='daylight'] .history-picker input { color-scheme: light; }
-html[data-theme='daylight'] .vector-map-layer-switch { border-color: color-mix(in srgb, var(--ink) 30%, transparent); background: color-mix(in srgb, var(--ink) 7%, transparent); box-shadow: inset 0 0 0 1px rgba(255,255,255,.45); }
-html[data-theme='daylight'] .vector-map-layer-switch::after { background: color-mix(in srgb, var(--ink) 72%, white); }
-html[data-theme='daylight'] .vector-map-layer-option.active .vector-map-layer-switch { border-color: color-mix(in srgb, var(--accent) 62%, var(--ink)); background: color-mix(in srgb, var(--accent) 18%, white); }
+html[data-theme='light'] :is(.technical-card, .technical-toggle, .technical-data) { background: var(--theme-card); }
+html[data-theme='light'] .history-picker input { color-scheme: light; }
+html[data-theme='light'] .vector-map-layer-switch { border-color: color-mix(in srgb, var(--ink) 30%, transparent); background: color-mix(in srgb, var(--ink) 7%, transparent); box-shadow: inset 0 0 0 1px rgba(255,255,255,.45); }
+html[data-theme='light'] .vector-map-layer-switch::after { background: color-mix(in srgb, var(--ink) 72%, white); }
+html[data-theme='light'] .vector-map-layer-option.active .vector-map-layer-switch { border-color: color-mix(in srgb, var(--accent) 62%, var(--ink)); background: color-mix(in srgb, var(--accent) 18%, white); }
 
 @media (max-width: 720px) {
   html[data-theme] .detail-panel.mobile-expanded > .detail-actions { background: var(--theme-panel); box-shadow: var(--shadow-sticky); }

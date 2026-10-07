@@ -20,7 +20,7 @@ for (const language of ['en', 'nl']) {
     }));
     await page.goto('/');
     await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'daylight');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
     await page.locator('.settings-menu summary').click();
     const settings = page.locator('.settings-popover');
     await expect(settings).toBeVisible();
@@ -298,14 +298,12 @@ test('menus fit the viewport, dismiss outside, and themes keep the map working',
   await page.locator('.settings-menu summary').click();
   const settings = page.locator('.settings-popover');
   await expect(settings).toBeVisible();
-  for (const theme of ['daylight', 'midnight', 'radar', 'amber', 'vector']) {
+  for (const theme of ['light', 'dark']) {
     await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption(theme);
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
   }
-  for (const style of ['light', 'dark', 'contrast', 'standard', 'vector']) {
-    await page.getByRole('combobox', { name: 'Map style', exact: true }).selectOption(style);
-    await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);
-  }
+  await expect(page.getByRole('combobox', { name: 'Map style', exact: true })).toHaveCount(0);
+  await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);
   await page.keyboard.press('Escape');
   await expect(settings).not.toBeVisible();
   if (isMobile) await page.locator('.mobile-list-button').click();

@@ -31,7 +31,7 @@ import { aircraftIconMotionActive } from './icon-animation';
 import { aircraftWakeZoomOpacity, aircraftWakeZoomProfile, maximumAircraftWakeScreenLength } from './aircraft-wake';
 import { drawAircraftWakeRoute, hasAircraftWake, updateAircraftWakeRouteElement } from './aircraft-wake-element';
 import { createFrameProjector } from './frame-projector';
-import { mapThemePaint, openStreetMapRasterLayerId, type MapTheme, type MapThemePaint } from './map-theme';
+import { applyMapTheme } from './map-theme';
 
 type RadarMapProps = {
   actualRangeAvailable: boolean;
@@ -55,7 +55,6 @@ type RadarMapProps = {
   highlightedTracePoint?: AircraftTracePoint;
   language: Language;
   mapStyleUrl: string;
-  mapTheme: MapTheme;
   onActualRangeVisibleChange: (visible: boolean) => void;
   onAircraftShadowsVisibleChange: (visible: boolean) => void;
   onAircraftWakesVisibleChange: (visible: boolean) => void;
@@ -191,7 +190,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   };
 };
 
-export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, wakeTraces, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, live, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, mapTheme, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId, shadowTimestamp, theme, unitSystem }: RadarMapProps) {
+export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, wakeTraces, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, live, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId, shadowTimestamp, theme, unitSystem }: RadarMapProps) {
   const centerLongitude = center[0];
   const centerLatitude = center[1];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -234,6 +233,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const labelsVisibleRef = useRef(labelsVisible);
   const legTraceVisibleRef = useRef(legTraceVisible);
   const languageRef = useRef(language);
+  const themeRef = useRef(theme);
   const shadowTimestampRef = useRef(shadowTimestamp ?? Date.now() / 1_000);
   const navigationControlRef = useRef<ReturnType<typeof createMapNavigationControl> | undefined>(undefined);
   const onActualRangeVisibleChangeRef = useRef(onActualRangeVisibleChange);
@@ -909,6 +909,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
 
     const initializeMap = () => {
       if (mapInitialized) return;
+      applyMapTheme(map, themeRef.current);
       mapInitialized = true;
       const receiverElement = document.createElement('span');
       receiverElement.className = 'receiver-map-marker';
@@ -971,14 +972,10 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     const map = mapRef.current;
     if (!map || !ready) return;
 
-    const rasterLayerId = openStreetMapRasterLayerId(map.getStyle());
-    if (!rasterLayerId) return;
+    applyMapTheme(map, theme);
+  }, [ready, theme]);
 
-    const paint = mapThemePaint(mapTheme, theme);
-    for (const property of Object.keys(paint) as Array<keyof MapThemePaint>) {
-      map.setPaintProperty(rasterLayerId, property, paint[property]);
-    }
-  }, [mapTheme, ready, theme]);
+  useEffect(() => { themeRef.current = theme; }, [theme]);
 
   useEffect(() => {
     const overlay = distanceRingOverlayRef.current;
@@ -1200,7 +1197,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     <>
       <div className="maplibre-surface" data-icon-animation={live && !historyOpen ? 'running' : 'paused'}
         data-wake-enabled={aircraftWakesVisible}
-        data-wake-tone={mapTheme === 'dark' || mapTheme === 'vector' && theme !== 'daylight' ? 'light' : 'dark'} ref={containerRef} />
+        data-wake-tone={theme === 'dark' ? 'light' : 'dark'} ref={containerRef} />
       {!ready && !error && <div className="map-loading">{translate(language, 'mapLoading')}</div>}
       {error && <div className="map-error"><strong>{translate(language, 'mapUnavailable')}</strong><span>{error}</span></div>}
     </>
