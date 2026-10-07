@@ -75,8 +75,11 @@ test('disabled updates and unauthenticated actions are enforced by the privilege
 
 test('same-version new builds are detected; only the freshly approved revision can start one independent job', async () => {
   const f = await fixture();
+  const refreshes: boolean[] = [];
+  f.control.io.current = async ({ refresh = false } = {}) => { refreshes.push(refresh); return previous; };
   assert.equal((await f.control.handle('apply', { confirm: true, revision: next.revision }, f.token)).status, 409);
   const check = await f.control.handle('check', {}, f.token);
+  assert.deepEqual(refreshes, [true, false], 'manual update checks revalidate the installation before reading status');
   assert.ok('available' in check.body);
   assert.equal(check.body.available?.revision, next.revision);
   assert.equal((await f.control.handle('check', {}, f.token)).status, 429);

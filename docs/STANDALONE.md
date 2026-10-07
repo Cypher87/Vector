@@ -89,7 +89,7 @@ Closing the browser does not cancel an accepted update. Progress reconnects afte
 
 ```bash
 systemctl status vector-updater --no-pager
-sudo journalctl -u vector-updater -n 100 --no-pager
+sudo journalctl -u vector-updater _TRANSPORT=stdout -n 100 --no-pager -o cat
 ```
 
 Disable browser updates by setting `VECTOR_UPDATES_ENABLED=false` and restarting `vector`. This blocks new requests; it does not abort an already accepted installation halfway through. Full installer logs stay in the administrator's journal and are not exposed in the browser.

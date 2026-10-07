@@ -278,7 +278,10 @@ release_version="$("$node_directory/bin/node" -p 'JSON.parse(require("node:fs").
 log "Prepared Vector $release_version (${target_revision:0:8})."
 # Freeze the candidate. Privileged files still come only from the protected source.
 chown -R root:root "$release_directory"
-chmod -R go-w "$release_directory"
+# The updater's 0027 umask leaves files 0640/directories 0750. Once root owns
+# them, vector still needs read/traverse access to scripts, dependencies and assets.
+# Only the public release is changed; configuration and recovery backups stay private.
+chmod -R a+rX,go-w "$release_directory"
 
 if [[ ! -e "$VECTOR_CONFIG" ]]; then
   log "Creating $VECTOR_CONFIG."

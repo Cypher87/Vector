@@ -52,17 +52,39 @@ async function config() {
   return parseEnv(await readFile(path, 'utf8'));
 }
 
-async function current() {
-  try {
-    const directory = await realpath(app);
-    if (dirname(directory) !== '/opt/vector/releases') throw new Error('unmanaged');
-    const { stdout } = await execute('/usr/sbin/runuser', ['-u', 'vector', '--', '/usr/bin/git', '-c', `safe.directory=${directory}`, '-C', app, 'remote', 'get-url', 'origin'], { env: environment, timeout: 5000 });
-    if (stdout.trim() !== officialRepository) throw new Error('custom_source');
-    const info = JSON.parse(await readFile(join(app, '.vector-build.json'), 'utf8'));
-    if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(info.version) || !revisionPattern.test(info.revision)) throw new Error('invalid_build');
-    return { version: info.version, revision: info.revision };
-  } catch { return { version: '', revision: '' }; }
+export function createCurrentReader({
+  resolveApp = () => realpath(app),
+  readBuild = (directory) => readFile(join(directory, '.vector-build.json'), 'utf8'),
+  readOrigin = async (directory) => {
+    // Git must still run unprivileged, including when its local config is untrusted.
+    const { stdout } = await execute('/usr/sbin/runuser', ['-u', 'vector', '--', '/usr/bin/git', '-c', `safe.directory=${directory}`, '-C', directory, 'remote', 'get-url', 'origin'], { env: environment, timeout: 5000 });
+    return stdout.trim();
+  },
+  now = Date.now,
+} = {}) {
+  let cached;
+  return async ({ refresh = false } = {}) => {
+    try {
+      const directory = await resolveApp();
+      if (dirname(directory) !== '/opt/vector/releases') throw new Error('unmanaged');
+      // Status polls share one bounded origin check instead of creating a PAM
+      // session every 2.5 seconds. A new release/rollback invalidates it immediately.
+      if (!cached || cached.directory !== directory || now() >= cached.expires || (refresh && cached.expires !== Infinity)) {
+        const entry = { directory, expires: Infinity, result: null };
+        entry.result = Promise.resolve().then(() => readOrigin(directory))
+          .then((origin) => origin === officialRepository, () => false)
+          .finally(() => { entry.expires = now() + 60_000; });
+        cached = entry;
+      }
+      if (!await cached.result) throw new Error('custom_source');
+      const info = JSON.parse(await readBuild(directory));
+      if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(info.version) || !revisionPattern.test(info.revision)) throw new Error('invalid_build');
+      return { version: info.version, revision: info.revision };
+    } catch { return { version: '', revision: '' }; }
+  };
 }
+
+const current = createCurrentReader();
 
 export async function findLatest(currentRevision, download = trustedDownload) {
   if (!revisionPattern.test(currentRevision)) throw new Error('invalid_revision');
@@ -123,7 +145,7 @@ async function install(revision, progress) {
   try {
     const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });
     await pending;
-    if (code !== 0 || (await current()).revision !== revision) {
+    if (code !== 0 || (await current({ refresh: true })).revision !== revision) {
       await progress('restoring');
       try { await recoverPending(code === 0); } catch { throw new Error('recovery_required'); }
       throw new Error('update_failed');

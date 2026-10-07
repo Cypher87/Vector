@@ -42,7 +42,7 @@ export class UpdateControl {
       if (this.checking || (this.lastCheck && this.now() - this.lastCheck < 60_000)) return { status: 429, body: { error: 'check_limited' } };
       this.checking = true; this.lastCheck = this.now(); this.phase = 'checking'; this.error = null;
       try {
-        const current = await this.io.current();
+        const current = await this.io.current({ refresh: true });
         if (!revisionPattern.test(current.revision)) throw new Error('unmanaged_installation');
         const latest = await this.io.latest(current.revision);
         if (!revisionPattern.test(latest.revision) || !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(latest.version)) throw new Error('check_failed');
