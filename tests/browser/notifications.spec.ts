@@ -1,4 +1,4 @@
-import { test, expect } from './radar-fixture';
+import { test, expect, openFilterGroup } from './radar-fixture';
 
 for (const language of ['en', 'nl']) {
   test(`notifications consolidate the saved backlog and keep read/clear state in ${language}`, async ({ page, isMobile }, testInfo) => {
@@ -102,3 +102,69 @@ test('live favorite reception gaps do not repeat notifications, new emergency co
   });
   await expect(page.locator('.event-unread-count')).toHaveCount(0);
 });
+
+for (const language of ['en', 'nl']) {
+  test(`saved filter bells notify once across overlapping rules and stay usable in ${language}`, async ({ page, radar, isMobile }, testInfo) => {
+    if (isMobile) await page.setViewportSize({ width: 360, height: 780 });
+    await page.emulateMedia({ colorScheme: language === 'nl' ? 'light' : 'dark' });
+    await page.addInitScript((language) => {
+      localStorage.setItem('vector.language', language);
+      if (localStorage.getItem('filter-notifications-seeded')) return;
+      localStorage.setItem('filter-notifications-seeded', 'yes');
+      localStorage.setItem('vector.aircraftFilters', JSON.stringify({ categories: ['balloon'] }));
+      localStorage.setItem('vector.aircraftFilterPresets', JSON.stringify([
+        { id: 'nearby', name: 'Helicopters 25 km', sort: 'distance-asc', filters: { categories: ['helicopter'], distance: 25 } },
+        { id: 'low', name: 'Low helicopters', sort: 'distance-asc', filters: { categories: ['helicopter'], altitude: { min: null, max: 3_000 } } },
+        { id: 'all', name: 'Only sorting', sort: 'distance-asc', filters: {} },
+      ]));
+    }, language);
+    await page.goto('/');
+    await expect(page.locator('.aircraft-map-marker')).toHaveCount(1);
+    if (isMobile) await page.locator('.mobile-list-button').click();
+    await page.locator('.filter-menu > summary').click();
+    await openFilterGroup(page, 'presets');
+    const label = language === 'nl' ? 'Meldingen voor filter' : 'Notifications for filter';
+    const firstBell = page.getByRole('button', { name: `${label}: Helicopters 25 km`, exact: true });
+    await expect(firstBell).toHaveAttribute('aria-pressed', 'false');
+    await firstBell.click();
+    await expect(firstBell).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: `${label}: Low helicopters`, exact: true }).click();
+    await expect(page.getByRole('button', { name: `${label}: Only sorting`, exact: true })).toBeDisabled();
+    expect(await page.locator('.filter-popover').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('saved-filter-bells.png') });
+    await page.keyboard.press('Escape');
+    if (isMobile) await page.locator('.mobile-sheet-close').click();
+    await expect(page.locator('.event-unread-count')).toHaveCount(0);
+    radar.extraAircraft = [{ hex: 'aabbcc', flight: 'HELI01', t: 'H135', category: 'A7', lat: 52.31, lon: 4.81, alt_baro: 1_000, seen: 0, type: 'adsb_icao' }];
+    await expect(page.locator('.event-unread-count')).toHaveText('1', { timeout: 20_000 });
+    await page.locator('.event-center-button').click();
+    const popover = page.locator('.event-popover');
+    await expect(popover.locator('.event-row')).toHaveCount(1);
+    await expect(popover.locator('.event-row')).toContainText('HELI01');
+    await expect(popover.locator('.event-row')).toContainText('Helicopters 25 km');
+    await expect(popover.locator('.event-row')).toContainText('Low helicopters');
+    await popover.locator('.event-settings > summary').click();
+    await expect(popover.getByRole('combobox', { name: `${label}: Helicopters 25 km`, exact: true })).toHaveValue('yes');
+    await expect(popover.getByRole('combobox', { name: `${label}: Only sorting`, exact: true })).toBeDisabled();
+    expect(await popover.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+    const bounds = (await popover.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+    await page.screenshot({ path: testInfo.outputPath('filter-notifications.png') });
+    await popover.locator('button.event-row').click();
+    // The alert can reveal a helicopter even while the active view only shows balloons.
+    await expect(page.locator('.aircraft-map-marker')).toHaveCount(3);
+    await expect(page.locator(isMobile ? '.mobile-aircraft-summary' : '.flight-title')).toContainText('HELI');
+    await page.reload();
+    await expect(page.locator('.aircraft-map-marker')).toHaveCount(3);
+    await expect(page.locator('.event-unread-count')).toHaveCount(0);
+    await page.locator('.event-center-button').click();
+    await expect(popover.locator('.event-row')).toHaveCount(1);
+    await popover.locator('.event-settings > summary').click();
+    const toggle = popover.getByRole('combobox', { name: `${label}: Helicopters 25 km`, exact: true });
+    await expect(toggle).toHaveValue('yes');
+    await toggle.selectOption('no');
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('vector.aircraftFilterPresets')!)[0].notifyOnMatch)).toBe(false);
+  });
+}

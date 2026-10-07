@@ -33,7 +33,7 @@ for (const language of ['en', 'nl']) {
     const box = (await filter.boundingBox())!;
     expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
     expect(await filter.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-    await expect(page.locator('.filter-group')).toHaveCount(5);
+    await expect(page.locator('.filter-group')).toHaveCount(4);
     await expect(page.locator('.filter-group[open]')).toHaveCount(0);
     await openFilterGroup(page, 'categories');
     expect(await page.locator('.filter-categories label').first().evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(13);

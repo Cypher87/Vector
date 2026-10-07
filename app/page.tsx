@@ -27,6 +27,7 @@ import {
   emptyAircraftFilters,
   normalizeAircraftFilterPresets,
   parseAircraftFilterPresets,
+  updateAircraftFilterPreset,
   type AircraftFilterKey,
   type AircraftFilterPreset,
   type AircraftFilters,
@@ -314,11 +315,21 @@ export default function Home() {
     window.localStorage.setItem('vector.aircraftSort', preset.sort);
   };
   const saveAircraftFilterPreset = (name: string) => {
+    const id = createAircraftFilterPresetId();
     setAircraftFilterPresets((current) => {
       const next = normalizeAircraftFilterPresets([
         ...current,
-        { id: createAircraftFilterPresetId(), name, filters: aircraftFilters, sort: aircraftSort, favoritesFirst: aircraftFavoritesFirst },
+        { id, name, filters: aircraftFilters, sort: aircraftSort, favoritesFirst: aircraftFavoritesFirst },
       ]);
+      window.localStorage.setItem(aircraftFilterPresetStorageKey, JSON.stringify(next));
+      return next;
+    });
+    return id;
+  };
+  const updateSavedAircraftFilterPreset = (presetId: string) => {
+    setAircraftFilterPresets((current) => {
+      const next = current.map((preset) => preset.id === presetId
+        ? updateAircraftFilterPreset(preset, aircraftFilters, aircraftSort, aircraftFavoritesFirst) : preset);
       window.localStorage.setItem(aircraftFilterPresetStorageKey, JSON.stringify(next));
       return next;
     });
@@ -333,6 +344,13 @@ export default function Home() {
   const deleteAircraftFilterPreset = (presetId: string) => {
     setAircraftFilterPresets((current) => {
       const next = current.filter((preset) => preset.id !== presetId);
+      window.localStorage.setItem(aircraftFilterPresetStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
+  const changePresetNotifications = (presetId: string, enabled: boolean) => {
+    setAircraftFilterPresets((current) => {
+      const next = normalizeAircraftFilterPresets(current.map((preset) => preset.id === presetId ? { ...preset, notifyOnMatch: enabled } : preset));
       window.localStorage.setItem(aircraftFilterPresetStorageKey, JSON.stringify(next));
       return next;
     });
@@ -502,15 +520,23 @@ export default function Home() {
   const eventAircraftIds = useMemo(() => new Set(history.open ? [] : feed.aircraft.map((item) => item.id)), [feed.aircraft, history.open]);
   const radarEvents = useRadarEvents({
     aircraft: feed.aircraft,
-    enabled: !history.open,
+    enabled: localPreferencesReady && !history.open,
     favoriteIds: favoriteAircraftIdSet,
     preferences: radarEventPreferences,
+    presets: aircraftFilterPresets,
+    receiverLat,
+    receiverLon,
     status: feed.status,
   });
 
   const selectAircraftFromEvent = (aircraftId: string) => {
     const aircraft = feed.aircraft.find((item) => item.id === aircraftId);
     if (!aircraft) return;
+    setQuery('');
+    if (!matchesAircraftFilters(aircraft, aircraftFilters, {
+      favoriteIds: favoriteAircraftIdSet,
+      distanceKm: distanceKilometres(receiverLat, receiverLon, aircraft.latitude, aircraft.longitude),
+    })) resetAircraftFilters();
     setSelectedId(aircraftId);
     setDetailsOpen(true);
     setMobileDetailsExpanded(false);
@@ -619,8 +645,10 @@ export default function Home() {
             onClear={radarEvents.clear}
             onMarkAllRead={radarEvents.markAllRead}
             onPreferenceChange={changeRadarEventPreference}
+            onPresetNotificationsChange={changePresetNotifications}
             onSelectAircraft={selectAircraftFromEvent}
             preferences={radarEventPreferences}
+            presets={aircraftFilterPresets}
             unreadCount={radarEvents.unreadCount}
           />
           <SyncMenu
@@ -704,8 +732,10 @@ export default function Home() {
                 onChangeFilter={changeAircraftFilter}
                 onDeletePreset={deleteAircraftFilterPreset}
                 onRenamePreset={renameAircraftFilterPreset}
+                onNotificationsChange={changePresetNotifications}
                 onReset={resetAircraftFilters}
                 onSavePreset={saveAircraftFilterPreset}
+                onUpdatePreset={updateSavedAircraftFilterPreset}
               />
               <button className="mobile-sheet-close" aria-label={t('closeList')} onClick={() => setMobileListOpen(false)} type="button">
                 <VectorIcon name="close" />

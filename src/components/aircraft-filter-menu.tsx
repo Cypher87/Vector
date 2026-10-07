@@ -1,18 +1,13 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
-  aircraftFilterPresetMatches,
-  maxAircraftFilterPresetNameLength,
-  maxAircraftFilterPresets,
-  normalizeAircraftFilterPresetName,
-  type AircraftFilterPreset,
-  type AircraftFilters,
-  type AircraftSort,
+  aircraftFilterPresetMatches, maxAircraftFilterPresets,
+  type AircraftFilterPreset, type AircraftFilters, type AircraftSort,
 } from '../domain/aircraft-filter-preset';
 import { translate, type Language } from '../i18n';
 import { VectorIcon } from './vector-icon';
 import type { UnitSystem } from '../domain/aircraft';
 import { AircraftFilterFields, type ChangeAircraftFilter } from './aircraft-filter-fields';
-import { AircraftFilterGroup } from './aircraft-filter-group';
+import { AircraftSavedFilters, FilterPresetNameForm } from './aircraft-saved-filters';
 
 type AircraftFilterMenuProps = {
   activeFilterCount: number;
@@ -28,50 +23,46 @@ type AircraftFilterMenuProps = {
   onChangeFilter: ChangeAircraftFilter;
   onDeletePreset: (presetId: string) => void;
   onRenamePreset: (presetId: string, name: string) => void;
+  onNotificationsChange: (presetId: string, enabled: boolean) => void;
   onReset: () => void;
-  onSavePreset: (name: string) => void;
+  onSavePreset: (name: string) => string;
+  onUpdatePreset: (presetId: string) => void;
 };
 
-export function AircraftFilterMenu({
-  activeFilterCount,
-  filters,
-  language,
-  unitSystem,
-  resultCount,
-  receiverPositionKnown,
-  presets,
-  sort,
-  favoritesFirst,
-  onApplyPreset,
-  onChangeFilter,
-  onDeletePreset,
-  onRenamePreset,
-  onReset,
-  onSavePreset,
+export function AircraftFilterMenu({ activeFilterCount, filters, language, unitSystem, resultCount,
+  receiverPositionKnown, presets, sort, favoritesFirst, onApplyPreset, onChangeFilter,
+  onDeletePreset, onRenamePreset, onNotificationsChange, onReset, onSavePreset, onUpdatePreset,
 }: AircraftFilterMenuProps) {
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
   const menuRef = useRef<HTMLDetailsElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<Partial<Record<'filters' | 'saved', HTMLButtonElement | null>>>({});
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
   const groupName = useId();
-  const activePreset = presets.find((preset) => aircraftFilterPresetMatches(preset, filters, sort, favoritesFirst));
-  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
-  const [draftName, setDraftName] = useState('');
+  const [tab, setTab] = useState<'filters' | 'saved'>('filters');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [managingId, setManagingId] = useState<string | null>(null);
+  const matching = presets.find((preset) => aircraftFilterPresetMatches(preset, filters, sort, favoritesFirst));
+  // Remember which view is being edited even after its criteria no longer match.
+  const selected = presets.find((preset) => preset.id === selectedId) ?? matching;
+  const modified = !!selected && !aircraftFilterPresetMatches(selected, filters, sort, favoritesFirst);
+  const atLimit = presets.length >= maxAircraftFilterPresets;
 
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const menu = menuRef.current;
       if (!menu?.open || !(event.target instanceof Node) || menu.contains(event.target)) return;
       menu.open = false;
-      setEditingPresetId(null);
-      setDraftName('');
+      setCreating(false);
     };
-    document.addEventListener('pointerdown', closeOnOutsidePointer);
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !menuRef.current?.open) return;
       menuRef.current.open = false;
       menuRef.current.querySelector('summary')?.focus();
-      setEditingPresetId(null);
-      setDraftName('');
+      setCreating(false);
     };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
     document.addEventListener('keydown', closeOnEscape);
     return () => {
       document.removeEventListener('pointerdown', closeOnOutsidePointer);
@@ -79,140 +70,119 @@ export function AircraftFilterMenu({
     };
   }, []);
 
-  const stopEditing = () => {
-    setEditingPresetId(null);
-    setDraftName('');
+  const changeTab = (next: 'filters' | 'saved', focus = false) => {
+    setTab(next);
+    setCreating(false);
+    setManagingId(null);
+    bodyRef.current?.scrollTo({ top: 0 });
+    if (focus) tabRefs.current[next]?.focus();
   };
-
-  const startCreating = () => {
-    setEditingPresetId('new');
-    setDraftName('');
+  const apply = (preset: AircraftFilterPreset) => {
+    setSelectedId(preset.id);
+    setCreating(false);
+    setManagingId(null);
+    onApplyPreset(preset);
   };
-
-  const startRenaming = (preset: AircraftFilterPreset) => {
-    setEditingPresetId(preset.id);
-    setDraftName(preset.name);
+  const finishCreating = () => {
+    setCreating(false);
+    // The button is mounted on the next frame; restore focus after form submission/cancel.
+    requestAnimationFrame(() => {
+      const button = saveButtonRef.current;
+      (button?.disabled ? tabRefs.current[tab] : button)?.focus();
+    });
   };
-
-  const saveName = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const name = normalizeAircraftFilterPresetName(draftName);
-    if (!name) return;
-    if (editingPresetId === 'new') onSavePreset(name);
-    else if (editingPresetId) onRenamePreset(editingPresetId, name);
-    stopEditing();
+  const validFields = () => {
+    const invalid = menuRef.current?.querySelector<HTMLInputElement>('.filter-fields input[aria-invalid="true"]');
+    if (!invalid) return true;
+    changeTab('filters');
+    const group = invalid.closest('details');
+    if (group) group.open = true;
+    requestAnimationFrame(() => { invalid.focus(); invalid.scrollIntoView({ block: 'nearest' }); });
+    return false;
   };
 
   return (
     <details className="filter-menu" ref={menuRef} onToggle={(event) => {
-      if (event.target !== event.currentTarget || !event.currentTarget.open) return;
-      event.currentTarget.querySelector('.filter-popover')?.scrollTo({ top: 0 });
+      if (event.target !== event.currentTarget) return;
+      if (event.currentTarget.open) {
+        bodyRef.current?.scrollTo({ top: 0 });
+        if (selected) setSelectedId(selected.id);
+      } else { setCreating(false); setManagingId(null); }
     }}>
       <summary className="filter-button" aria-label={`${activeFilterCount} ${t('activeFilters')}`}>
         {t('filter')} {activeFilterCount > 0 && <span>{activeFilterCount}</span>}
         <VectorIcon className="filter-chevron" name="chevronDown" />
       </summary>
-      <div className="filter-popover filter-popover-expanded">
+      <div className="filter-popover filter-popover-expanded filter-workspace">
         <div className="filter-popover-heading">
           <strong>{t('filterAircraft')}</strong>
           <div className="filter-heading-actions">
-            <button className="filter-reset" type="button" disabled={activeFilterCount === 0} onClick={onReset}>{t('clear')}</button>
+            <button className="filter-reset" type="button" disabled={activeFilterCount === 0} onClick={() => {
+              setSelectedId(null); setCreating(false); setManagingId(null); onReset();
+            }}>{t('clear')}</button>
             <button className="filter-close" type="button" aria-label={t('closeFilters')} onClick={() => {
               if (menuRef.current) menuRef.current.open = false;
               menuRef.current?.querySelector('summary')?.focus();
-              stopEditing();
             }}><VectorIcon name="close" /></button>
           </div>
         </div>
-
-        <AircraftFilterFields filters={filters} language={language} unitSystem={unitSystem}
-          receiverPositionKnown={receiverPositionKnown} groupName={groupName} onChange={onChangeFilter} />
-
-        <AircraftFilterGroup id="presets" name={groupName} title={t('savedViews')}
-          summary={activePreset?.name ?? String(presets.length)} active={!!activePreset}>
-        <div className="filter-presets">
-          <div className="filter-presets-heading">
-            {editingPresetId !== 'new' && (
-              <button
-                type="button"
-                disabled={presets.length >= maxAircraftFilterPresets}
-                onClick={startCreating}
-              >
-                <VectorIcon name="save" />
-                {t('saveCurrentView')}
-              </button>
-            )}
-          </div>
-
-          {editingPresetId === 'new' && (
-            <form className="filter-preset-form" onSubmit={saveName}>
-              <input
-                autoFocus
-                aria-label={t('savedViewName')}
-                maxLength={maxAircraftFilterPresetNameLength}
-                placeholder={t('savedViewNamePlaceholder')}
-                value={draftName}
-                onChange={(event) => setDraftName(event.target.value)}
-              />
-              <button type="submit" aria-label={t('save')} disabled={!normalizeAircraftFilterPresetName(draftName)} title={t('save')}>
-                <VectorIcon name="check" />
-              </button>
-              <button type="button" aria-label={t('cancel')} title={t('cancel')} onClick={stopEditing}>
-                <VectorIcon name="close" />
-              </button>
-            </form>
-          )}
-
-          {presets.length > 0 && (
-            <div className="filter-preset-list">
-              {presets.map((preset) => {
-                const active = aircraftFilterPresetMatches(preset, filters, sort, favoritesFirst);
-                if (editingPresetId === preset.id) {
-                  return (
-                    <form className="filter-preset-form" key={preset.id} onSubmit={saveName}>
-                      <input
-                        autoFocus
-                        aria-label={t('savedViewName')}
-                        maxLength={maxAircraftFilterPresetNameLength}
-                        value={draftName}
-                        onChange={(event) => setDraftName(event.target.value)}
-                      />
-                      <button type="submit" aria-label={t('save')} disabled={!normalizeAircraftFilterPresetName(draftName)} title={t('save')}>
-                        <VectorIcon name="check" />
-                      </button>
-                      <button type="button" aria-label={t('cancel')} title={t('cancel')} onClick={stopEditing}>
-                        <VectorIcon name="close" />
-                      </button>
-                    </form>
-                  );
-                }
-                return (
-                  <div className={`filter-preset-row ${active ? 'active' : ''}`} key={preset.id}>
-                    <button className="filter-preset-apply" type="button" onClick={() => onApplyPreset(preset)}>
-                      <VectorIcon name="save" />
-                      <span>
-                        <strong>{preset.name}</strong>
-                        {active && <small>{t('savedViewActive')}</small>}
-                      </span>
-                    </button>
-                    <div className="filter-preset-actions">
-                      <button type="button" aria-label={`${t('renameSavedView')}: ${preset.name}`} title={t('renameSavedView')} onClick={() => startRenaming(preset)}>
-                        <VectorIcon name="edit" />
-                      </button>
-                      <button type="button" aria-label={`${t('deleteSavedView')}: ${preset.name}`} title={t('deleteSavedView')} onClick={() => onDeletePreset(preset.id)}>
-                        <VectorIcon name="trash" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+        <div className="filter-tabs" role="tablist" aria-label={t('filterAircraft')}>
+          {(['filters', 'saved'] as const).map((name) => <button key={name} type="button" role="tab"
+            ref={(button) => { tabRefs.current[name] = button; }} data-filter-tab={name}
+            id={`${groupName}-${name}-tab`} aria-controls={`${groupName}-${name}-panel`}
+            aria-selected={tab === name} tabIndex={tab === name ? 0 : -1}
+            onClick={() => changeTab(name)} onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+              event.preventDefault();
+              changeTab(event.key === 'Home' ? 'filters' : event.key === 'End' ? 'saved' : name === 'filters' ? 'saved' : 'filters', true);
+            }}>{t(name === 'filters' ? 'filterTab' : 'savedFiltersTab')}{name === 'saved' && <span>{presets.length}</span>}</button>)}
         </div>
-        </AircraftFilterGroup>
-
-        <div className="filter-results">
-          <strong role="status">{resultCount} {t(resultCount === 1 ? 'filterMatchSingular' : 'filterMatches')}</strong>
+        <div className="filter-workspace-body" ref={bodyRef}>
+          <div role="tabpanel" id={`${groupName}-filters-panel`} aria-labelledby={`${groupName}-filters-tab`} hidden={tab !== 'filters'}>
+            <AircraftFilterFields filters={filters} language={language} unitSystem={unitSystem}
+              receiverPositionKnown={receiverPositionKnown} groupName={groupName} onChange={(key, value) => {
+                if (selected) setSelectedId(selected.id);
+                onChangeFilter(key, value);
+              }} />
+          </div>
+          <div role="tabpanel" id={`${groupName}-saved-panel`} aria-labelledby={`${groupName}-saved-tab`} hidden={tab !== 'saved'}>
+            {tab === 'saved' && <AircraftSavedFilters presets={presets} activePresetId={selected?.id} modified={modified}
+              managingId={managingId} onManageChange={(id) => { setManagingId(id); setCreating(false); }}
+              language={language} unitSystem={unitSystem} onApply={apply}
+              onEdit={(preset) => {
+                // Continue local edits when managing the current view, not its old saved copy.
+                if (selected?.id !== preset.id) apply(preset);
+                else setSelectedId(preset.id);
+                changeTab('filters', true);
+              }}
+              onRename={onRenamePreset} onDelete={(id) => {
+                onDeletePreset(id);
+                if (selected?.id === id) setSelectedId(null);
+                tabRefs.current.saved?.focus();
+              }} onNotificationsChange={onNotificationsChange} />}
+          </div>
+        </div>
+        <div className="filter-results filter-workspace-footer">
+          <div className="filter-current-view">
+            <strong title={selected?.name}>{selected?.name ?? t(activeFilterCount ? 'customFilterView' : 'savedViewAllAircraft')}</strong>
+            {selected && <span className={modified ? 'modified' : ''}>{t(modified ? 'savedViewModified' : 'savedViewSaved')}</span>}
+          </div>
+          <span className="filter-result-count" role="status">{resultCount} {t(resultCount === 1 ? 'filterMatchSingular' : 'filterMatches')}</span>
+          {creating ? <FilterPresetNameForm presets={presets} language={language} onCancel={finishCreating} onSave={(name) => {
+            if (atLimit || !validFields()) return;
+            setSelectedId(onSavePreset(name));
+            finishCreating();
+          }} /> : <div className="filter-preset-text-actions">
+            {modified && <button className="primary" type="button" onClick={() => {
+              if (!validFields() || !selected) return;
+              onUpdatePreset(selected.id);
+              (atLimit ? tabRefs.current[tab] : saveButtonRef.current)?.focus();
+            }}>{t('updateSavedView')}</button>}
+            <button type="button" ref={saveButtonRef} disabled={atLimit} onClick={() => {
+              if (validFields()) { setManagingId(null); setCreating(true); }
+            }}>{t('saveNewView')}</button>
+          </div>}
+          {atLimit && <p className="filter-preset-limit">{t('savedViewLimit')}</p>}
         </div>
       </div>
     </details>

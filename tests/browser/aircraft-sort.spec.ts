@@ -82,7 +82,7 @@ test('saved views include direction and favorites while legacy views stay compat
   await page.locator('.filter-menu > summary').click();
   await openFilterGroup(page, 'presets');
   const filter = page.locator('.filter-popover');
-  await filter.getByRole('button', { name: 'Save current', exact: true }).click();
+  await filter.getByRole('button', { name: 'Save as new', exact: true }).click();
   await filter.getByRole('textbox', { name: 'Saved view name', exact: true }).fill('Slow favorites');
   await filter.getByRole('button', { name: 'Save', exact: true }).click();
   await filter.locator('.filter-preset-apply').filter({ hasText: 'Legacy' }).click();

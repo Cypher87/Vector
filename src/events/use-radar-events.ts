@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Aircraft, FeedStatus } from '../domain/aircraft';
+import type { AircraftFilterPreset } from '../domain/aircraft-filter-preset';
+import { distanceKilometres } from '../units';
 import {
   detectRadarEvents,
   emptyRadarEventMonitorState,
@@ -17,10 +19,13 @@ type UseRadarEventsOptions = {
   enabled: boolean;
   favoriteIds: ReadonlySet<string>;
   preferences: RadarEventPreferences;
+  presets: AircraftFilterPreset[];
+  receiverLat?: number;
+  receiverLon?: number;
   status: FeedStatus;
 };
 
-export function useRadarEvents({ aircraft, enabled, favoriteIds, preferences, status }: UseRadarEventsOptions) {
+export function useRadarEvents({ aircraft, enabled, favoriteIds, preferences, presets, receiverLat, receiverLon, status }: UseRadarEventsOptions) {
   const [events, setEvents] = useState<RadarEvent[]>([]);
   const [ready, setReady] = useState(false);
   const monitorRef = useRef(emptyRadarEventMonitorState());
@@ -59,6 +64,8 @@ export function useRadarEvents({ aircraft, enabled, favoriteIds, preferences, st
       const result = detectRadarEvents(
         monitorRef.current, aircraft, favoriteIds, status, preferences, now,
         document.visibilityState !== 'hidden',
+        { presets, receiverKey: `${receiverLat}:${receiverLon}`,
+          distanceKm: (item) => distanceKilometres(receiverLat, receiverLon, item.latitude, item.longitude) },
       );
       monitorRef.current = result.state;
       setEvents((current) => mergeRadarEvents(current, result.events, now));
@@ -71,7 +78,7 @@ export function useRadarEvents({ aircraft, enabled, favoriteIds, preferences, st
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', observe);
     };
-  }, [aircraft, enabled, favoriteIds, preferences, ready, status]);
+  }, [aircraft, enabled, favoriteIds, preferences, presets, ready, receiverLat, receiverLon, status]);
 
   const markAllRead = useCallback(() => {
     setEvents((current) => {

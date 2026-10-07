@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Language, TranslationKey } from '../i18n';
 import { localeForLanguage, translate } from '../i18n';
 import type { RadarEvent, RadarEventPreferenceKey, RadarEventPreferences } from '../domain/radar-event';
+import { canNotifyForPreset, type AircraftFilterPreset } from '../domain/aircraft-filter-preset';
 import { VectorIcon, type VectorIconName } from './vector-icon';
 
 type EventCenterProps = {
@@ -13,12 +14,15 @@ type EventCenterProps = {
   onClear: () => void;
   onMarkAllRead: () => void;
   onPreferenceChange: (key: RadarEventPreferenceKey, enabled: boolean) => void;
+  onPresetNotificationsChange: (presetId: string, enabled: boolean) => void;
   onSelectAircraft: (aircraftId: string) => void;
   preferences: RadarEventPreferences;
+  presets: AircraftFilterPreset[];
   unreadCount: number;
 };
 
 const eventTranslation: Record<RadarEvent['kind'], TranslationKey> = {
+  'filter-matched': 'eventFilterMatch',
   'favorite-entered': 'eventFavoriteEntered',
   'receiver-offline': 'eventReceiverOffline',
   'receiver-online': 'eventReceiverOnline',
@@ -28,6 +32,7 @@ const eventTranslation: Record<RadarEvent['kind'], TranslationKey> = {
 };
 
 const eventIcon: Record<RadarEvent['kind'], VectorIconName> = {
+  'filter-matched': 'notifications',
   'favorite-entered': 'favorite',
   'receiver-offline': 'receiver',
   'receiver-online': 'receiver',
@@ -42,7 +47,7 @@ const preferenceLabels: Record<RadarEventPreferenceKey, TranslationKey> = {
   receiver: 'eventReceiverAlerts',
 };
 
-export function EventCenter({ availableAircraftIds, events, language, onClear, onMarkAllRead, onPreferenceChange, onSelectAircraft, preferences, unreadCount }: EventCenterProps) {
+export function EventCenter({ availableAircraftIds, events, language, onClear, onMarkAllRead, onPreferenceChange, onPresetNotificationsChange, onSelectAircraft, preferences, presets, unreadCount }: EventCenterProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const t = (key: TranslationKey) => translate(language, key);
@@ -103,6 +108,7 @@ export function EventCenter({ availableAircraftIds, events, language, onClear, o
             </button>
           </header>
 
+          <div className="event-popover-body">
           <div className="event-list">
             {events.length === 0 && (
               <div className="event-empty">
@@ -120,8 +126,10 @@ export function EventCenter({ availableAircraftIds, events, language, onClear, o
                     <VectorIcon name={eventIcon[event.kind]} />
                   </span>
                   <span className="event-copy">
-                    <strong>{t(eventTranslation[event.kind])}</strong>
-                    <small>{aircraftLabel ?? t('eventReceiver')}{event.aircraftId && !selectable ? ` · ${t('eventAircraftUnavailable')}` : ''}</small>
+                    <strong>{event.kind === 'filter-matched' ? aircraftLabel : t(eventTranslation[event.kind])}</strong>
+                    <small>{event.kind === 'filter-matched'
+                      ? `${t('eventFilterMatch')}: ${event.matchedFilters?.map((filter) => filter.name).join(' · ')}`
+                      : aircraftLabel ?? t('eventReceiver')}{event.aircraftId && !selectable ? ` · ${t('eventAircraftUnavailable')}` : ''}</small>
                   </span>
                   <time dateTime={new Date(event.timestamp).toISOString()}>{dateTime.format(event.timestamp)}</time>
                   {selectable && <VectorIcon className="event-chevron" name="chevronRight" />}
@@ -135,7 +143,28 @@ export function EventCenter({ availableAircraftIds, events, language, onClear, o
             })}
           </div>
 
-          <div className="event-preferences">
+          <details className="event-settings">
+            <summary><VectorIcon name="settings" /><span>{t('eventSettings')}</span><VectorIcon name="chevronDown" /></summary>
+            <div className="event-preferences event-filter-preferences">
+              <strong>{t('eventWatchedFilters')}</strong>
+              {presets.length === 0 && <p>{t('eventNoSavedFilters')}</p>}
+              {presets.map((preset) => (
+                <label key={preset.id}>
+                  <span>{preset.name}</span>
+                  <select
+                    aria-label={`${t('eventFilterNotifications')}: ${preset.name}`}
+                    disabled={!canNotifyForPreset(preset)}
+                    title={!canNotifyForPreset(preset) ? t('eventFilterRequired') : undefined}
+                    onChange={(event) => onPresetNotificationsChange(preset.id, event.target.value === 'yes')}
+                    value={preset.notifyOnMatch && canNotifyForPreset(preset) ? 'yes' : 'no'}
+                  >
+                    <option value="yes">{t('yes')}</option>
+                    <option value="no">{t('no')}</option>
+                  </select>
+                </label>
+              ))}
+            </div>
+            <div className="event-preferences">
             <strong>{t('eventTypes')}</strong>
             {(Object.keys(preferenceLabels) as RadarEventPreferenceKey[]).map((key) => (
               <label key={key}>
@@ -150,6 +179,8 @@ export function EventCenter({ availableAircraftIds, events, language, onClear, o
                 </select>
               </label>
             ))}
+            </div>
+          </details>
           </div>
 
           <footer>

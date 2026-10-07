@@ -1,4 +1,4 @@
-import { normalizeAircraftFilters, filterValueEqual, type AircraftFilters } from './aircraft-filters.ts';
+import { activeAircraftFilterKeys, normalizeAircraftFilters, filterValueEqual, type AircraftFilters } from './aircraft-filters.ts';
 import { isAircraftSort, type AircraftSort } from './aircraft-sort.ts';
 export { emptyAircraftFilters, normalizeAircraftFilters, type AircraftFilterKey, type AircraftFilters } from './aircraft-filters.ts';
 
@@ -10,6 +10,7 @@ export type AircraftFilterPreset = {
   filters: AircraftFilters;
   sort: AircraftSort;
   favoritesFirst?: boolean;
+  notifyOnMatch?: boolean;
 };
 
 export const aircraftFilterPresetStorageKey = 'vector.aircraftFilterPresets';
@@ -26,6 +27,20 @@ export function normalizeAircraftFilterPresetName(value: unknown): string {
   return typeof value === 'string'
     ? value.trim().replace(/\s+/g, ' ').slice(0, maxAircraftFilterPresetNameLength)
     : '';
+}
+
+export function aircraftFilterPresetNameExists(presets: readonly AircraftFilterPreset[], name: string, exceptId?: string): boolean {
+  const normalized = normalizeAircraftFilterPresetName(name).toLowerCase();
+  return presets.some((preset) => preset.id !== exceptId && normalizeAircraftFilterPresetName(preset.name).toLowerCase() === normalized);
+}
+
+/** Update criteria in place: notification rules and paired devices keep the same identity. */
+export function updateAircraftFilterPreset(preset: AircraftFilterPreset, filters: AircraftFilters, sort: AircraftSort, favoritesFirst: boolean): AircraftFilterPreset {
+  const normalized = normalizeAircraftFilters(filters);
+  return {
+    ...preset, filters: normalized, sort, favoritesFirst,
+    ...(preset.notifyOnMatch && activeAircraftFilterKeys(normalized).length === 0 ? { notifyOnMatch: false } : {}),
+  };
 }
 
 export function normalizeAircraftFilterPresetIds(value: unknown): string[] {
@@ -49,6 +64,7 @@ export function normalizeAircraftFilterPresets(value: unknown): AircraftFilterPr
       filters: normalizeAircraftFilters(item.filters),
       sort: item.sort,
       ...(typeof item.favoritesFirst === 'boolean' ? { favoritesFirst: item.favoritesFirst } : {}),
+      ...(typeof item.notifyOnMatch === 'boolean' ? { notifyOnMatch: item.notifyOnMatch } : {}),
     });
     if (presets.length === maxAircraftFilterPresets) break;
   }
@@ -71,3 +87,5 @@ export const aircraftFilterPresetMatches = (
   favoritesFirst = false,
 ) => preset.sort === sort && (preset.favoritesFirst ?? false) === favoritesFirst
   && filterValueEqual(normalizeAircraftFilters(preset.filters), normalizeAircraftFilters(filters));
+
+export const canNotifyForPreset = (preset: AircraftFilterPreset) => activeAircraftFilterKeys(preset.filters).length > 0;

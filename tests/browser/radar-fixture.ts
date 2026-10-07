@@ -1,6 +1,12 @@
 import { test as base, expect, type Page } from '@playwright/test';
 
 export async function openFilterGroup(page: Page, group: 'categories' | 'flight' | 'distance' | 'advanced' | 'presets') {
+  if (group === 'presets') {
+    await page.locator('[data-filter-tab="saved"]').click();
+    return;
+  }
+  const filtersTab = page.locator('[data-filter-tab="filters"]');
+  if (await filtersTab.getAttribute('aria-selected') !== 'true') await filtersTab.click();
   const details = page.locator(`.filter-group[data-filter-group="${group}"]`);
   if (await details.getAttribute('open') === null) await details.locator('summary').click();
   await expect(details).toHaveAttribute('open', '');

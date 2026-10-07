@@ -14,6 +14,8 @@ Labels avoid other labels and map controls. Selected, keyboard-focused/hovered, 
 
 Groups show active choices in their headings. Opening one closes the previous group without changing filters or unfinished edits. The menu floats above the map and closes when you click outside or press Escape. Active filter chips below search can be removed individually; saved views retain all filter groups and sorting.
 
+The **Filters** tab edits the current view; **Saved** lists saved views with their criteria and sort order. **Save as new** is always available in the footer. After applying a saved view and changing its filters, the footer shows **Unsaved changes**: choose **Update** to replace its criteria, or **Save as new** to keep both. Changing filters never overwrites a saved view automatically. Use the pencil to rename, edit its filters or delete with confirmation. Duplicate names are rejected; up to 20 views can be saved. Updating keeps the same notification rule and device-sync identity; removing all criteria also turns off that rule's notifications.
+
 Choose altitude, distance from the receiver, speed, callsign, or last reception in the list's sort selector. The adjacent arrow reverses the order; its tooltip describes the current direction. The star puts favorites first without hiding other aircraft. Missing sort values always stay at the bottom, including favorites. Equal values use callsign and ICAO ID as a stable tie-breaker. The displayed list reading follows the selected criterion. Sorting and favorite priority are saved locally, included in saved views, and synchronized with paired devices; existing saved views remain compatible.
 
 Filter rules:
@@ -88,7 +90,13 @@ Synchronization is optional. Without it, preferences stay in the current browser
 
 Appearance mode, units, language, detail-panel behavior, map layers, trace period, filters, sorting, event preferences, and favorites synchronize live, normally within a second. Independent settings and favorite additions/removals merge separately; conflicting changes to the same setting use the last server-processed update.
 
-The event log and read state remain local and can be cleared in the event center. It keeps the latest notification per aircraft/event type and one receiver-status row, for up to 24 hours and 100 entries. Existing duplicates are consolidated automatically. Repeats update the row instead of adding another; a read notification only becomes unread again after a 30-minute quiet period.
+### Notifications
+
+Save a filter with **Save as new**, then turn on its **bell** in the **Saved** tab to receive notifications for new matching aircraft. For example, save helicopters within 25 km or descending aircraft below a chosen altitude. You can also enable or disable each saved filter under **Notifications → Notification settings**. A saved view needs at least one filter to enable its bell. Notifications work while Vector is open and live; they are not push messages when the browser is closed.
+
+Watched filters monitor all received aircraft, independently of the current map view, search and active filters. A match must remain true for ten seconds. Overlapping filters and favorite arrivals share one row per aircraft, showing the matching filter names. Clicking a notification opens the aircraft; any current search or filters hiding it are cleared. A contact must stop matching for five observed minutes before it can trigger again. Startup, reconnection, return from sleep/history, enabling a rule or changing its criteria establish a baseline without notifying about aircraft already present. Emergency squawks take precedence and remain immediate.
+
+The notification choices synchronize with saved views. The event log and read state remain local and can be cleared in the event center. It keeps one latest filter/favorite notification per aircraft, separate emergency codes, and one receiver-status row, for up to 24 hours and 100 entries. Existing duplicates are consolidated automatically. Repeats update the row instead of adding another; a read notification only becomes unread again after a 30-minute quiet period.
 
 Favorites already present on startup, reconnection, returning after sleep, or when you add a favorite do not trigger arrival alerts. Brief reception gaps are ignored: a previously seen favorite must be absent from fresh live data for five minutes before its return counts again. New emergency squawks are detected immediately from fresh data, including on startup and in background tabs; different emergency codes remain separate alerts. An emergency takes precedence over a simultaneous favorite arrival.
 

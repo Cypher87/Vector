@@ -11,10 +11,10 @@ for (const language of ['en', 'nl']) {
     await page.locator('.filter-menu > summary').click();
     const filter = page.locator('.filter-popover');
     const groups = filter.locator('.filter-group');
-    await expect(groups).toHaveCount(5);
+    await expect(groups).toHaveCount(4);
     await expect(filter.locator('.filter-group[open]')).toHaveCount(0);
     const initial = (await filter.boundingBox())!;
-    expect(initial.height).toBeLessThan(480);
+    expect(initial.height).toBeLessThan(510);
     expect(await filter.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`compact-menu-${language}.png`) });
 
@@ -98,14 +98,14 @@ test('combined filters, ranges, saved views and units remain consistent', async 
   await expect(page.locator('.active-filter-chip')).toHaveCount(4);
   await expect(filter.getByRole('status')).toContainText('1 aircraft match');
   await openFilterGroup(page, 'presets');
-  await filter.getByRole('button', { name: 'Save current', exact: true }).click();
+  await filter.getByRole('button', { name: 'Save as new', exact: true }).click();
   await filter.getByRole('textbox', { name: 'Saved view name', exact: true }).fill('Nearby aircraft');
   await filter.getByRole('button', { name: 'Save', exact: true }).click();
-  await filter.getByRole('button', { name: 'Rename view: Nearby aircraft', exact: true }).click();
+  await filter.getByRole('button', { name: 'Manage filter: Nearby aircraft', exact: true }).click();
   await expect(filter).toBeVisible();
   await filter.getByRole('textbox', { name: 'Saved view name', exact: true }).fill('Local aircraft');
   await filter.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(filter.locator('[data-filter-group="presets"] > summary')).toContainText('Local aircraft');
+  await expect(filter.locator('.filter-current-view')).toContainText('Local aircraft');
   const physicalFilters = await page.evaluate(() => JSON.parse(localStorage.getItem('vector.aircraftFilters')!));
   await filter.locator('.filter-reset').click();
   await expect(page.locator('.aircraft-row')).toHaveCount(2);
