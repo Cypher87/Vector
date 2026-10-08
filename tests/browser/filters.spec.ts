@@ -97,10 +97,10 @@ test('combined filters, ranges, saved views and units remain consistent', async 
   await filter.getByRole('combobox', { name: 'Distance from receiver', exact: true }).selectOption('25');
   await expect(page.locator('.active-filter-chip')).toHaveCount(4);
   await expect(filter.getByRole('status')).toContainText('1 aircraft match');
-  await openFilterGroup(page, 'presets');
-  await filter.getByRole('button', { name: 'Save as new', exact: true }).click();
+  await filter.getByRole('button', { name: 'Save filter', exact: true }).click();
   await filter.getByRole('textbox', { name: 'Saved view name', exact: true }).fill('Nearby aircraft');
   await filter.getByRole('button', { name: 'Save', exact: true }).click();
+  await openFilterGroup(page, 'presets');
   await filter.getByRole('button', { name: 'Manage filter: Nearby aircraft', exact: true }).click();
   await expect(filter).toBeVisible();
   await filter.getByRole('textbox', { name: 'Saved view name', exact: true }).fill('Local aircraft');

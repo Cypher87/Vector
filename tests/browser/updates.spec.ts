@@ -58,9 +58,11 @@ test('administrator can unlock, approve an exact build, follow progress and reco
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.getByRole('button', { name: 'Install update', exact: true }).click();
   await expect(dialog).toContainText('Building new version…');
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toHaveCount(0);
   expect(applies).toBe(1);
   offline = true;
   await expect(dialog).toContainText('Vector is restarting.', { timeout: 8000 });
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('alert')).toHaveCount(0);
   offline = false; phase = 'complete'; restarting = true; authenticated = false; available = false; revision = next;
   await expect(dialog).toContainText('0.9.0 · bbbbbbb');
@@ -135,8 +137,10 @@ test('lost apply response is reconciled without another install and a real rollb
   await expect(dialog).toContainText('Building new version');
   phase = 'restoring';
   await expect(dialog).toContainText('Restoring previous installation');
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toHaveCount(0);
   phase = 'failed';
   await expect(dialog.getByRole('alert')).toContainText('Update failed.');
+  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
   expect(applies).toBe(1);
 });
 

@@ -90,7 +90,7 @@ export function UpdateMenu({ language }: { language: Language }) {
             {confirm && <p>{text.confirmation}</p>}
             <div className="update-actions">
               {confirm ? <><button className="update-primary" type="button" disabled={busy || running} onClick={() => void act('apply', { revision: status.available?.revision, confirm: true })}>{text.confirm}</button><button type="button" disabled={busy} onClick={() => setConfirm(false)}>{text.cancel}</button></>
-                : <><button type="button" disabled={busy || running || !status.ready} onClick={() => void act('check')}>{text.check}</button>{status.available && <button className="update-primary" type="button" disabled={busy || running} onClick={() => setConfirm(true)}>{text.update}</button>}</>}
+                : <>{!running && <button type="button" disabled={busy || !status.ready} onClick={() => void act('check')}>{text.check}</button>}{status.available && <button className="update-primary" type="button" disabled={busy || running} onClick={() => setConfirm(true)}>{text.update}</button>}</>}
             </div>
             {!running && <button className="update-lock" type="button" disabled={busy} onClick={() => { setConfirm(false); void act('logout'); }}>{text.logout}</button>}
           </>}

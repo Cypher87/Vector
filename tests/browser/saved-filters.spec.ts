@@ -11,10 +11,14 @@ for (const language of ['en', 'nl']) {
     if (isMobile) await page.locator('.mobile-list-button').click();
     await page.locator('.filter-menu > summary').click();
     const filter = page.locator('.filter-popover');
-    const newButton = filter.getByRole('button', { name: nl ? 'Opslaan als nieuw' : 'Save as new', exact: true });
+    const newButton = filter.getByRole('button', { name: nl ? 'Filter opslaan' : 'Save filter', exact: true });
     const save = filter.getByRole('button', { name: nl ? 'Opslaan' : 'Save', exact: true });
     const cancel = filter.getByRole('button', { name: nl ? 'Annuleren' : 'Cancel', exact: true });
     const name = filter.getByRole('textbox', { name: nl ? 'Naam van opgeslagen weergave' : 'Saved view name', exact: true });
+    const filtersTab = filter.locator('[data-filter-tab="filters"]');
+    await openFilterGroup(page, 'presets');
+    await expect(filter.locator('.filter-presets-empty')).toContainText(nl ? 'Ga naar Filters en kies Filter opslaan.' : 'Go to Filters and choose Save filter.');
+    await expect(newButton).toHaveCount(0);
     await openFilterGroup(page, 'categories');
     await filter.getByLabel(nl ? 'Ballon / luchtschip' : 'Balloon / airship', { exact: true }).check();
     await newButton.click();
@@ -26,6 +30,7 @@ for (const language of ['en', 'nl']) {
     await expect(newButton).toBeFocused();
     await expect(filter.locator('.filter-current-view')).toContainText('Local balloons');
     await openFilterGroup(page, 'presets');
+    await expect(newButton).toHaveCount(0);
     const card = filter.locator('.filter-preset-card').filter({ hasText: 'Local balloons' });
     await expect(card).toContainText(nl ? 'Ballon / luchtschip' : 'Balloon / airship');
     await expect(card).toContainText(nl ? 'Actieve weergave' : 'Active view');
@@ -33,16 +38,22 @@ for (const language of ['en', 'nl']) {
     const original = await page.evaluate(() => JSON.parse(localStorage.getItem('vector.aircraftFilterPresets')!)[0]);
     expect(original.notifyOnMatch).toBe(true);
     // Do not create indistinguishable saved views, including case/whitespace variants.
+    await filtersTab.click();
     await newButton.click();
     await name.fill('LOCAL  balloons');
     await expect(name).toHaveAttribute('aria-invalid', 'true');
     await expect(save).toBeDisabled();
     await cancel.click();
+    await openFilterGroup(page, 'presets');
     await card.getByRole('button', { name: /^(Beheer filter|Manage filter):/ }).click();
-    // Starting a new save closes the rename editor; never show competing name forms.
+    // Saving lives on Filters; switching tabs closes the saved-view rename editor.
+    await expect(newButton).toHaveCount(0);
+    await filtersTab.click();
+    await expect(filter.locator('.filter-preset-manager')).toHaveCount(0);
     await newButton.click();
-    await expect(filter.getByRole('textbox')).toHaveCount(1);
+    await expect(name).toHaveCount(1);
     await cancel.click();
+    await openFilterGroup(page, 'presets');
     await card.getByRole('button', { name: /^(Beheer filter|Manage filter):/ }).click();
     await name.fill('Nearby balloons');
     await save.click();
@@ -58,6 +69,11 @@ for (const language of ['en', 'nl']) {
     await page.keyboard.press('Escape');
     await page.locator('.filter-menu > summary').click();
     const update = filter.getByRole('button', { name: nl ? 'Bijwerken' : 'Update', exact: true });
+    await expect(update).toBeVisible();
+    await openFilterGroup(page, 'presets');
+    await expect(update).toHaveCount(0);
+    await expect(newButton).toHaveCount(0);
+    await filtersTab.click();
     await expect(update).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('modified-filter.png') });
     await update.click();
@@ -131,11 +147,13 @@ test('saved filter tabs, capacity and invalid drafts remain usable in a small vi
   if (isMobile) await page.locator('.mobile-list-button').click();
   await page.locator('.filter-menu > summary').click();
   const filter = page.locator('.filter-popover');
-  await expect(filter.getByRole('button', { name: 'Save as new', exact: true })).toBeDisabled();
+  await expect(filter.getByRole('button', { name: 'Save filter', exact: true })).toBeDisabled();
   const tab = filter.locator('[data-filter-tab="filters"]');
   await tab.focus();
   await tab.press('ArrowRight');
   await expect(filter.locator('[data-filter-tab="saved"]')).toBeFocused();
+  await expect(filter.getByRole('button', { name: 'Save filter', exact: true })).toHaveCount(0);
+  await expect(filter.locator('.filter-preset-limit')).toHaveCount(0);
   const last = filter.locator('.filter-preset-card').last();
   await last.scrollIntoViewIfNeeded();
   await last.locator('.filter-preset-apply').click();
@@ -150,6 +168,8 @@ test('saved filter tabs, capacity and invalid drafts remain usable in a small vi
   await min.fill('2000');
   await min.press('Tab');
   await openFilterGroup(page, 'presets');
+  await expect(filter.getByRole('button', { name: 'Update', exact: true })).toHaveCount(0);
+  await tab.click();
   await filter.getByRole('button', { name: 'Update', exact: true }).click();
   await expect(tab).toHaveAttribute('aria-selected', 'true');
   await expect(min).toBeFocused();

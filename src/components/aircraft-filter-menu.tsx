@@ -168,7 +168,7 @@ export function AircraftFilterMenu({ activeFilterCount, filters, language, unitS
             {selected && <span className={modified ? 'modified' : ''}>{t(modified ? 'savedViewModified' : 'savedViewSaved')}</span>}
           </div>
           <span className="filter-result-count" role="status">{resultCount} {t(resultCount === 1 ? 'filterMatchSingular' : 'filterMatches')}</span>
-          {creating ? <FilterPresetNameForm presets={presets} language={language} onCancel={finishCreating} onSave={(name) => {
+          {tab === 'filters' && <>{creating ? <FilterPresetNameForm presets={presets} language={language} onCancel={finishCreating} onSave={(name) => {
             if (atLimit || !validFields()) return;
             setSelectedId(onSavePreset(name));
             finishCreating();
@@ -182,7 +182,7 @@ export function AircraftFilterMenu({ activeFilterCount, filters, language, unitS
               if (validFields()) { setManagingId(null); setCreating(true); }
             }}>{t('saveNewView')}</button>
           </div>}
-          {atLimit && <p className="filter-preset-limit">{t('savedViewLimit')}</p>}
+          {atLimit && <p className="filter-preset-limit">{t('savedViewLimit')}</p>}</>}
         </div>
       </div>
     </details>
