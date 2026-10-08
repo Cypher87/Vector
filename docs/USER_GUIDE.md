@@ -80,6 +80,14 @@ Trail length and flow speed increase with ground speed. The length scale smoothl
 
 These are decorative airflow cues, **not measured condensation trails or engine-state measurements**. Older points stay attached to their map positions as the icon turns or the map zooms. Vector preloads recent receiver traces for eligible aircraft in view, so recorded trails can appear shortly after opening the map. Requests are staggered, limited to three at a time, and cached; full-day traces are not downloaded for this layer. Loading pauses during zoom gestures and when trails are hidden or disabled. If recent recordings are unavailable, trails build up from live positions instead. Routes are limited to twenty minutes and 600 points; missing history is not extrapolated. Sparse receiver samples are supported, while reception gaps, new legs and large position jumps still break the trail. The available route and zoom level can make a trail shorter than its maximum. Unlike the altitude-colored legtrace, these trails are neutral-colored and fade out; they disappear when zoomed out, in history mode, on stale data, in hidden tabs and with reduced motion. They do not appear in lists, details or shadows.
 
+## Receiver logbook
+
+The book icon in the top bar opens **Logbook**. Search callsign, registration, type or ICAO address; choose 24 hours, 7, 30 or 90 days and sort by most recent reception or most visits. The count and first/last reception apply to that period, within the receiver's retention window.
+
+Click an aircraft's name to expand up to 50 recent visits. A new visit begins after a reception gap of at least 30 minutes, not necessarily a new flight. The star uses your existing favorites and device synchronization. **View live** appears when that aircraft is currently in the live feed and opens its details on the map.
+
+The receiver records without an open browser. History starts when the updated receiver first runs; it does not import earlier readsb recordings. Everyone using that receiver sees the same logbook, while favorites remain personal. Unavailable receiver data pauses new observations without deleting recorded visits. A remote source needs a Vector version with logbook support. See [configuration, retention and backups](STANDALONE.md#receiver-logbook).
+
 ## Device synchronization
 
 Synchronization is optional. Without it, preferences stay in the current browser. It needs no account, email, password, public domain, or Google/Apple configuration.

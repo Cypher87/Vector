@@ -2,7 +2,7 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.2.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.3.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
@@ -11,6 +11,7 @@ A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/reads
 - Aircraft details with photos, routes, technical data, and interactive flight profiles.
 - Altitude-colored traces, receiver history replay, distance rings, and range outline.
 - Receiver dashboard and events for favorite arrivals, emergencies, and connection changes.
+- Persistent receiver logbook with search, recent visits, favorites, and live aircraft selection.
 - Desktop and mobile layouts, Dutch/English, coordinated dark/light/automatic appearance, and three unit systems.
 - Optional live synchronization between devices, without accounts or passwords.
 - Optional administrator-protected browser updates, with staged builds and recovery.
@@ -69,6 +70,7 @@ For another Vector server, use `READSB_SOURCE=vector` and `READSB_REMOTE_URL=htt
 | `VECTOR_RECEIVER_LATITUDE`, `VECTOR_RECEIVER_LONGITUDE` | Set both in decimal degrees to override the position from `receiver.json`. |
 | `VECTOR_MAP_STYLE_URL` | MapLibre style; defaults to `/map-style.json`. |
 | `VECTOR_SYNC_STORE` | Synchronization database; the installer sets `/var/lib/vector/sync.json`. |
+| `VECTOR_LOGBOOK_DAYS` | Logbook retention; `90` days by default (1–365). Set `VECTOR_LOGBOOK_ENABLED=false` to disable recording and access. |
 | `VECTOR_UPDATES_ENABLED` | Enables the browser update menu; `false` by default. Requires a separate administrator password. |
 
 Units accept `metric`, `aeronautical`, or `imperial`. See the [complete configuration example](packaging/vector.env.example).
@@ -145,6 +147,12 @@ sudo bash /tmp/vector-install.sh --uninstall --purge
 
 Neither command removes readsb, tar1090, or readsb's recordings. Receiver recording options and the retention job for installer-created history remain operational without Vector. Purge also removes Vector's migration backups; save anything needed first.
 
+## Receiver logbook
+
+Open the book icon in the top bar to search received aircraft by callsign, registration, type or ICAO. Each entry shows its first/last reception and number of visits within the selected period. Expand it for recent visits, add a favorite, or select the aircraft on the live map when available. A new visit means reception resumed after at least 30 minutes; it is not a confirmed flight.
+
+The receiver records in the background while Vector runs, even with no browser open. Recording starts with this feature; older readsb history is not imported. By default, observations remain for 90 days. The logbook belongs to the receiver, not an individual synchronization profile, and is readable by everyone who can access Vector. With a remote Vector source, its server must also support this feature. See [storage and limits](docs/STANDALONE.md#receiver-logbook).
+
 ## Synchronize devices
 
 Open **Synchronization → Start synchronization** to save preferences and favorites on your Vector server. Choose **Connect a new device** and enter the six-character code on another device using the same server. Codes work once and expire after ten minutes; changes then synchronize live.
@@ -189,7 +197,7 @@ GitHub Actions runs these checks on Ubuntu 24.04 for pull requests and pushes to
 
 ### Production runtime
 
-Vector is **not a static site**: configuration, proxy, and synchronization APIs require a running Node.js server. `pnpm build` produces `dist/standalone/server.js`, which the systemd service runs. For a manual checkout, configure its environment and run:
+Vector is **not a static site**: configuration, proxy, synchronization and logbook APIs require a running Node.js server. `pnpm build` produces `dist/standalone/server.js`; `scripts/start-vector.mjs` starts that server together with the background logbook recorder. Both `pnpm start` and the packaged systemd service use this launcher. For a manual checkout, configure its environment and run:
 
 ```bash
 pnpm build

@@ -109,6 +109,20 @@ sudo journalctl -u vector-aircraft-db -n 50 --no-pager
 sudo journalctl -u vector -n 100 --no-pager
 ```
 
+## Receiver logbook
+
+The regular Vector service records locally received aircraft every ten seconds, without an open browser or an additional service. Existing installations enable this automatically after updating. The production launcher (`pnpm start` / `scripts/start-vector.mjs`) starts recording immediately; development starts it on the first request. Running the generated `dist/standalone/server.js` directly bypasses this startup hook.
+
+- Storage: `VECTOR_LOGBOOK_STORE`, defaulting to `logbook.sqlite` beside `VECTOR_SYNC_STORE`, normally `/var/lib/vector/logbook.sqlite` on an installed Pi.
+- Retention: `VECTOR_LOGBOOK_DAYS=90`, configurable from 1 to 365 days. An hourly cleanup also limits the retained records to the 100,000 most recent visits. The configured time window is therefore a maximum, not a storage guarantee.
+- Only fresh observations with a stable six-character ICAO address are stored. Contacts without positions are included; transient non-ICAO addresses are excluded. Existing recordings are not backfilled and missed observations cannot be reconstructed.
+- A reception gap of at least 30 minutes starts a new visit. Brief gaps, repeated snapshots and service restarts do not increment it. These are reception visits, not verified takeoffs or flights.
+- `READSB_SOURCE=vector` reads the upstream receiver's logbook instead of recording another copy. The upstream must be upgraded too; an older server shows an unavailable state.
+
+The logbook is shared receiver history, publicly readable wherever the receiver data is reachable. It is not a private, paired-device collection. Set `VECTOR_LOGBOOK_ENABLED=false` and restart the **recording receiver** to disable both recording and access; the existing file is retained. Do not expose the service beyond your intended audience.
+
+Updates and rollback preserve this file outside the release directory; uninstall without purge preserves it too. SQLite uses WAL sidecars. For a file-copy backup, stop Vector cleanly before copying `logbook.sqlite` and any remaining `logbook.sqlite-wal` / `logbook.sqlite-shm` files, then restart it. Do not copy just the main database while the service is running.
+
 ## Advanced configuration
 
 Only use these settings if overriding automatic detection is necessary. They belong in `/etc/vector/vector.env` on the Pi; restart Vector after editing.

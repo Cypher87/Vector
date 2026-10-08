@@ -11,6 +11,7 @@ import { EventCenter } from '../src/components/event-center';
 import { HistoryControls } from '../src/components/history-controls';
 import { FlightProfile } from '../src/components/flight-profile';
 import { ReceiverDashboard } from '../src/components/receiver-dashboard';
+import { LogbookMenu } from '../src/components/logbook-menu';
 import { SyncMenu } from '../src/components/sync-menu';
 import { SettingsMenu } from '../src/components/settings-menu';
 import { vectorVersion } from '../src/version';
@@ -638,6 +639,8 @@ export default function Home() {
         </div>
 
         <div className="top-actions">
+          <LogbookMenu language={language} receiverName={feed.config.receiverName} favorites={favoriteAircraftIdSet}
+            liveIds={eventAircraftIds} onFavorite={toggleFavoriteAircraft} onSelect={selectAircraftFromEvent} />
           <EventCenter
             availableAircraftIds={eventAircraftIds}
             events={radarEvents.events}

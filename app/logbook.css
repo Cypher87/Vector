@@ -1,0 +1,64 @@
+.logbook-dialog { width: min(780px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--theme-popover); color: var(--ink); box-shadow: var(--shadow-popover); font-size: 14px; overflow: hidden; }
+.logbook-dialog[open] { display: flex; flex-direction: column; }
+.logbook-dialog::backdrop { background: #0007; }
+.logbook-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+.logbook-dialog h2 { margin: 0; font-size: var(--heading-panel); font-weight: var(--heading-weight); }
+.logbook-dialog header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.logbook-dialog button { cursor: pointer; }
+.logbook-dialog header button, .logbook-dialog nav button, .logbook-favorite { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; color: var(--muted-strong); }
+.logbook-dialog .vector-icon { width: 18px; height: 18px; }
+.logbook-controls { display: grid; grid-template-columns: minmax(0, 1fr) 110px 155px; gap: 12px; align-items: end; padding: 18px 24px 12px; }
+.logbook-controls > label { min-width: 0; display: grid; gap: 6px; font-size: 12px; color: var(--muted-strong); }
+.logbook-controls input, .logbook-controls select { width: 100%; min-width: 0; height: 42px; border: 1px solid var(--line); border-radius: 6px; background: var(--theme-input); color: var(--ink); padding: 0 10px; font-size: 14px; }
+.logbook-controls .logbook-search { position: relative; display: block; }
+.logbook-search .vector-icon { position: absolute; left: 12px; top: 12px; pointer-events: none; color: var(--muted); }
+.logbook-search input { padding-left: 38px; }
+.logbook-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 0 24px 14px; font-size: 12px; color: var(--muted); }
+.logbook-summary strong { font-weight: 500; color: var(--muted-strong); }
+.logbook-body { min-height: 130px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid var(--line); scrollbar-width: thin; }
+.logbook-entry { padding: 16px 24px; border-bottom: 1px solid var(--line); }
+.logbook-entry:last-child { border-bottom: 0; }
+.logbook-entry-heading { display: flex; align-items: center; gap: 12px; }
+.logbook-favorite { border-color: transparent; }
+.logbook-favorite.active { color: var(--favorite); background: var(--favorite-soft); }
+.logbook-favorite.active svg { fill: var(--favorite); }
+.logbook-identity { min-width: 0; flex: 1; display: grid; gap: 4px; padding: 0; border: 0; background: none; text-align: left; color: var(--ink); }
+.logbook-identity strong { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.logbook-identity strong .vector-icon { display: inline-block; width: 13px; height: 13px; margin-left: 4px; color: var(--muted); vertical-align: middle; }
+.logbook-identity[aria-expanded='true'] strong .vector-icon { transform: rotate(180deg); }
+.logbook-identity span { font-size: 13px; color: var(--muted-strong); overflow-wrap: anywhere; }
+.logbook-visit-count { display: grid; gap: 2px; justify-items: end; color: var(--muted); font-size: 12px; }
+.logbook-visit-count strong { color: var(--ink); font-family: var(--font-geist-mono), monospace; font-size: 18px; font-weight: 500; }
+.logbook-times { margin: 14px 0 0 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.logbook-times dt { color: var(--muted); font-size: 12px; }
+.logbook-times dd { margin: 4px 0 0; color: var(--muted-strong); font-size: 13px; }
+.logbook-aircraft-info { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 16px 0 12px; font-size: 13px; }
+.logbook-aircraft-info > span { color: var(--muted-strong); overflow-wrap: anywhere; }
+.logbook-aircraft-info button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 13px; }
+.logbook-visits { padding: 14px; border-radius: 6px; background: var(--theme-input); }
+.logbook-visits h3 { margin: 0; font-size: var(--heading-section); font-weight: var(--heading-weight); }
+.logbook-visits p { margin: 8px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.logbook-visits ol { margin: 14px 0 0; padding: 0; list-style: none; }
+.logbook-visits li { padding: 8px 0; display: grid; gap: 4px; border-top: 1px solid var(--line); font-size: 12px; }
+.logbook-visits li span { color: var(--muted-strong); }
+.logbook-visits li strong { font-weight: 500; }
+.logbook-dialog footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.logbook-dialog nav { display: flex; align-items: center; gap: 10px; }
+.logbook-dialog button:disabled { opacity: .4; cursor: default; }
+.logbook-empty { padding: 40px 24px; text-align: center; color: var(--muted); }
+.logbook-empty > .vector-icon { width: 30px; height: 30px; margin: 0 auto 12px; }
+.logbook-empty h3 { margin: 0 0 8px; color: var(--ink); font-size: var(--heading-section); }
+.logbook-empty p { margin: 0; line-height: 1.5; }
+.logbook-notice { margin: 16px 24px; color: var(--danger); line-height: 1.5; }
+@media (max-width: 720px) {
+  .logbook-dialog { max-height: calc(100dvh - 20px); }
+  .logbook-dialog header { padding: 16px; }
+  .logbook-controls { grid-template-columns: 1fr 1.4fr; padding: 16px; }
+  .logbook-controls .logbook-search { grid-column: 1 / -1; }
+  .logbook-controls input, .logbook-controls select { font-size: 16px; }
+  .logbook-summary { padding: 0 16px 12px; }
+  .logbook-entry { padding: 16px; }
+  .logbook-times { margin-left: 0; }
+  .logbook-times dd { font-size: 12px; }
+  .logbook-dialog footer { padding: 12px 16px; }
+}

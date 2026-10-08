@@ -14,6 +14,7 @@ export type VectorIconName =
   | 'labels'
   | 'layers'
   | 'list'
+  | 'logbook'
   | 'mobile'
   | 'notifications'
   | 'pause'
@@ -57,6 +58,7 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
   labels: ['M5 6.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 3v-3a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z', 'M8 11h8M8 14h5'],
   layers: ['m12 3-9 5 9 5 9-5-9-5Z', 'm3 12 9 5 9-5', 'm3 16 9 5 9-5'],
   list: ['M9 6h11M9 12h11M9 18h11', 'M4 6h.01M4 12h.01M4 18h.01'],
+  logbook: ['M6 3h14v18H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z', 'M3 17a3 3 0 0 1 3-3h14', 'M8 7h7M8 10h4'],
   mobile: ['M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z', 'M11 18h2'],
   notifications: ['M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9', 'M10 21h4'],
   pause: ['M9 5v14M15 5v14'],

@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import 'maplibre-gl/dist/maplibre-gl.css';
+@import './logbook.css';
 
 :root {
   --ink: #f2f0e9;

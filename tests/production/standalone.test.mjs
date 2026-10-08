@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import test from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -18,7 +19,7 @@ async function startServer(environment, signal, children) {
   await new Promise((resolve) => reservation.close(resolve));
   const origin = `http://127.0.0.1:${port}`;
   let output = '';
-  const child = spawn(process.execPath, ['dist/standalone/server.js'], {
+  const child = spawn(process.execPath, ['--experimental-strip-types', 'scripts/start-vector.mjs'], {
     cwd: resolve('.'), windowsHide: true,
     env: { ...process.env, ...environment, HOST: '127.0.0.1', PORT: String(port), NODE_ENV: 'production' },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -69,12 +70,24 @@ test('local and remote production runtimes serve live, metadata, outline, traces
       READSB_SOURCE: 'local',
       READSB_LIVE_DIR: live, READSB_HISTORY_DIR: history, VECTOR_AIRCRAFT_DATABASE: database,
       VECTOR_SYNC_STORE: join(root, 'sync.json'),
+      VECTOR_LOGBOOK_STORE: join(root, 'logbook.sqlite'),
       VECTOR_UPDATES_ENABLED: 'false',
       // Deliberately unusable: a local installation must not need either legacy upstream.
       READSB_LIVE_URL: 'http://127.0.0.1:1/no-tar1090/', READSB_HISTORY_URL: 'http://127.0.0.1:1/no-tar1090/',
       READSB_TAR1090_URL: 'http://127.0.0.1:1/no-tar1090/',
     };
     const local = await startServer(environment, t.signal, children);
+    // The launcher records without a browser or a logbook/readsb HTTP request.
+    for (let i = 0; i < 50; i++) {
+      if (await stat(environment.VECTOR_LOGBOOK_STORE).then(() => true, () => false)) break;
+      await delay(100);
+    }
+    assert.ok((await stat(environment.VECTOR_LOGBOOK_STORE)).isFile());
+    const stored = new DatabaseSync(environment.VECTOR_LOGBOOK_STORE, { readOnly: true });
+    try {
+      for (let i = 0; i < 50 && !stored.prepare('SELECT COUNT(*) AS n FROM visits').get().n; i++) await delay(100);
+      assert.equal(stored.prepare('SELECT COUNT(*) AS n FROM visits').get().n, 1);
+    } finally { stored.close(); }
     const remote = await startServer({ ...environment, READSB_SOURCE: 'vector', READSB_REMOTE_URL: local,
       READSB_LIVE_DIR: join(root, 'unavailable'), READSB_HISTORY_DIR: join(root, 'unavailable'), VECTOR_AIRCRAFT_DATABASE: join(root, 'unavailable.csv.gz'),
     }, t.signal, children);
@@ -86,6 +99,11 @@ test('local and remote production runtimes serve live, metadata, outline, traces
         return response;
       };
       const config = await (await get('/api/config')).json();
+      const logbook = await (await get('/api/logbook')).json();
+      assert.equal(logbook.total, 1);
+      assert.equal(logbook.entries[0].registration, 'TEST-A');
+      assert.equal(logbook.entries[0].visits, 1);
+      assert.equal((await request(`${origin}/api/logbook?url=https://example.com`)).status, 400);
       assert.equal(config.dataBaseUrl, '/api/readsb?source=live');
       assert.equal(JSON.stringify(config).includes(root), false);
       assert.equal((await (await get('/api/updates')).json()).enabled, false);
@@ -117,9 +135,16 @@ test('local and remote production runtimes serve live, metadata, outline, traces
       assert.equal((await get('/')).status, 200);
       assert.equal((await get('/credits.html')).status, 200);
     }
-    for (const path of ['/api/readsb?source=live&path=aircraft.json', '/api/aircraft-metadata?ids=abc123', '/api/aircraft-database-status']) {
+    for (const path of ['/api/readsb?source=live&path=aircraft.json', '/api/aircraft-metadata?ids=abc123', '/api/aircraft-database-status', '/api/logbook']) {
       assert.equal((await request(`${remote}${path}`, { headers: { 'x-vector-data-proxy': '1' } })).status, 508);
     }
+    // No more browser requests: a later receiver snapshot must still be recorded by the timer.
+    await writeFile(join(live, 'aircraft.json'), JSON.stringify({ now: Date.now() / 1000, aircraft: [{ hex: 'def456', seen: 0 }] }));
+    const recorded = new DatabaseSync(environment.VECTOR_LOGBOOK_STORE, { readOnly: true });
+    try {
+      for (let i = 0; i < 150 && !recorded.prepare("SELECT hex FROM aircraft WHERE hex='def456'").get(); i++) await delay(100);
+      assert.equal(recorded.prepare("SELECT registration FROM aircraft WHERE hex='def456'").get()?.registration, 'TEST-B');
+    } finally { recorded.close(); }
   } finally {
     for (const { child } of children.reverse()) child.kill();
     await Promise.all(children.map(({ closed }) => closed));

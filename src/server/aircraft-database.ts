@@ -111,10 +111,11 @@ export class AircraftDatabase {
   }
 }
 
-let database: { file: string; store: AircraftDatabase } | undefined;
+// The recorder launcher and bundled web server run in one process. Share the large index.
+const cache = globalThis as typeof globalThis & { __vectorAircraftDatabase?: { file: string; store: AircraftDatabase } };
 function localDatabase(file: string) {
-  if (database?.file !== file) database = { file, store: new AircraftDatabase(file) };
-  return database.store;
+  if (cache.__vectorAircraftDatabase?.file !== file) cache.__vectorAircraftDatabase = { file, store: new AircraftDatabase(file) };
+  return cache.__vectorAircraftDatabase.store;
 }
 export const lookupLocalAircraftMetadata = (file: string, ids: readonly string[], signal?: AbortSignal) => localDatabase(file).lookup(ids, signal);
 export const localAircraftDatabaseStatus = (file: string, signal?: AbortSignal) => localDatabase(file).status(signal);
