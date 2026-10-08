@@ -639,7 +639,7 @@ export default function Home() {
         </div>
 
         <div className="top-actions">
-          <LogbookMenu language={language} receiverName={feed.config.receiverName} favorites={favoriteAircraftIdSet}
+          <LogbookMenu language={language} favorites={favoriteAircraftIdSet}
             liveIds={eventAircraftIds} onFavorite={toggleFavoriteAircraft} onSelect={selectAircraftFromEvent} />
           <EventCenter
             availableAircraftIds={eventAircraftIds}

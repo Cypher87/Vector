@@ -2,7 +2,7 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.4.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.5.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
@@ -11,7 +11,7 @@ A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/reads
 - Aircraft details with photos, routes, technical data, and interactive flight profiles.
 - Altitude-colored traces, receiver history replay, distance rings, and range outline.
 - Receiver dashboard and events for favorite arrivals, emergencies, and connection changes.
-- Persistent receiver logbook with search, recent visits, favorites, and live aircraft selection.
+- Persistent receiver logbook with search, recent sightings, favorites, and live aircraft selection.
 - Desktop and mobile layouts, Dutch/English, coordinated dark/light/automatic appearance, and three unit systems.
 - Optional live synchronization between devices, without accounts or passwords.
 - Optional administrator-protected browser updates, with staged builds and recovery.
@@ -149,7 +149,7 @@ Neither command removes readsb, tar1090, or readsb's recordings. Receiver record
 
 ## Receiver logbook
 
-Open the book icon in the top bar to search received aircraft by callsign, registration, type or ICAO. Each entry shows its first/last reception and number of visits within the selected period. Expand it for recent visits, add a favorite, or select the aircraft on the live map when available. A new visit means reception resumed after at least 30 minutes; it is not a confirmed flight.
+Open the book icon in the top bar to search observed aircraft by callsign, registration, type or ICAO, with 10 results per page. Each entry shows when it was first/last seen and its number of sightings within the selected period. Expand it for recent sightings and their duration, add a favorite, or select the aircraft on the live map when available. Duration runs from a sighting’s first to last recorded signal. A new sighting means reception resumed after at least 30 minutes; it is not a confirmed flight.
 
 The receiver records in the background while Vector runs, even with no browser open. Recording starts with this feature; older readsb history is not imported. By default, observations remain for 90 days. The logbook belongs to the receiver, not an individual synchronization profile, and is readable by everyone who can access Vector. With a remote Vector source, its server must also support this feature. See [storage and limits](docs/STANDALONE.md#receiver-logbook).
 

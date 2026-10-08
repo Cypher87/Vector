@@ -1,74 +1,100 @@
-.logbook-dialog { width: min(780px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--theme-popover); color: var(--ink); box-shadow: var(--shadow-popover); font-size: 14px; overflow: hidden; }
+.logbook-dialog { width: min(780px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--theme-popover); color: var(--ink); box-shadow: var(--shadow-popover); font-size: 14px; line-height: 1.45; overflow: hidden; }
 .logbook-dialog[open] { display: flex; flex-direction: column; }
 .logbook-dialog::backdrop { background: #0007; }
-.logbook-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--line); }
-.logbook-dialog h2 { margin: 0; font-size: var(--heading-panel); font-weight: var(--heading-weight); }
-.logbook-dialog header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.logbook-dialog > header { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+.logbook-dialog h2 { margin: 0; font-size: var(--heading-panel); font-weight: var(--heading-weight); letter-spacing: -.015em; }
 .logbook-dialog button { cursor: pointer; }
-.logbook-dialog header button, .logbook-dialog nav button, .logbook-favorite { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; color: var(--muted-strong); }
+.logbook-dialog header button, .logbook-dialog nav button, .logbook-favorite { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: none; color: var(--text-secondary-color); }
+.logbook-dialog header button:hover, .logbook-dialog nav button:hover:not(:disabled) { border-color: var(--muted); background: var(--theme-card); color: var(--ink); }
+.logbook-dialog :is(button, input, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .logbook-dialog .vector-icon { width: 18px; height: 18px; }
-.logbook-controls { display: grid; grid-template-columns: minmax(0, 1fr) 110px 180px; gap: 12px; align-items: end; padding: 18px 24px 12px; }
-.logbook-controls > label { min-width: 0; display: grid; gap: 6px; font-size: 12px; color: var(--muted-strong); }
-.logbook-controls input, .logbook-controls select { width: 100%; min-width: 0; height: 42px; border: 1px solid var(--line); border-radius: 6px; background: var(--theme-input); color: var(--ink); padding: 0 10px; font-size: 14px; }
+.logbook-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--muted) transparent; }
+.logbook-toolbar { padding: 12px 20px; display: grid; gap: 10px; }
+.logbook-controls { display: grid; grid-template-columns: minmax(0, 1fr) 120px 220px; gap: 12px; align-items: end; }
+.logbook-controls > label { min-width: 0; display: grid; gap: 6px; font-size: var(--text-secondary-size); color: var(--text-secondary-color); }
+.logbook-controls input, .logbook-controls select { width: 100%; min-width: 0; height: 38px; border: 1px solid var(--line); border-radius: 4px; background: var(--theme-input); color: var(--ink); padding: 0 10px; font: inherit; font-size: 14px; outline: none; }
+.logbook-controls input::placeholder { color: var(--muted); opacity: 1; }
+.logbook-controls :is(select, option) { color-scheme: inherit; background-color: var(--theme-input); color: var(--ink); }
+.logbook-controls input:hover, .logbook-controls select:hover { border-color: var(--muted); }
 .logbook-select { position: relative; display: block; }
 .logbook-select select { appearance: none; padding: 0 36px 0 12px; cursor: pointer; }
 .logbook-select > .vector-icon { position: absolute; width: 14px; height: 14px; top: 50%; right: 12px; transform: translateY(-50%); pointer-events: none; color: var(--muted-strong); }
-.logbook-filter-toggle { grid-column: 1 / -1; justify-self: start; min-height: 34px; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: none; color: var(--muted-strong); font-size: 13px; }
-.logbook-filter-toggle:hover { background: var(--theme-input); color: var(--ink); }
+.logbook-toolbar-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.logbook-filter-toggle { min-height: 34px; display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: none; color: var(--text-secondary-color); font-size: 12px; }
+.logbook-filter-toggle .vector-icon { width: 16px; height: 16px; }
+.logbook-filter-toggle:hover { border-color: var(--muted); background: var(--theme-card); color: var(--ink); }
 .logbook-filter-toggle[aria-pressed='true'] { color: var(--favorite); border-color: var(--favorite); background: var(--favorite-soft); }
 .logbook-filter-toggle[aria-pressed='true'] .vector-icon { fill: currentColor; }
 .logbook-controls .logbook-search { position: relative; display: block; }
-.logbook-search .vector-icon { position: absolute; left: 12px; top: 12px; pointer-events: none; color: var(--muted); }
+.logbook-search .vector-icon { position: absolute; left: 12px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); pointer-events: none; color: var(--muted); }
 .logbook-search input { padding-left: 38px; }
-.logbook-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 0 24px 14px; font-size: 12px; color: var(--muted); }
-.logbook-summary strong { font-weight: 500; color: var(--muted-strong); }
-.logbook-body { min-height: 130px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid var(--line); scrollbar-width: thin; }
-.logbook-entry { padding: 16px 24px; border-bottom: 1px solid var(--line); }
+.logbook-summary { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 12px; margin-left: auto; font-size: 12px; color: var(--text-secondary-color); }
+.logbook-summary strong { font-weight: 500; font-variant-numeric: tabular-nums; }
+.logbook-summary > span { color: var(--warning); }
+.logbook-body { min-height: 130px; border-top: 1px solid var(--line); }
+.logbook-entry { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px 20px; padding: 10px 20px; border-bottom: 1px solid var(--line); }
+.logbook-entry.expanded { background: var(--theme-card); }
 .logbook-entry:last-child { border-bottom: 0; }
-.logbook-entry-heading { display: flex; align-items: center; gap: 12px; }
+.logbook-entry-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.logbook-entry-details { grid-column: 1 / -1; min-width: 0; padding-top: 2px; }
 .logbook-favorite { border-color: transparent; }
-.logbook-favorite.active { color: var(--favorite); background: var(--favorite-soft); }
+.logbook-favorite:hover { background: var(--favorite-soft); color: var(--favorite); }
+.logbook-favorite.active { color: var(--favorite); }
 .logbook-favorite.active svg { fill: var(--favorite); }
-.logbook-identity { min-width: 0; flex: 1; display: grid; gap: 4px; padding: 0; border: 0; background: none; text-align: left; color: var(--ink); }
-.logbook-identity strong { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.logbook-identity { min-width: 0; flex: 1; display: grid; gap: 2px; padding: 0; border: 0; border-radius: 4px; background: none; text-align: left; color: var(--ink); }
+.logbook-identity:hover { color: var(--accent); }
+.logbook-identity strong { font-size: 14px; font-weight: 600; letter-spacing: .025em; overflow-wrap: anywhere; }
 .logbook-identity strong .vector-icon { display: inline-block; width: 13px; height: 13px; margin-left: 4px; color: var(--muted); vertical-align: middle; }
 .logbook-identity[aria-expanded='true'] strong .vector-icon { transform: rotate(180deg); }
-.logbook-identity span { font-size: 13px; color: var(--muted-strong); overflow-wrap: anywhere; }
-.logbook-visit-count { display: grid; gap: 2px; justify-items: end; color: var(--muted); font-size: 12px; }
-.logbook-visit-count strong { color: var(--ink); font-family: var(--font-geist-mono), monospace; font-size: 18px; font-weight: 500; }
-.logbook-times { margin: 14px 0 0 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.logbook-times dt { color: var(--muted); font-size: 12px; }
-.logbook-times dd { margin: 4px 0 0; color: var(--muted-strong); font-size: 13px; }
-.logbook-aircraft-info { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 16px 0 12px; font-size: 13px; }
-.logbook-aircraft-info > span { color: var(--muted-strong); overflow-wrap: anywhere; }
-.logbook-aircraft-info button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--accent-soft); color: var(--accent); font-size: 13px; }
-.logbook-visits { padding: 14px; border-radius: 6px; background: var(--theme-input); }
-.logbook-visits h3 { margin: 0; font-size: var(--heading-section); font-weight: var(--heading-weight); }
+.logbook-identity span { font-size: var(--text-secondary-size); color: var(--text-secondary-color); overflow-wrap: anywhere; }
+.logbook-visit-count { display: grid; gap: 2px; justify-items: end; color: var(--text-secondary-color); font-size: var(--text-caption-size); }
+.logbook-visit-count strong { color: var(--ink); font-family: var(--font-geist-mono), monospace; font-size: 16px; font-weight: 500; }
+.logbook-times { margin: 0 0 0 44px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.logbook-times dt { color: var(--text-secondary-color); font-size: var(--text-caption-size); }
+.logbook-times dd { margin: 2px 0 0; color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
+.logbook-aircraft-info { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; font-size: var(--text-secondary-size); }
+.logbook-aircraft-info > span { color: var(--text-secondary-color); overflow-wrap: anywhere; }
+.logbook-aircraft-info button { min-height: 36px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 4px; background: none; color: var(--ink); font-size: 12px; font-weight: 550; }
+.logbook-aircraft-info button:hover { border-color: var(--muted); background: var(--accent-soft); }
+.logbook-visits { padding-top: 10px; border-top: 1px solid var(--line); }
+.logbook-visits h3 { margin: 0; font-size: 13px; font-weight: var(--heading-weight); }
 .logbook-visits p { margin: 8px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
-.logbook-visits ol { margin: 14px 0 0; padding: 0; list-style: none; }
-.logbook-visits li { padding: 8px 0; display: grid; gap: 4px; border-top: 1px solid var(--line); font-size: 12px; }
-.logbook-visits li span { color: var(--muted-strong); }
+.logbook-visits ol { margin: 4px 0 0; padding: 0; list-style: none; }
+.logbook-visits li { padding: 7px 0; display: grid; gap: 3px; border-top: 1px solid var(--line); font-size: var(--text-secondary-size); }
+.logbook-visits li:first-child { border-top: 0; }
+.logbook-visits li:last-child { padding-bottom: 0; }
+.logbook-visits li > span { color: var(--text-secondary-color); font-variant-numeric: tabular-nums; }
 .logbook-visits li strong { font-weight: 500; }
-.logbook-dialog footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; flex-shrink: 0; gap: 10px; padding: 14px 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.logbook-visit-meta { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.logbook-visit-meta > strong { min-width: 0; flex: 1 1 100px; font-family: var(--font-geist-mono), monospace; font-size: 12px; overflow-wrap: anywhere; }
+.logbook-visit-duration { display: flex; align-items: baseline; gap: 6px; margin: 0; white-space: nowrap; }
+.logbook-visit-duration dt { color: var(--text-secondary-color); }
+.logbook-visit-duration dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+.logbook-dialog footer { display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; padding: 8px 20px; border-top: 1px solid var(--line); color: var(--text-secondary-color); font-size: 12px; font-variant-numeric: tabular-nums; }
 .logbook-dialog nav { display: flex; align-items: center; gap: 10px; }
 .logbook-dialog button:disabled { opacity: .4; cursor: default; }
-.logbook-empty { padding: 40px 24px; text-align: center; color: var(--muted); }
+.logbook-empty { padding: 40px 20px; text-align: center; color: var(--text-secondary-color); }
 .logbook-empty > .vector-icon { width: 30px; height: 30px; margin: 0 auto 12px; }
-.logbook-empty h3 { margin: 0 0 8px; color: var(--ink); font-size: var(--heading-section); }
-.logbook-empty p { margin: 0; line-height: 1.5; }
-.logbook-notice { margin: 16px 24px; color: var(--danger); line-height: 1.5; }
+.logbook-empty h3 { margin: 0; color: var(--ink); font-size: var(--heading-section); }
+.logbook-notice { margin: 16px 20px; padding-left: 10px; border-left: 2px solid var(--accent); color: var(--ink); font-size: 13px; line-height: 1.5; }
+@media (min-width: 721px) {
+  .logbook-entry { grid-template-columns: minmax(0, 1fr) 340px; align-items: center; }
+  .logbook-times { margin: 0; }
+  .logbook-visits li { grid-template-columns: minmax(0, 1fr) 250px; align-items: baseline; column-gap: 16px; }
+}
 @media (max-width: 720px) {
   .logbook-dialog { max-height: calc(100dvh - 20px); }
-  .logbook-dialog header { padding: 16px; }
-  .logbook-controls { grid-template-columns: 100px minmax(0, 1fr); padding: 16px; }
+  .logbook-dialog > header { padding: 12px 16px; }
+  .logbook-toolbar { padding: 12px 16px; }
+  .logbook-controls { grid-template-columns: 120px minmax(0, 1fr); }
   .logbook-controls .logbook-search { grid-column: 1 / -1; }
-  .logbook-controls input, .logbook-controls select { font-size: 16px; }
-  .logbook-summary { padding: 0 16px 12px; }
-  .logbook-entry { padding: 16px; }
+  .logbook-controls input, .logbook-controls select { height: 40px; font-size: 16px; }
+  .logbook-dialog header button, .logbook-dialog nav button, .logbook-favorite { width: 40px; height: 40px; }
+  .logbook-filter-toggle, .logbook-aircraft-info button { min-height: 40px; }
+  .logbook-entry { padding: 10px 16px; }
   .logbook-times { margin-left: 0; }
-  .logbook-times dd { font-size: 12px; }
-  .logbook-dialog footer { padding: 12px 16px; }
+  .logbook-dialog footer { padding: 8px 16px; }
 }
-@media (max-width: 340px) {
+@media (max-width: 420px) {
   .logbook-controls { grid-template-columns: minmax(0, 1fr); }
 }

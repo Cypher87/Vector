@@ -2,9 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { LogbookResponse } from '../domain/logbook';
+import { logbookPageSize, type LogbookResponse } from '../domain/logbook';
+import { formatLogbookDuration } from '../domain/logbook-duration';
 import { localeForLanguage, translate, type Language } from '../i18n';
 import { VectorIcon } from './vector-icon';
+
+// Keep receiver API batches unchanged, including when connected to an older Vector server.
+const resultsPerPage = 10;
 
 function useLogbook(enabled: boolean, query: string, favorites?: string) {
   const requestKey = `${query}|${favorites ?? ''}`;
@@ -41,16 +45,19 @@ function LogbookVisits({ hex, days, language }: { hex: string; days: number; lan
   const date = new Intl.DateTimeFormat(localeForLanguage[language], { dateStyle: 'medium', timeStyle: 'short' });
   return <div className="logbook-visits">
     <h3>{t('logbookRecentVisits')}</h3>
-    <p>{t('logbookVisitDefinition')}</p>
     {result?.failed ? <p role="alert">{t('logbookUnavailable')}</p> : !result?.data ? <p role="status">{t('logbookLoading')}</p>
       : <ol>{result.data.visits?.map((visit) => <li key={visit.firstSeen}>
-        <span>{date.format(visit.firstSeen)} — {date.format(visit.lastSeen)}</span><strong>{visit.callsigns || '—'}</strong>
+        <span>{date.format(visit.firstSeen)} — {date.format(visit.lastSeen)}</span>
+        <div className="logbook-visit-meta"><strong>{visit.callsigns || '—'}</strong>
+          <dl className="logbook-visit-duration"><dt>{t('logbookDuration')}</dt>
+            <dd>{formatLogbookDuration(visit.firstSeen, visit.lastSeen, language)}</dd></dl>
+        </div>
       </li>)}</ol>}
   </div>;
 }
 
-export function LogbookMenu({ language, receiverName, favorites, liveIds, onFavorite, onSelect }: {
-  language: Language; receiverName: string; favorites: ReadonlySet<string>; liveIds: ReadonlySet<string>;
+export function LogbookMenu({ language, favorites, liveIds, onFavorite, onSelect }: {
+  language: Language; favorites: ReadonlySet<string>; liveIds: ReadonlySet<string>;
   onFavorite: (id: string) => void; onSelect: (id: string) => void;
 }) {
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
@@ -63,14 +70,20 @@ export function LogbookMenu({ language, receiverName, favorites, liveIds, onFavo
   const [expanded, setExpanded] = useState<string | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const query = new URLSearchParams({ q: search.trim(), days: String(days), page: String(page), sort }).toString();
+  const receiverPage = Math.floor((page - 1) * resultsPerPage / logbookPageSize) + 1;
+  const query = new URLSearchParams({ q: search.trim(), days: String(days), page: String(receiverPage), sort }).toString();
   const favoriteFilter = favoritesOnly ? JSON.stringify([...favorites].filter((id) => /^[a-f0-9]{6}$/.test(id)).sort()) : undefined;
   const result = useLogbook(open, query, favoriteFilter);
   const data = result?.data;
+  const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / resultsPerPage));
+  const currentPage = Math.min(page, pageCount);
+  const entryOffset = data ? (currentPage - 1) * resultsPerPage - (data.page - 1) * data.pageSize : 0;
+  const entries = data?.entries.slice(entryOffset, entryOffset + resultsPerPage);
   const date = new Intl.DateTimeFormat(localeForLanguage[language], { dateStyle: 'medium', timeStyle: 'short' });
-  const shortDate = new Intl.DateTimeFormat(localeForLanguage[language], { dateStyle: 'medium' });
   const close = () => { setOpen(false); setExpanded(null); requestAnimationFrame(() => button.current?.focus()); };
+  useEffect(() => { if (content.current) content.current.scrollTop = 0; }, [query, favoriteFilter, page]);
   useEffect(() => {
     if (!open) return;
     const element = dialog.current;
@@ -79,7 +92,7 @@ export function LogbookMenu({ language, receiverName, favorites, liveIds, onFavo
     return () => element?.close();
   }, [open]);
   return <>
-    <button ref={button} type="button" className="settings-button" aria-label={t('logbookOpen')} title={t('logbook')}
+    <button ref={button} type="button" className="settings-button" aria-label={t('logbookOpen')} title={t('logbook')} aria-haspopup="dialog" aria-expanded={open}
       onClick={() => setOpen(true)}><VectorIcon name="logbook" /></button>
     {open && createPortal(<dialog ref={dialog} className="logbook-dialog" aria-labelledby="logbook-title"
       onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); } }}
@@ -88,8 +101,10 @@ export function LogbookMenu({ language, receiverName, favorites, liveIds, onFavo
         const box = event.currentTarget.getBoundingClientRect();
         if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) close();
       }}>
-      <header><div><h2 id="logbook-title">{t('logbook')}</h2><p>{receiverName}</p></div>
+      <header><h2 id="logbook-title">{t('logbook')}</h2>
         <button type="button" aria-label={t('logbookClose')} onClick={close}><VectorIcon name="close" /></button></header>
+      <div className="logbook-content" ref={content}>
+      <div className="logbook-toolbar">
       <div className="logbook-controls">
         <label className="logbook-search"><VectorIcon name="search" /><input ref={searchInput} type="search" maxLength={80}
           aria-label={t('logbookSearch')} placeholder={t('logbookSearch')} value={search} onChange={(event) => {
@@ -99,19 +114,22 @@ export function LogbookMenu({ language, receiverName, favorites, liveIds, onFavo
           {[1, 7, 30, 90].map((value) => <option key={value} value={value}>{value === 1 ? t('logbookDay') : `${value} ${t('logbookDays')}`}</option>)}</select><VectorIcon name="chevronDown" /></span></label>
         <label><span>{t('logbookSort')}</span><span className="logbook-select"><select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); setExpanded(null); }}>
           <option value="recent">{t('logbookRecent')}</option><option value="visits">{t('logbookFrequent')}</option></select><VectorIcon name="chevronDown" /></span></label>
+      </div>
+      <div className="logbook-toolbar-meta">
         <button type="button" className="logbook-filter-toggle" aria-pressed={favoritesOnly} onClick={() => {
           setFavoritesOnly(!favoritesOnly); setPage(1); setExpanded(null);
         }}><VectorIcon name="favorite" />{t('favoritesOnly')}</button>
-      </div>
       <div className="logbook-summary" role="status">
         <strong>{data ? `${data.total} ${t(data.total === 1 ? 'logbookAircraftSingular' : 'logbookAircraft')}` : result?.failed ? '—' : t('logbookLoading')}</strong>
-        {data && <span>{result?.recording ? t('logbookRecording') : t('logbookPaused')}</span>}
+        {data && !result?.failed && !result?.recording && <span>{t('logbookPaused')}</span>}
+      </div>
+      </div>
       </div>
       <div className="logbook-body" aria-busy={!result}>
         {result?.failed && <p className="logbook-notice" role="alert">{t('logbookUnavailable')}</p>}
         {data?.entries.length === 0 && <div className="logbook-empty"><VectorIcon name="logbook" />
-          <h3>{favoritesOnly ? t('logbookNoFavorites') : search ? t('logbookNoResults') : t('logbookEmpty')}</h3>{search && <p>{t('logbookTrySearch')}</p>}</div>}
-        {data?.entries.map((entry) => <article className="logbook-entry" key={entry.hex}>
+          <h3>{favoritesOnly ? t('logbookNoFavorites') : search ? t('logbookNoResults') : t('logbookEmpty')}</h3></div>}
+        {entries?.map((entry) => <article className={`logbook-entry${expanded === entry.hex ? ' expanded' : ''}`} key={entry.hex}>
           <div className="logbook-entry-heading">
             <button type="button" className={`logbook-favorite ${favorites.has(entry.hex) ? 'active' : ''}`}
               aria-label={`${t('logbookFavorite')}: ${entry.registration || entry.hex}`} aria-pressed={favorites.has(entry.hex)} onClick={() => onFavorite(entry.hex)}><VectorIcon name="favorite" /></button>
@@ -119,23 +137,24 @@ export function LogbookMenu({ language, receiverName, favorites, liveIds, onFavo
               aria-controls={`logbook-visits-${entry.hex}`} onClick={() => setExpanded(expanded === entry.hex ? null : entry.hex)}>
               <strong>{entry.registration || entry.hex.toUpperCase()} <VectorIcon name="chevronDown" /></strong><span>{entry.callsign || '—'} · {entry.aircraftType || t('logbookUnknownType')}</span>
             </button>
-            <span className="logbook-visit-count" title={t('logbookVisitDefinition')}><strong>{entry.visits}</strong>{t('logbookVisits')}</span>
+            <span className="logbook-visit-count"><strong>{entry.visits}</strong>{t(entry.visits === 1 ? 'logbookVisitSingular' : 'logbookVisits')}</span>
           </div>
           <dl className="logbook-times"><div><dt>{t('logbookFirst')}</dt><dd>{date.format(entry.firstSeen)}</dd></div>
             <div><dt>{t('logbookLast')}</dt><dd>{date.format(entry.lastSeen)}</dd></div></dl>
-          {expanded === entry.hex && <div id={`logbook-visits-${entry.hex}`}>
+          {expanded === entry.hex && <div className="logbook-entry-details" id={`logbook-visits-${entry.hex}`}>
             <div className="logbook-aircraft-info"><span>{entry.hex.toUpperCase()} · {entry.description || entry.aircraftType || '—'}</span>
               {liveIds.has(entry.hex) && <button type="button" onClick={() => { close(); onSelect(entry.hex); }}>{t('logbookShowLive')} <span aria-hidden="true">↗</span></button>}</div>
             <LogbookVisits hex={entry.hex} days={days} language={language} />
           </div>}
         </article>)}
       </div>
-      {data && <footer><span>{`${t('logbookSince')} ${shortDate.format(data.startedAt)} · ${data.retentionDays} ${t('logbookDaysRetained')}`}</span>
-        {data.total > data.pageSize && <nav aria-label={t('logbookPages')}>
-          <button type="button" disabled={data.page <= 1} aria-label={t('logbookPrevious')} onClick={() => { setPage(data.page - 1); setExpanded(null); }}><VectorIcon name="chevronLeft" /></button>
-          <span>{data.page} / {Math.ceil(data.total / data.pageSize)}</span>
-          <button type="button" disabled={data.page * data.pageSize >= data.total} aria-label={t('logbookNext')} onClick={() => { setPage(data.page + 1); setExpanded(null); }}><VectorIcon name="chevronRight" /></button>
-        </nav>}
+      </div>
+      {data && pageCount > 1 && <footer>
+        <nav aria-label={t('logbookPages')}>
+          <button type="button" disabled={currentPage <= 1} aria-label={t('logbookPrevious')} onClick={() => { setPage(currentPage - 1); setExpanded(null); }}><VectorIcon name="chevronLeft" /></button>
+          <span>{currentPage} / {pageCount}</span>
+          <button type="button" disabled={currentPage >= pageCount} aria-label={t('logbookNext')} onClick={() => { setPage(currentPage + 1); setExpanded(null); }}><VectorIcon name="chevronRight" /></button>
+        </nav>
       </footer>}
     </dialog>, document.body)}
   </>;
