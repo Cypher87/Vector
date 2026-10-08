@@ -6,7 +6,8 @@ import type { LogbookResponse } from '../domain/logbook';
 import { localeForLanguage, translate, type Language } from '../i18n';
 import { VectorIcon } from './vector-icon';
 
-function useLogbook(enabled: boolean, query: string) {
+function useLogbook(enabled: boolean, query: string, favorites?: string) {
+  const requestKey = `${query}|${favorites ?? ''}`;
   const [result, setResult] = useState<{ query: string; data?: LogbookResponse; failed?: boolean; recording?: boolean }>();
   useEffect(() => {
     if (!enabled) return;
@@ -16,20 +17,22 @@ function useLogbook(enabled: boolean, query: string) {
       if (pending) return;
       pending = true;
       try {
-        const response = await fetch(`/api/logbook?${query}`, { cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]) });
+        const response = await fetch(`/api/logbook?${query}`, { cache: 'no-store', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]),
+          ...(favorites === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: `{"favorites":${favorites}}` }),
+        });
         if (!response.ok) throw new Error('Logbook unavailable');
         const data = await response.json() as LogbookResponse;
         if (!Array.isArray(data.entries) || !Number.isInteger(data.total)) throw new Error('Invalid response');
-        if (!controller.signal.aborted) setResult({ query, data, recording: !!data.updatedAt && Date.now() - data.updatedAt < 60_000 });
+        if (!controller.signal.aborted) setResult({ query: requestKey, data, recording: !!data.updatedAt && Date.now() - data.updatedAt < 60_000 });
       } catch {
-        if (!controller.signal.aborted) setResult((previous) => ({ query, data: previous?.query === query ? previous.data : undefined, failed: true }));
+        if (!controller.signal.aborted) setResult((previous) => ({ query: requestKey, data: previous?.query === requestKey ? previous.data : undefined, failed: true }));
       } finally { pending = false; }
     };
     const debounce = setTimeout(() => { void load(); }, 250);
     const refresh = setInterval(() => { void load(); }, 30_000);
     return () => { controller.abort(); clearTimeout(debounce); clearInterval(refresh); };
-  }, [enabled, query]);
-  return enabled && result?.query === query ? result : undefined;
+  }, [enabled, query, favorites, requestKey]);
+  return enabled && result?.query === requestKey ? result : undefined;
 }
 
 function LogbookVisits({ hex, days, language }: { hex: string; days: number; language: Language }) {
@@ -56,12 +59,14 @@ export function LogbookMenu({ language, receiverName, favorites, liveIds, onFavo
   const [days, setDays] = useState(90);
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState('recent');
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const button = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const query = new URLSearchParams({ q: search.trim(), days: String(days), page: String(page), sort }).toString();
-  const result = useLogbook(open, query);
+  const favoriteFilter = favoritesOnly ? JSON.stringify([...favorites].filter((id) => /^[a-f0-9]{6}$/.test(id)).sort()) : undefined;
+  const result = useLogbook(open, query, favoriteFilter);
   const data = result?.data;
   const date = new Intl.DateTimeFormat(localeForLanguage[language], { dateStyle: 'medium', timeStyle: 'short' });
   const shortDate = new Intl.DateTimeFormat(localeForLanguage[language], { dateStyle: 'medium' });
@@ -90,10 +95,13 @@ export function LogbookMenu({ language, receiverName, favorites, liveIds, onFavo
           aria-label={t('logbookSearch')} placeholder={t('logbookSearch')} value={search} onChange={(event) => {
             setSearch(event.target.value); setPage(1); setExpanded(null);
           }} /></label>
-        <label><span>{t('logbookPeriod')}</span><select value={days} onChange={(event) => { setDays(Number(event.target.value)); setPage(1); setExpanded(null); }}>
-          {[1, 7, 30, 90].map((value) => <option key={value} value={value}>{value === 1 ? t('logbookDay') : `${value} ${t('logbookDays')}`}</option>)}</select></label>
-        <label><span>{t('logbookSort')}</span><select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); setExpanded(null); }}>
-          <option value="recent">{t('logbookRecent')}</option><option value="visits">{t('logbookFrequent')}</option></select></label>
+        <label><span>{t('logbookPeriod')}</span><span className="logbook-select"><select value={days} onChange={(event) => { setDays(Number(event.target.value)); setPage(1); setExpanded(null); }}>
+          {[1, 7, 30, 90].map((value) => <option key={value} value={value}>{value === 1 ? t('logbookDay') : `${value} ${t('logbookDays')}`}</option>)}</select><VectorIcon name="chevronDown" /></span></label>
+        <label><span>{t('logbookSort')}</span><span className="logbook-select"><select value={sort} onChange={(event) => { setSort(event.target.value); setPage(1); setExpanded(null); }}>
+          <option value="recent">{t('logbookRecent')}</option><option value="visits">{t('logbookFrequent')}</option></select><VectorIcon name="chevronDown" /></span></label>
+        <button type="button" className="logbook-filter-toggle" aria-pressed={favoritesOnly} onClick={() => {
+          setFavoritesOnly(!favoritesOnly); setPage(1); setExpanded(null);
+        }}><VectorIcon name="favorite" />{t('favoritesOnly')}</button>
       </div>
       <div className="logbook-summary" role="status">
         <strong>{data ? `${data.total} ${t(data.total === 1 ? 'logbookAircraftSingular' : 'logbookAircraft')}` : result?.failed ? '—' : t('logbookLoading')}</strong>
@@ -102,7 +110,7 @@ export function LogbookMenu({ language, receiverName, favorites, liveIds, onFavo
       <div className="logbook-body" aria-busy={!result}>
         {result?.failed && <p className="logbook-notice" role="alert">{t('logbookUnavailable')}</p>}
         {data?.entries.length === 0 && <div className="logbook-empty"><VectorIcon name="logbook" />
-          <h3>{search ? t('logbookNoResults') : t('logbookEmpty')}</h3>{search && <p>{t('logbookTrySearch')}</p>}</div>}
+          <h3>{favoritesOnly ? t('logbookNoFavorites') : search ? t('logbookNoResults') : t('logbookEmpty')}</h3>{search && <p>{t('logbookTrySearch')}</p>}</div>}
         {data?.entries.map((entry) => <article className="logbook-entry" key={entry.hex}>
           <div className="logbook-entry-heading">
             <button type="button" className={`logbook-favorite ${favorites.has(entry.hex) ? 'active' : ''}`}

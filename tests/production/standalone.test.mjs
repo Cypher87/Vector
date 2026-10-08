@@ -104,6 +104,19 @@ test('local and remote production runtimes serve live, metadata, outline, traces
       assert.equal(logbook.entries[0].registration, 'TEST-A');
       assert.equal(logbook.entries[0].visits, 1);
       assert.equal((await request(`${origin}/api/logbook?url=https://example.com`)).status, 400);
+      const favoriteQuery = (body, query = '') => request(`${origin}/api/logbook${query}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+      });
+      for (const [favorites, expected] of [[['ABC123'], 1], [[], 0], [['def456'], 0], [Array(2000).fill('abc123'), 1]]) {
+        const filtered = await favoriteQuery({ favorites });
+        assert.equal(filtered.status, 200);
+        assert.equal((await filtered.json()).total, expected);
+      }
+      assert.equal((await (await favoriteQuery({ favorites: ['abc123'] }, '?q=unmatched')).json()).total, 0);
+      for (const body of [{}, { favorites: ['bad'] }, { favorites: [], url: 'https://example.com' }, { favorites: Array(2001).fill('abc123') }]) {
+        assert.equal((await favoriteQuery(body)).status, 400);
+      }
+      assert.equal((await favoriteQuery({ favorites: ['x'.repeat(25 * 1024)] })).status, 413);
       assert.equal(config.dataBaseUrl, '/api/readsb?source=live');
       assert.equal(JSON.stringify(config).includes(root), false);
       assert.equal((await (await get('/api/updates')).json()).enabled, false);
@@ -138,6 +151,7 @@ test('local and remote production runtimes serve live, metadata, outline, traces
     for (const path of ['/api/readsb?source=live&path=aircraft.json', '/api/aircraft-metadata?ids=abc123', '/api/aircraft-database-status', '/api/logbook']) {
       assert.equal((await request(`${remote}${path}`, { headers: { 'x-vector-data-proxy': '1' } })).status, 508);
     }
+    assert.equal((await request(`${remote}/api/logbook`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-vector-data-proxy': '1' }, body: '{"favorites":[]}' })).status, 508);
     // No more browser requests: a later receiver snapshot must still be recorded by the timer.
     await writeFile(join(live, 'aircraft.json'), JSON.stringify({ now: Date.now() / 1000, aircraft: [{ hex: 'def456', seen: 0 }] }));
     const recorded = new DatabaseSync(environment.VECTOR_LOGBOOK_STORE, { readOnly: true });

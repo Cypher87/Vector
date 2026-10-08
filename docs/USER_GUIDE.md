@@ -82,7 +82,7 @@ These are decorative airflow cues, **not measured condensation trails or engine-
 
 ## Receiver logbook
 
-The book icon in the top bar opens **Logbook**. Search callsign, registration, type or ICAO address; choose 24 hours, 7, 30 or 90 days and sort by most recent reception or most visits. The count and first/last reception apply to that period, within the receiver's retention window.
+The book icon in the top bar opens **Logbook**. Search callsign, registration, type or ICAO address; choose 24 hours, 7, 30 or 90 days and sort by most recent reception or most visits. **Favorites only** filters the entire logbook using your existing favorites, combined with the search and period. The count and first/last reception apply to that period, within the receiver's retention window.
 
 Click an aircraft's name to expand up to 50 recent visits. A new visit begins after a reception gap of at least 30 minutes, not necessarily a new flight. The star uses your existing favorites and device synchronization. **View live** appears when that aircraft is currently in the live feed and opens its details on the map.
 

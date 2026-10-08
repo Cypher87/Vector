@@ -8,7 +8,7 @@ export type LogbookEntry = Omit<LogbookObservation, 'at'> & {
   firstSeen: number; lastSeen: number; visits: number;
 };
 export type LogbookVisit = { firstSeen: number; lastSeen: number; callsigns: string };
-export type LogbookQuery = { search: string; days: number; page: number; sort: 'recent' | 'visits'; hex?: string };
+export type LogbookQuery = { search: string; days: number; page: number; sort: 'recent' | 'visits'; hex?: string; favorites?: string[] };
 export type LogbookResponse = {
   entries: LogbookEntry[]; total: number; page: number; pageSize: number; days: number;
   retentionDays: number; startedAt: number; updatedAt: number | null;
@@ -17,6 +17,13 @@ export type LogbookResponse = {
 
 const cleanText = (value: unknown, maximum: number) => typeof value === 'string'
   ? value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, maximum) : '';
+
+/** An empty list matches nothing; omission means no favorites filter. */
+export function parseLogbookFavorites(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 2000
+    || value.some((id) => typeof id !== 'string' || !/^[a-f0-9]{6}$/i.test(id))) throw new Error('Invalid favorites');
+  return [...new Set((value as string[]).map((id) => id.toLowerCase()))].sort();
+}
 
 /** Only fresh receiver observations count; never turn a cached snapshot into a visit. */
 export function parseLogbookSnapshot(value: unknown, now = Date.now()) {

@@ -18,7 +18,9 @@ for (const language of ['en', 'nl']) {
       requests.push(params.toString());
       const search = (params.get('q') || '').toLowerCase();
       const hex = params.get('hex');
+      const favoriteIds: string[] | undefined = route.request().method() === 'POST' ? route.request().postDataJSON().favorites : undefined;
       const matches = entries.filter((entry) => (!hex || hex === entry.hex)
+        && (favoriteIds === undefined || favoriteIds.includes(entry.hex))
         && `${entry.registration} ${entry.callsign} ${entry.aircraftType} ${entry.hex}`.toLowerCase().includes(search));
       const pageIndex = Math.min(Number(params.get('page') || 1), Math.max(1, Math.ceil(matches.length / 30)));
       await route.fulfill({ json: { entries: matches.slice((pageIndex - 1) * 30, pageIndex * 30), total: matches.length,
@@ -37,12 +39,30 @@ for (const language of ['en', 'nl']) {
     await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('vector.favoriteAircraft') || '[]'))).toContain('abc123');
     await dialog.getByRole('button', { name: nl ? 'Volgende pagina' : 'Next page' }).click();
     await expect(dialog.locator('.logbook-entry')).toHaveCount(6);
+    const favoritesFilter = dialog.getByRole('button', { name: nl ? 'Alleen favorieten' : 'Favorites only', exact: true });
+    await favoritesFilter.click();
+    await expect(favoritesFilter).toHaveAttribute('aria-pressed', 'true');
+    await expect(dialog.locator('.logbook-entry')).toHaveCount(1);
+    await expect(dialog.locator('.logbook-identity')).toContainText('TEST-1');
+    await expect(dialog.getByRole('button', { name: nl ? 'Volgende pagina' : 'Next page' })).toHaveCount(0);
+    await favorite.click();
+    await expect(dialog.locator('.logbook-entry')).toHaveCount(0);
+    await expect(dialog).toContainText(nl ? 'Geen favoriete toestellen gevonden' : 'No favorite aircraft found');
+    await favoritesFilter.click();
+    await expect(dialog.locator('.logbook-entry')).toHaveCount(30);
+    await favorite.click();
     await dialog.getByRole('searchbox').fill('test-1');
     await expect(dialog.locator('.logbook-entry')).toHaveCount(1);
     await dialog.getByRole('combobox', { name: nl ? 'Periode' : 'Period', exact: true }).selectOption('7');
     await expect.poll(() => requests.at(-1)).toContain('days=7');
     await dialog.getByRole('combobox', { name: nl ? 'Sorteren' : 'Sort', exact: true }).selectOption('visits');
     await expect.poll(() => requests.at(-1)).toContain('sort=visits');
+    for (const field of await dialog.locator('.logbook-select').all()) {
+      const selectBox = (await field.locator('select').boundingBox())!;
+      const chevronBox = (await field.locator('.vector-icon').boundingBox())!;
+      expect(selectBox.x + selectBox.width - chevronBox.x - chevronBox.width).toBeGreaterThanOrEqual(11);
+      expect(await field.locator('select').evaluate((select) => getComputedStyle(select).appearance)).toBe('none');
+    }
     await dialog.locator('.logbook-identity').click();
     await expect(dialog.locator('.logbook-visits ol')).toContainText('VECTOR0');
     await page.screenshot({ path: testInfo.outputPath(`logbook-${language}.png`) });
@@ -62,6 +82,9 @@ for (const language of ['en', 'nl']) {
       await page.setViewportSize({ width: 320, height: 640 });
       await expect(trigger).toBeInViewport({ ratio: 1 });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await trigger.click();
+      expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath(`logbook-narrow-${language}.png`) });
     }
   });
 }

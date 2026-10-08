@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { logbookVisitGapMs, parseLogbookSnapshot, parseLogbookQuery } from '../src/domain/logbook.ts';
+import { logbookVisitGapMs, parseLogbookSnapshot, parseLogbookQuery, parseLogbookFavorites } from '../src/domain/logbook.ts';
 import { LogbookStore } from '../src/server/logbook-store.ts';
 import { logbookSettings } from '../src/server/logbook-runtime.ts';
 
@@ -66,9 +66,19 @@ test('logbook search is literal, pagination stable, date filters and retention b
     assert.equal(store.query(query('page=999'), now).page, 2);
     for (const q of ['%', '_', "' OR 1=1 --"]) assert.equal(store.query(query(`q=${encodeURIComponent(q)}`), now).total, 0);
     assert.equal(store.query(query('q=ph-1'), now).total, 11);
+    const favorites = ['000000', '000027']; // Includes an aircraft beyond the unfiltered first page.
+    const favoriteResult = store.query({ ...query('page=2'), favorites }, now);
+    assert.equal(favoriteResult.total, 2);
+    assert.equal(favoriteResult.page, 1);
+    assert.deepEqual(favoriteResult.entries.map((entry) => entry.hex), favorites);
+    assert.equal(store.query({ ...query('q=PH-39'), favorites }, now).total, 1);
+    assert.equal(store.query({ ...query(), favorites: [] }, now).total, 0);
+    assert.equal(store.query({ ...query(), favorites: ['ffffff'] }, now).total, 0);
+    assert.deepEqual(store.query({ ...query('hex=000000'), favorites: [] }, now).visits, []);
     const tomorrow = now + 86400_000 * 2;
     store.record(snapshot(tomorrow, [{ ...item, hex: '000001' }]), tomorrow);
     assert.equal(store.query(query('days=1'), tomorrow).total, 1);
+    assert.equal(store.query({ ...query('days=1'), favorites }, tomorrow).total, 0);
     assert.equal(store.query(query('sort=visits'), tomorrow).entries[0].hex, '000001');
     const expired = now + 86400_000 * 31;
     store.record(snapshot(expired, []), expired);
@@ -80,6 +90,10 @@ test('logbook search is literal, pagination stable, date filters and retention b
 });
 
 test('logbook rejects unbounded or injected queries and invalid configuration', () => {
+  assert.deepEqual(parseLogbookFavorites(['ABC123', 'abc123', 'def456']), ['abc123', 'def456']);
+  assert.deepEqual(parseLogbookFavorites([]), []);
+  assert.equal(parseLogbookFavorites(Array(2000).fill('abc123')).length, 1);
+  for (const value of [null, {}, 'abc123', [null], ['~abc123'], ['abc12'], ["' OR 1=1"], Array(2001).fill('abc123')]) assert.throws(() => parseLogbookFavorites(value));
   for (const params of ['url=https://example.com', 'page=-1', 'page=1.5', 'page=10001', 'days=365', 'sort=lastSeen;DROP', 'hex=../a', 'q=a&q=b', `q=${'x'.repeat(81)}`]) assert.throws(() => query(params));
   assert.throws(() => logbookSettings({ VECTOR_LOGBOOK_STORE: 'relative.sqlite' }));
   assert.throws(() => logbookSettings({ VECTOR_LOGBOOK_DAYS: '0' }));
