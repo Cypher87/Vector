@@ -2,7 +2,7 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.1.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.2.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
@@ -122,6 +122,10 @@ sudo /opt/vector/runtime/node/bin/node /usr/local/lib/vector-updater/set-update-
 Set `VECTOR_UPDATES_ENABLED=true` in `/etc/vector/vector.env`, run `sudo systemctl restart vector`, and refresh the browser. **Updates** then appears at the bottom of **Settings**. Setting a password alone does not enable the menu. Use the same password command to change it later.
 
 Unlock **Settings → Updates**, choose **Check for updates**, then confirm the proposed build. **Checks and installation are manual**: Vector does not check at startup or on a schedule. Closing the browser does not cancel an accepted update.
+
+During the app and updater restarts, the interface reconnects automatically. Once the new build is ready and both services are reachable, the page refreshes once. Temporary disconnects are not reported as installation failures; a longer interruption shows an explicit connection warning, while actual installer failures remain visible.
+
+Update progress, results and errors are shown only while the administrator session is unlocked. Other visitors see the installed version and, when available, the administrator login form.
 
 Browser updates apply to the Vector server you opened, not a remote receiver or local development server. Pairing codes do not grant administrator access. Use HTTPS outside a trusted LAN. See [setup, security and troubleshooting](docs/STANDALONE.md#browser-updates).
 

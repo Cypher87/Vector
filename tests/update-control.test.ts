@@ -103,6 +103,25 @@ test('old update approvals and expired administrator sessions cannot start a job
   assert.equal((await f.control.handle('apply', { confirm: true, revision: next.revision }, login.body.token)).status, 409);
 });
 
+test('completion reports the pending worker restart and the approved target even after authentication expires', async () => {
+  const f = await fixture();
+  let finished = false;
+  f.control.io.finished = () => { finished = true; };
+  await f.control.handle('check', {}, f.token);
+  await f.control.handle('apply', { confirm: true, revision: next.revision }, f.token);
+  const running = await f.control.handle('status');
+  assert.ok('targetRevision' in running.body && 'restarting' in running.body);
+  assert.equal(running.body.targetRevision, next.revision);
+  assert.equal(running.body.restarting, false);
+  await f.complete();
+  assert.equal(finished, true);
+  const completed = await f.control.handle('status');
+  assert.ok('restarting' in completed.body);
+  assert.equal(completed.body.restarting, true);
+  assert.equal(f.writes.at(-1)?.phase, 'complete');
+  assert.equal((await f.control.handle('apply', { confirm: true, revision: next.revision }, f.token)).status, 409);
+});
+
 test('failure is persisted without leaking installer output and recovery failures remain explicit', async () => {
   const f = await fixture();
   f.control.io.install = async () => { throw new Error('recovery_required'); };

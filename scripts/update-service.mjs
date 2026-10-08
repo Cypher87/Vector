@@ -188,6 +188,7 @@ export async function startUpdateService() {
   const previous = await readFile(statePath, 'utf8').then(JSON.parse).catch((error) => { if (error.code !== 'ENOENT') console.error('[Vector updater] Could not read previous status'); return null; });
   if (previous && updatePhases.includes(previous.phase)) {
     control.phase = previous.phase;
+    control.targetRevision = revisionPattern.test(previous.revision || '') ? previous.revision : null;
     control.error = ['update_failed', 'recovery_required'].includes(previous.error) ? previous.error : null;
     if (['downloading', 'building', 'activating', 'verifying', 'restoring'].includes(previous.phase)) {
       try { await recoverPending(); control.error = 'update_failed'; }

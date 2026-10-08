@@ -17,6 +17,7 @@ export class UpdateControl {
   async status(authenticated, configured) {
     const current = await this.io.current();
     return { enabled: true, ready: configured && !!current.revision, authenticated, current, phase: this.phase, error: this.error,
+      restarting: !!this.restarting, targetRevision: this.targetRevision || null,
       ...(authenticated ? { available: this.available, checkedAt: this.checkedAt || null } : {}),
       ...(!configured ? { error: 'password_not_configured' } : !current.revision ? { error: 'unmanaged_installation' } : {}) };
   }
@@ -59,6 +60,7 @@ export class UpdateControl {
       return { status: 409, body: { error: 'check_required' } };
     }
     const revision = this.available.revision;
+    this.targetRevision = revision;
     this.phase = 'downloading'; this.error = null;
     // Mark busy before any async writes, and acknowledge independently of the web process being restarted.
     this.job = this.perform(revision);
