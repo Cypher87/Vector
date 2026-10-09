@@ -10,6 +10,38 @@ import { VectorIcon } from './vector-icon';
 
 const pageSize = 10;
 
+function FavoriteRemovalConfirmation({ label, language, onCancel, onConfirm }: {
+  label: string; language: Language; onCancel: () => void; onConfirm: () => void;
+}) {
+  const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    element?.showModal();
+    cancel.current?.focus();
+    return () => element?.close();
+  }, []);
+  return <dialog ref={dialog} className="favorites-dialog favorites-confirm-dialog" role="alertdialog"
+    aria-labelledby="favorites-remove-title" aria-describedby="favorites-remove-aircraft"
+    onKeyDown={(event) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onCancel(); }
+    }}
+    onCancel={(event) => { event.preventDefault(); event.stopPropagation(); onCancel(); }}
+    onClick={(event) => {
+      if (event.target !== event.currentTarget) return;
+      const box = event.currentTarget.getBoundingClientRect();
+      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) onCancel();
+    }}>
+    <header><h2 id="favorites-remove-title">{t('favoritesRemoveTitle')}</h2></header>
+    <p id="favorites-remove-aircraft">{label}</p>
+    <footer>
+      <button ref={cancel} type="button" onClick={onCancel}>{t('cancel')}</button>
+      <button type="button" className="favorites-confirm-remove" onClick={onConfirm}>{t('favoritesRemove')}</button>
+    </footer>
+  </dialog>;
+}
+
 export function FavoritesMenu({ language, favorites, aircraft, status, onRemove, onSelect }: {
   language: Language; favorites: ReadonlySet<string>; aircraft: readonly Aircraft[]; status: FeedStatus;
   onRemove: (id: string) => void; onSelect: (id: string) => void;
@@ -19,11 +51,13 @@ export function FavoritesMenu({ language, favorites, aircraft, status, onRemove,
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [retry, setRetry] = useState(0);
+  const [pendingRemoval, setPendingRemoval] = useState<{ id: string; label: string } | null>(null);
   const [lookup, setLookup] = useState({ records: new Map<string, AircraftMetadata>(), failed: false, key: '' });
   const trigger = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const content = useRef<HTMLDivElement>(null);
+  const removeButton = useRef<HTMLButtonElement | null>(null);
   const favoriteKey = [...favorites].sort().join(',');
 
   useEffect(() => {
@@ -70,6 +104,7 @@ export function FavoritesMenu({ language, favorites, aircraft, status, onRemove,
   const currentPage = Math.min(page, pages);
   const visible = matches.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const close = (restoreFocus = true) => {
+    setPendingRemoval(null);
     setOpen(false);
     if (restoreFocus) requestAnimationFrame(() => trigger.current?.focus());
   };
@@ -106,9 +141,9 @@ export function FavoritesMenu({ language, favorites, aircraft, status, onRemove,
         {visible.length === 0 ? <p className="favorites-empty">{t(favorites.size === 0 ? 'favoritesEmpty' : 'logbookNoResults')}</p>
           : <ul className="favorites-list">{visible.map((entry) => <li key={entry.id} data-aircraft-id={entry.id}>
             <button type="button" className="favorites-remove" aria-label={`${t('removeFromFavorites')}: ${entry.registration || entry.id.toUpperCase()}`}
-              title={t('removeFromFavorites')} onClick={() => {
-                onRemove(entry.id);
-                requestAnimationFrame(() => searchInput.current?.focus({ preventScroll: true }));
+              title={t('removeFromFavorites')} onClick={(event) => {
+                removeButton.current = event.currentTarget;
+                setPendingRemoval({ id: entry.id, label: entry.registration ? `${entry.registration} · ${entry.id.toUpperCase()}` : entry.id.toUpperCase() });
               }}><VectorIcon name="favorite" /></button>
             <div className="favorites-identity">
               <strong>{entry.registration || entry.id.toUpperCase()}</strong>
@@ -124,6 +159,17 @@ export function FavoritesMenu({ language, favorites, aircraft, status, onRemove,
         <span>{currentPage} / {pages}</span>
         <button type="button" disabled={currentPage === pages} aria-label={t('logbookNext')} onClick={() => setPage(currentPage + 1)}><VectorIcon name="chevronRight" /></button>
       </nav></footer>}
+      {pendingRemoval && <FavoriteRemovalConfirmation label={pendingRemoval.label} language={language}
+        onCancel={() => {
+          setPendingRemoval(null);
+          requestAnimationFrame(() => (removeButton.current?.isConnected ? removeButton.current : searchInput.current)?.focus({ preventScroll: true }));
+        }}
+        onConfirm={() => {
+          // Another synchronized device may already have removed this favorite.
+          if (favorites.has(pendingRemoval.id)) onRemove(pendingRemoval.id);
+          setPendingRemoval(null);
+          requestAnimationFrame(() => searchInput.current?.focus({ preventScroll: true }));
+        }} />}
     </dialog>, document.body)}
   </>;
 }

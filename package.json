@@ -1,6 +1,6 @@
 {
   "name": "vector-adsb-radar",
-  "version": "0.9.6",
+  "version": "0.9.7",
   "private": true,
   "packageManager": "pnpm@11.19.0",
   "engines": {
