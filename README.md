@@ -2,7 +2,7 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.5.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.6.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
@@ -15,6 +15,8 @@ A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/reads
 - Desktop and mobile layouts, Dutch/English, coordinated dark/light/automatic appearance, and three unit systems.
 - Optional live synchronization between devices, without accounts or passwords.
 - Optional administrator-protected browser updates, with staged builds and recovery.
+
+The star next to the aircraft filters opens all saved favorites, including aircraft not currently received. Search by registration, callsign, type or ICAO, remove favorites, or open a live aircraft. On mobile, open the aircraft list first.
 
 ## Install on Raspberry Pi
 

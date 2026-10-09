@@ -12,6 +12,7 @@ import { HistoryControls } from '../src/components/history-controls';
 import { FlightProfile } from '../src/components/flight-profile';
 import { ReceiverDashboard } from '../src/components/receiver-dashboard';
 import { LogbookMenu } from '../src/components/logbook-menu';
+import { FavoritesMenu } from '../src/components/favorites-menu';
 import { SyncMenu } from '../src/components/sync-menu';
 import { SettingsMenu } from '../src/components/settings-menu';
 import { vectorVersion } from '../src/version';
@@ -721,6 +722,12 @@ export default function Home() {
               <h1>{t('aircraftListTitle')}</h1>
             </div>
             <div className="panel-buttons">
+              <FavoritesMenu language={language} favorites={favoriteAircraftIdSet} aircraft={feed.aircraft} status={feed.status}
+                onRemove={toggleFavoriteAircraft} onSelect={(id) => {
+                  if (history.open) history.close();
+                  setMobileListOpen(false);
+                  selectAircraftFromEvent(id);
+                }} />
               <AircraftFilterMenu
                 activeFilterCount={activeFilterCount}
                 filters={aircraftFilters}
