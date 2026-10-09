@@ -42,3 +42,27 @@ test('metadata supplies absent live fields without replacing receiver identity o
   assert.equal(entry.description, 'Airbus A320');
   assert.equal(favoriteAircraftOverview(['ffffff'], [], new Map(), 'offline').length, 1);
 });
+
+test('offline callsigns stay in the overview and only exact fresh matches can open aircraft details', () => {
+  const offline = favoriteAircraftOverview([], [], metadata, 'live', ['klm123', 'KLM123']);
+  assert.equal(offline.length, 1);
+  assert.equal(offline[0].callsign, 'KLM123');
+  assert.equal(offline[0].live, false);
+  assert.equal(offline[0].liveAircraftId, undefined);
+  const matches = [{ ...live, flight: ' klm123 ' }];
+  const online = favoriteAircraftOverview([], matches, metadata, 'live', ['KLM123']);
+  assert.equal(online[0].liveAircraftId, 'abc123');
+  assert.equal(online[0].registration, 'PH-LIVE');
+  for (const status of ['offline', 'stale', 'connecting'] as const) {
+    assert.equal(favoriteAircraftOverview([], matches, metadata, status, ['KLM123'])[0].liveAircraftId, undefined);
+  }
+  assert.equal(favoriteAircraftOverview([], [{ ...matches[0], flight: 'KLM1234' }], metadata, 'live', ['KLM123'])[0].live, false);
+  assert.equal(favoriteAircraftOverview([], [{ ...matches[0], seenSeconds: 61 }], metadata, 'live', ['KLM123'])[0].live, false);
+});
+
+test('ambiguous callsign matches never open an arbitrary aircraft', () => {
+  const [entry] = favoriteAircraftOverview([], [live, { ...live, id: 'def456' }], metadata, 'live', ['VECTOR01']);
+  assert.equal(entry.live, true);
+  assert.equal(entry.liveAircraftId, undefined);
+  assert.equal(entry.registration, undefined);
+});

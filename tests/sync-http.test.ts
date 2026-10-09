@@ -114,7 +114,7 @@ test('a preference update is delivered live to another paired device', async () 
     assert.equal(presenceBody.devices.find((device) => device.id === pairedBody.deviceId)?.online, true);
 
     const saved = await savePreferencesResponse(request('/api/sync/preferences', {
-      body: JSON.stringify({ patch: { favoriteAircraft: { add: ['abc123'] }, settings: { language: 'en' } } }),
+      body: JSON.stringify({ patch: { favoriteAircraft: { add: ['abc123'] }, favoriteCallsigns: { add: ['klm123'] }, settings: { language: 'en' } } }),
       headers: { 'content-type': 'application/json', cookie: firstCookie },
       method: 'PUT',
     }));
@@ -132,7 +132,7 @@ test('a preference update is delivered live to another paired device', async () 
       preferences: { favoriteAircraft: string[]; language: string };
     };
     assert.equal(sessionBody.devices.length, 2);
-    assert.deepEqual(sessionBody.preferences, { favoriteAircraft: ['4840d6', 'abc123'], language: 'en' });
+    assert.deepEqual(sessionBody.preferences, { favoriteAircraft: ['4840d6', 'abc123'], favoriteCallsigns: ['KLM123'], language: 'en' });
 
     const firstDeviceId = sessionBody.devices.find((device) => !device.current)?.id;
     assert.ok(firstDeviceId);

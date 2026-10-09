@@ -21,6 +21,23 @@ const aircraft = (id: string, overrides: Partial<Aircraft> = {}): Aircraft => ({
   ...overrides,
 });
 
+test('offline callsign favorites notify on arrival, not startup, brief gaps or adding an already-live flight', () => {
+  const ids = new Set<string>();
+  const callsigns = new Set(['KLM123']);
+  const contact = aircraft('abc123', { flight: 'KLM123' });
+  const observe = (state: ReturnType<typeof emptyRadarEventMonitorState>, items: Aircraft[], timestamp: number, saved = callsigns) =>
+    detectRadarEvents(state, items, ids, 'live', defaultRadarEventPreferences, timestamp, true, undefined, saved);
+  const absent = observe(emptyRadarEventMonitorState(), [], 0);
+  const entered = observe(absent.state, [contact], 1000);
+  assert.deepEqual(entered.events.map((event) => [event.kind, event.aircraftId]), [['favorite-entered', 'abc123']]);
+  assert.equal(observe(emptyRadarEventMonitorState(), [contact], 0).events.length, 0);
+  const removed = observe(entered.state, [], 2000);
+  assert.equal(observe(removed.state, [{ ...contact, id: 'def456' }], 3000).events.length, 0);
+  const notSaved = observe(emptyRadarEventMonitorState(), [contact], 0, new Set());
+  assert.equal(observe(notSaved.state, [contact], 1000).events.length, 0);
+  assert.equal(observe(absent.state, [{ ...contact, flight: 'KLM1234' }], 1000).events.length, 0);
+});
+
 test('initial feed and short reception gaps create no favorite arrival flood', () => {
   const favoriteIds = new Set(['abc123']);
   const initial = detectRadarEvents(

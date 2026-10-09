@@ -13,6 +13,8 @@ export type FilterNotificationContext = {
   distanceKm: (aircraft: Aircraft) => number | undefined;
   /** A receiver change must establish a new baseline for distance filters. */
   receiverKey: string;
+  /** Saved rules, not the aircraft currently resolved by those rules. */
+  favoriteSignature?: readonly string[];
 };
 
 /** Observe the entire fresh feed, independently of the map, search and active view. */
@@ -32,7 +34,7 @@ export function observeFilterNotifications(
     if (!preset.notifyOnMatch || !canNotifyForPreset(preset)) continue;
     const signature = JSON.stringify([
       preset.filters,
-      preset.filters.favoritesOnly ? [...favoriteIds].sort() : null,
+      preset.filters.favoritesOnly ? context.favoriteSignature ?? [...favoriteIds].sort() : null,
       preset.filters.distance === null ? null : context.receiverKey,
     ]);
     const old = previous.get(preset.id);

@@ -74,9 +74,9 @@ export class LogbookStore {
       (? = '' OR a.hex LIKE ? ESCAPE '\\' OR a.registration LIKE ? ESCAPE '\\'
         OR a.aircraftType LIKE ? ESCAPE '\\' OR a.description LIKE ? ESCAPE '\\'
         OR EXISTS (SELECT 1 FROM visits s WHERE s.hex=a.hex AND s.lastSeen >= ? AND s.callsigns LIKE ? ESCAPE '\\'))
-      ${query.favorites === undefined ? '' : 'AND a.hex IN (SELECT value FROM json_each(?))'}`;
+      ${query.favorites === undefined ? '' : "AND (a.hex IN (SELECT value FROM json_each(?)) OR upper(replace(a.callsign, ' ', '')) IN (SELECT value FROM json_each(?)))"}`;
     const args = [since, query.hex || '', query.hex || '', query.search, pattern, pattern, pattern, pattern, since, pattern];
-    if (query.favorites !== undefined) args.push(JSON.stringify(query.favorites));
+    if (query.favorites !== undefined) args.push(JSON.stringify(query.favorites), JSON.stringify(query.favoriteCallsigns ?? []));
     const total = Number(this.db.prepare(`SELECT COUNT(DISTINCT a.hex) AS total FROM aircraft a JOIN visits v ON v.hex=a.hex WHERE ${where}`).get(...args)!.total);
     const page = Math.min(query.page, Math.max(1, Math.ceil(total / logbookPageSize)));
     const entries = this.db.prepare(`SELECT a.*, MIN(v.firstSeen) AS firstSeen, MAX(v.lastSeen) AS lastSeen, COUNT(*) AS visits

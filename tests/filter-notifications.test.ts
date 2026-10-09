@@ -16,6 +16,24 @@ const rule = (overrides: Partial<AircraftFilterPreset> = {}): AircraftFilterPres
   filters: { ...emptyAircraftFilters, categories: ['helicopter'], distance: 25 }, ...overrides,
 });
 
+test('a saved favorites filter observes newly resolved callsigns without resetting its baseline', () => {
+  let state = emptyRadarEventMonitorState();
+  const context = { presets: [rule({ filters: { ...emptyAircraftFilters, favoritesOnly: true } })], receiverKey: '', distanceKm: () => 10 };
+  const callsigns = new Set(['HELI01']);
+  const preferences = { ...defaultRadarEventPreferences, favorite: false };
+  const observe = (aircraft: Aircraft[], at: number) => {
+    const result = detectRadarEvents(state, aircraft, new Set(), 'live', preferences, at, true, context, callsigns);
+    state = result.state;
+    return result.events;
+  };
+  assert.deepEqual(observe([], 0), []);
+  assert.deepEqual(observe([helicopter()], 1_000), []);
+  const events = observe([helicopter()], 1_000 + filterMatchDelayMs);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].kind, 'filter-matched');
+  assert.deepEqual(observe([helicopter()], 2_000 + filterMatchDelayMs), []);
+});
+
 function monitor(initialPresets = [rule()]) {
   let state = emptyRadarEventMonitorState();
   let now = 1_800_000_000_000;

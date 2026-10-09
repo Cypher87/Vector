@@ -8,6 +8,12 @@ Aircraft colors represent reported altitude and match the legend and trace color
 
 Labels avoid other labels and map controls. Selected, keyboard-focused/hovered, and favorite aircraft take priority. Ordinary labels show only the callsign below zoom level 7 and disappear below level 5; aircraft icons remain visible. The **Aircraft labels** layer switch hides all labels. Label placement never changes an aircraft's map position.
 
+## Favorites
+
+The star beside the aircraft filters opens all saved favorites, including offline ones. Use **Add callsign** to save an exact callsign (1–8 letters or digits), without waiting for a live aircraft. Case and spaces are ignored; partial matches and wildcards are not supported. A callsign favorite follows whichever aircraft is currently transmitting it, whereas the star in aircraft details saves that individual aircraft.
+
+Callsign favorites work with the map, favorite sorting/filtering, arrival notifications and device synchronization. In the logbook, they match the latest recorded callsign; the receiver must also run a version supporting callsign favorites. Removing an entry from the favorites overview requires confirmation.
+
 ## Filters and saved views
 
 **Favorites only** is directly accessible in the filter menu. Other controls are grouped into **Aircraft category**, **Altitude and speed** (including flight status), **Distance**, and **Advanced**. Advanced filters cover data source, position availability, exact ICAO type codes such as `B738, A320`, and emergency/squawk values.

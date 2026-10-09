@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { logbookVisitGapMs, parseLogbookSnapshot, parseLogbookQuery, parseLogbookFavorites } from '../src/domain/logbook.ts';
+import { logbookVisitGapMs, parseLogbookSnapshot, parseLogbookQuery, parseLogbookFavorites, parseLogbookFavoriteCallsigns } from '../src/domain/logbook.ts';
 import { LogbookStore } from '../src/server/logbook-store.ts';
 import { logbookSettings } from '../src/server/logbook-runtime.ts';
 
@@ -90,6 +90,8 @@ test('logbook search is literal, pagination stable, date filters and retention b
 });
 
 test('logbook rejects unbounded or injected queries and invalid configuration', () => {
+  assert.deepEqual(parseLogbookFavoriteCallsigns(['klm 123', 'KLM123']), ['KLM123']);
+  for (const value of [null, '*', ['*'], ['123456789'], Array(2001).fill('KLM123')]) assert.throws(() => parseLogbookFavoriteCallsigns(value));
   assert.deepEqual(parseLogbookFavorites(['ABC123', 'abc123', 'def456']), ['abc123', 'def456']);
   assert.deepEqual(parseLogbookFavorites([]), []);
   assert.equal(parseLogbookFavorites(Array(2000).fill('abc123')).length, 1);
@@ -99,4 +101,15 @@ test('logbook rejects unbounded or injected queries and invalid configuration', 
   assert.throws(() => logbookSettings({ VECTOR_LOGBOOK_DAYS: '0' }));
   assert.throws(() => logbookSettings({ VECTOR_LOGBOOK_DAYS: '366' }));
   assert.equal(logbookSettings({ VECTOR_LOGBOOK_ENABLED: 'false' }).enabled, false);
+});
+
+test('logbook favorites combine fixed aircraft and exact latest callsign rules', () => {
+  const store = new LogbookStore(':memory:', 90, now);
+  try {
+    store.record(snapshot(now, [item, { ...item, hex: 'def456', flight: 'KLM123' }, { ...item, hex: 'ffffff', flight: 'KLM1234' }]), now);
+    const favorites = { ...query(), favorites: ['abc123'], favoriteCallsigns: ['KLM123'] };
+    assert.deepEqual(store.query(favorites, now).entries.map((entry) => entry.hex), ['abc123', 'def456']);
+    store.record(snapshot(now + 1000, [{ ...item, hex: 'def456', flight: 'KLM999' }]), now + 1000);
+    assert.deepEqual(store.query(favorites, now + 1000).entries.map((entry) => entry.hex), ['abc123']);
+  } finally { store.close(); }
 });

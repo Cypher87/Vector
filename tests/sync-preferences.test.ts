@@ -137,6 +137,17 @@ test('preference patches discard unknown and invalid fields', () => {
   });
 });
 
+test('callsign favorites sync with independent add/remove operations, including an explicit empty list', () => {
+  const original = { favoriteAircraft: ['abc123'], favoriteCallsigns: ['KLM123'] };
+  assert.deepEqual(normalizeSyncPreferences({ favoriteCallsigns: ['klm 123', '*', 'KLM123', '../bad'] }), { favoriteCallsigns: ['KLM123'] });
+  const add = createSyncPreferencePatch(original, { ...original, favoriteCallsigns: ['KLM123', 'BAW456'] });
+  const remove = createSyncPreferencePatch(original, { ...original, favoriteCallsigns: [] });
+  assert.deepEqual(add, { favoriteCallsigns: { add: ['BAW456'], remove: [] } });
+  assert.deepEqual(applySyncPreferencePatch(applySyncPreferencePatch(original, add), remove), { favoriteAircraft: ['abc123'], favoriteCallsigns: ['BAW456'] });
+  assert.deepEqual(applySyncPreferencePatch(original, remove), { favoriteAircraft: ['abc123'], favoriteCallsigns: [] });
+  assert.deepEqual(normalizeSyncPreferencePatch({ favoriteCallsigns: { add: ['x*'], remove: '../bad' } }), {});
+});
+
 test('filter preset patches preserve independent changes from multiple devices', () => {
   const favoritePreset = {
     id: 'preset_favorites',

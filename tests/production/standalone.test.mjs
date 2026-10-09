@@ -55,7 +55,7 @@ test('local and remote production runtimes serve live, metadata, outline, traces
     await mkdir(join(history, '2026/10/04/heatmap'), { recursive: true });
     await writeFile(database, gzipSync('ABC123;TEST-A;A320;0000;Test Airbus;2020;Test;\nDEF456;TEST-B;BALL;1000;Test balloon;;;\n'));
     await writeFile(join(live, 'receiver.json'), JSON.stringify({ version: 'test', refresh: 1000, lat: 52.3, lon: 4.8, haveReplay: true, outlineJson: true }));
-    await writeFile(join(live, 'aircraft.json'), JSON.stringify({ now: Date.now() / 1000, aircraft: [{ hex: 'abc123', lat: 52.3, lon: 4.8, alt_baro: 10000, seen: 0 }] }));
+    await writeFile(join(live, 'aircraft.json'), JSON.stringify({ now: Date.now() / 1000, aircraft: [{ hex: 'abc123', flight: 'VECTOR01', lat: 52.3, lon: 4.8, alt_baro: 10000, seen: 0 }] }));
     await writeFile(join(live, 'outline.json'), JSON.stringify({ actualRange: { last24h: { points: [[52, 4], [53, 5], [52, 6]] } } }));
     const trace = { icao: 'abc123', timestamp: 1_800_000_000, trace: [[0, 52, 4, 10000, 200, 90, 0], [30, 52.1, 4.1, 10025, 200, 90, 0]] };
     for (const kind of ['full', 'recent']) await writeFile(join(live, `traces/23/trace_${kind}_abc123.json`), gzipSync(JSON.stringify(trace)));
@@ -113,10 +113,15 @@ test('local and remote production runtimes serve live, metadata, outline, traces
         assert.equal((await filtered.json()).total, expected);
       }
       assert.equal((await (await favoriteQuery({ favorites: ['abc123'] }, '?q=unmatched')).json()).total, 0);
+      const callsign = logbook.entries[0].callsign;
+      assert.ok(callsign);
+      assert.equal((await (await favoriteQuery({ favorites: [], favoriteCallsigns: [callsign.toLowerCase()] })).json()).total, 1);
+      assert.equal((await (await favoriteQuery({ favorites: [], favoriteCallsigns: ['NONE123'] })).json()).total, 0);
+      assert.equal((await favoriteQuery({ favorites: [], favoriteCallsigns: ['*'] })).status, 400);
       for (const body of [{}, { favorites: ['bad'] }, { favorites: [], url: 'https://example.com' }, { favorites: Array(2001).fill('abc123') }]) {
         assert.equal((await favoriteQuery(body)).status, 400);
       }
-      assert.equal((await favoriteQuery({ favorites: ['x'.repeat(25 * 1024)] })).status, 413);
+      assert.equal((await favoriteQuery({ favorites: ['x'.repeat(49 * 1024)] })).status, 413);
       assert.equal(config.dataBaseUrl, '/api/readsb?source=live');
       assert.equal(JSON.stringify(config).includes(root), false);
       assert.equal((await (await get('/api/updates')).json()).enabled, false);

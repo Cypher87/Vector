@@ -1,4 +1,4 @@
-import { parseLogbookFavorites, parseLogbookQuery } from '../../../src/domain/logbook.ts';
+import { parseLogbookFavorites, parseLogbookFavoriteCallsigns, parseLogbookQuery } from '../../../src/domain/logbook.ts';
 import { logbookSettings, startLogbook } from '../../../src/server/logbook-runtime.ts';
 import { readVectorServerConfig } from '../../../src/server/vector-config.ts';
 import { rejectProxyLoop, vectorProxyHeader } from '../../../src/server/readsb-source.ts';
@@ -16,9 +16,10 @@ async function queryLogbook(request: Request) {
       const signal = AbortSignal.any([request.signal, AbortSignal.timeout(8000)]);
       const body = JSON.parse((await readBoundedResponse(new Response(request.body, {
         headers: { 'content-length': request.headers.get('content-length') || '0' },
-      }), 24 * 1024, signal)).toString());
-      if (!body || typeof body !== 'object' || Object.keys(body).some((key) => key !== 'favorites')) throw new Error('Invalid body');
+      }), 48 * 1024, signal)).toString());
+      if (!body || typeof body !== 'object' || Object.keys(body).some((key) => !['favorites', 'favoriteCallsigns'].includes(key))) throw new Error('Invalid body');
       query.favorites = parseLogbookFavorites(body.favorites);
+      if (body.favoriteCallsigns !== undefined) query.favoriteCallsigns = parseLogbookFavoriteCallsigns(body.favoriteCallsigns);
     }
   } catch (error) { return Response.json({ error: 'invalid_query' }, { status: error instanceof ResourceError && error.status === 413 ? 413 : 400, headers }); }
   try {
@@ -30,7 +31,7 @@ async function queryLogbook(request: Request) {
       const signal = AbortSignal.any([request.signal, AbortSignal.timeout(8000)]);
       const response = await fetch(url, { signal, redirect: 'manual', cache: 'no-store',
         headers: { [vectorProxyHeader]: '1', ...(query.favorites === undefined ? {} : { 'content-type': 'application/json' }) },
-        ...(query.favorites === undefined ? {} : { method: 'POST', body: JSON.stringify({ favorites: query.favorites }) }),
+        ...(query.favorites === undefined ? {} : { method: 'POST', body: JSON.stringify({ favorites: query.favorites, favoriteCallsigns: query.favoriteCallsigns }) }),
       });
       const body = await readBoundedResponse(response, 256 * 1024, signal);
       const data = JSON.parse(body.toString());

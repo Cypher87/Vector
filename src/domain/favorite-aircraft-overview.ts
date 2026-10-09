@@ -1,5 +1,5 @@
 import type { Aircraft, AircraftMetadata, FeedStatus } from './aircraft.ts';
-import { normalizeFavoriteAircraftIds } from './favorite-aircraft.ts';
+import { normalizeFavoriteAircraftIds, normalizeFavoriteCallsign, normalizeFavoriteCallsigns } from './favorite-aircraft.ts';
 
 export type FavoriteAircraftEntry = {
   id: string;
@@ -8,23 +8,40 @@ export type FavoriteAircraftEntry = {
   description?: string;
   flight?: string;
   live: boolean;
+  callsign?: string;
+  liveAircraftId?: string;
 };
 
 /** Membership comes from saved favorites, never from the visible map or receiver history. */
 export function favoriteAircraftOverview(
   favorites: readonly string[], aircraft: readonly Aircraft[], metadata: ReadonlyMap<string, AircraftMetadata>, status: FeedStatus,
+  callsigns: readonly string[] = [],
 ): FavoriteAircraftEntry[] {
+  const isLive = (item: Aircraft | undefined) => status === 'live' && !!item && Number.isFinite(item.seenSeconds) && item.seenSeconds >= 0 && item.seenSeconds <= 60;
   const liveAircraft = new Map(aircraft.map((item) => [item.id, item]));
-  return normalizeFavoriteAircraftIds(favorites).map((id) => {
+  const entries: FavoriteAircraftEntry[] = normalizeFavoriteAircraftIds(favorites).map((id) => {
     const item = liveAircraft.get(id);
     const record = metadata.get(id);
-    const live = status === 'live' && !!item && Number.isFinite(item.seenSeconds) && item.seenSeconds >= 0 && item.seenSeconds <= 60;
+    const live = isLive(item);
     return {
       id, live,
+      liveAircraftId: live ? id : undefined,
       registration: item?.registration || record?.registration,
       aircraftType: item?.aircraftType || record?.aircraftType,
       description: item?.description || record?.description,
-      flight: live ? item.flight : undefined,
+      flight: live ? item?.flight : undefined,
     };
   });
+  const byCallsign = new Map<string, Aircraft[]>();
+  for (const item of aircraft) {
+    const callsign = normalizeFavoriteCallsign(item.flight);
+    if (callsign && isLive(item)) byCallsign.set(callsign, [...(byCallsign.get(callsign) ?? []), item]);
+  }
+  return [...entries, ...normalizeFavoriteCallsigns(callsigns).map((callsign): FavoriteAircraftEntry => {
+    const matches = byCallsign.get(callsign) ?? [];
+    // Do not choose an arbitrary aircraft when multiple contacts transmit the same callsign.
+    const item = matches.length === 1 ? matches[0] : undefined;
+    return { id: `callsign:${callsign}`, callsign, flight: callsign, live: matches.length > 0,
+      liveAircraftId: item?.id, registration: item?.registration, aircraftType: item?.aircraftType, description: item?.description };
+  })];
 }
