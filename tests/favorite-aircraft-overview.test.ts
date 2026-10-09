@@ -66,3 +66,18 @@ test('ambiguous callsign matches never open an arbitrary aircraft', () => {
   assert.equal(entry.liveAircraftId, undefined);
   assert.equal(entry.registration, undefined);
 });
+
+test('registration favorites are visible offline and only open a single exact fresh registration match', () => {
+  const saved = ['ph-hlp', 'PH-HLP'];
+  const entries = (aircraft: Aircraft[] = [], status: 'live' | 'offline' = 'live') =>
+    favoriteAircraftOverview([], aircraft, metadata, status, [], saved);
+  assert.deepEqual(entries(), [{ id: 'registration:PH-HLP', favoriteRegistration: 'PH-HLP', registration: 'PH-HLP',
+    live: false, liveAircraftId: undefined, flight: undefined, aircraftType: undefined, description: undefined }]);
+  const contact = { ...live, registration: ' ph-hlp ' };
+  assert.equal(entries([contact])[0].liveAircraftId, live.id);
+  assert.equal(entries([contact], 'offline')[0].live, false);
+  assert.equal(entries([{ ...contact, seenSeconds: 61 }])[0].live, false);
+  assert.equal(entries([{ ...contact, registration: 'PH-HLPX' }])[0].live, false);
+  assert.equal(entries([contact, { ...contact, id: 'def456' }])[0].live, true);
+  assert.equal(entries([contact, { ...contact, id: 'def456' }])[0].liveAircraftId, undefined);
+});

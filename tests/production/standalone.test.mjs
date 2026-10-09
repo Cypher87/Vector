@@ -118,10 +118,15 @@ test('local and remote production runtimes serve live, metadata, outline, traces
       assert.equal((await (await favoriteQuery({ favorites: [], favoriteCallsigns: [callsign.toLowerCase()] })).json()).total, 1);
       assert.equal((await (await favoriteQuery({ favorites: [], favoriteCallsigns: ['NONE123'] })).json()).total, 0);
       assert.equal((await favoriteQuery({ favorites: [], favoriteCallsigns: ['*'] })).status, 400);
+      const registration = logbook.entries[0].registration;
+      assert.ok(registration);
+      assert.equal((await (await favoriteQuery({ favorites: [], favoriteRegistrations: [registration.toLowerCase()] })).json()).total, 1);
+      assert.equal((await (await favoriteQuery({ favorites: [], favoriteRegistrations: ['PH-NONE'] })).json()).total, 0);
+      assert.equal((await favoriteQuery({ favorites: [], favoriteRegistrations: ['*'] })).status, 400);
       for (const body of [{}, { favorites: ['bad'] }, { favorites: [], url: 'https://example.com' }, { favorites: Array(2001).fill('abc123') }]) {
         assert.equal((await favoriteQuery(body)).status, 400);
       }
-      assert.equal((await favoriteQuery({ favorites: ['x'.repeat(49 * 1024)] })).status, 413);
+      assert.equal((await favoriteQuery({ favorites: ['x'.repeat(81 * 1024)] })).status, 413);
       assert.equal(config.dataBaseUrl, '/api/readsb?source=live');
       assert.equal(JSON.stringify(config).includes(root), false);
       assert.equal((await (await get('/api/updates')).json()).enabled, false);

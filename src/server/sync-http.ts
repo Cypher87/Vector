@@ -6,6 +6,8 @@ import type { SyncDeviceMetadata, SyncDeviceSummary } from '../sync/devices.ts';
 export const SYNC_COOKIE = 'vector_sync';
 const COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 const MAX_JSON_BYTES = 32_768;
+// A full patch may add and remove 2,000 items in each of the three favorite collections.
+const MAX_PREFERENCES_BYTES = 192 * 1024;
 const noStoreHeaders = { 'cache-control': 'no-store' };
 const stores = new Map<string, SyncStore>();
 
@@ -71,11 +73,11 @@ export function verifySameOrigin(request: Request) {
   if (origin && origin !== new URL(request.url).origin) throw new Error('INVALID_ORIGIN');
 }
 
-async function requestJson(request: Request) {
+async function requestJson(request: Request, maximum = MAX_JSON_BYTES) {
   const contentLength = Number(request.headers.get('content-length') || 0);
-  if (contentLength > MAX_JSON_BYTES) throw new Error('REQUEST_TOO_LARGE');
+  if (contentLength > maximum) throw new Error('REQUEST_TOO_LARGE');
   const text = await request.text();
-  if (text.length > MAX_JSON_BYTES) throw new Error('REQUEST_TOO_LARGE');
+  if (Buffer.byteLength(text, 'utf8') > maximum) throw new Error('REQUEST_TOO_LARGE');
   try {
     return text ? JSON.parse(text) as Record<string, unknown> : {};
   } catch {
@@ -178,7 +180,7 @@ export async function createProfileResponse(request: Request) {
     const existing = await requestSession(request);
     if (existing) return Response.json(publicSession(existing), { headers: noStoreHeaders });
     assertWithinLimit(profileCreations, 100, 60 * 60 * 1_000);
-    const input = await requestJson(request);
+    const input = await requestJson(request, MAX_PREFERENCES_BYTES);
     const result = await syncStore().createProfile(input.preferences, identifySyncDevice(request));
     return Response.json(
       publicSession(result),
@@ -194,7 +196,7 @@ export async function savePreferencesResponse(request: Request) {
     verifySameOrigin(request);
     const session = await requestSession(request);
     if (!session) throw new Error('SYNC_NOT_CONNECTED');
-    const input = await requestJson(request);
+    const input = await requestJson(request, MAX_PREFERENCES_BYTES);
     const result = await syncStore().savePreferencePatch(session.profileId, input.patch);
     if (result.changed) {
       publishSyncEvent(session.profileId, {

@@ -16,22 +16,24 @@ const rule = (overrides: Partial<AircraftFilterPreset> = {}): AircraftFilterPres
   filters: { ...emptyAircraftFilters, categories: ['helicopter'], distance: 25 }, ...overrides,
 });
 
-test('a saved favorites filter observes newly resolved callsigns without resetting its baseline', () => {
+for (const kind of ['callsign', 'registration'] as const) test(`a saved favorites filter observes newly resolved ${kind}s without resetting its baseline`, () => {
   let state = emptyRadarEventMonitorState();
   const context = { presets: [rule({ filters: { ...emptyAircraftFilters, favoritesOnly: true } })], receiverKey: '', distanceKm: () => 10 };
-  const callsigns = new Set(['HELI01']);
+  const callsigns = new Set(kind === 'callsign' ? ['HELI01'] : []);
+  const registrations = new Set(kind === 'registration' ? ['PH-HLP'] : []);
+  const contact = helicopter({ registration: 'PH-HLP' });
   const preferences = { ...defaultRadarEventPreferences, favorite: false };
   const observe = (aircraft: Aircraft[], at: number) => {
-    const result = detectRadarEvents(state, aircraft, new Set(), 'live', preferences, at, true, context, callsigns);
+    const result = detectRadarEvents(state, aircraft, new Set(), 'live', preferences, at, true, context, callsigns, registrations);
     state = result.state;
     return result.events;
   };
   assert.deepEqual(observe([], 0), []);
-  assert.deepEqual(observe([helicopter()], 1_000), []);
-  const events = observe([helicopter()], 1_000 + filterMatchDelayMs);
+  assert.deepEqual(observe([contact], 1_000), []);
+  const events = observe([contact], 1_000 + filterMatchDelayMs);
   assert.equal(events.length, 1);
   assert.equal(events[0].kind, 'filter-matched');
-  assert.deepEqual(observe([helicopter()], 2_000 + filterMatchDelayMs), []);
+  assert.deepEqual(observe([contact], 2_000 + filterMatchDelayMs), []);
 });
 
 function monitor(initialPresets = [rule()]) {

@@ -41,11 +41,15 @@ import { defaultLegTracePeriod, parseLegTracePeriod, type LegTracePeriod } from 
 import {
   favoriteAircraftStorageKey,
   favoriteCallsignStorageKey,
+  favoriteRegistrationStorageKey,
   matchingFavoriteAircraftIds,
   normalizeFavoriteCallsign,
   normalizeFavoriteCallsigns,
+  normalizeFavoriteRegistration,
+  normalizeFavoriteRegistrations,
   parseFavoriteAircraftIds,
   parseFavoriteCallsigns,
+  parseFavoriteRegistrations,
   toggleFavoriteAircraftId,
 } from '../src/domain/favorite-aircraft';
 import {
@@ -156,6 +160,7 @@ export default function Home() {
   const [aircraftFilterPresets, setAircraftFilterPresets] = useState<AircraftFilterPreset[]>([]);
   const [favoriteAircraftIds, setFavoriteAircraftIds] = useState<string[]>([]);
   const [favoriteCallsigns, setFavoriteCallsigns] = useState<string[]>([]);
+  const [favoriteRegistrations, setFavoriteRegistrations] = useState<string[]>([]);
   const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
   const theme = useResolvedTheme(themeMode, localPreferencesReady);
   const syncPreferencesAppliedForRef = useRef<string | undefined>(undefined);
@@ -185,6 +190,7 @@ export default function Home() {
       if (window.localStorage.getItem('vector.autoHideDetails') === 'true') setAutoHideDetails(true);
       setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
       setFavoriteCallsigns(parseFavoriteCallsigns(window.localStorage.getItem(favoriteCallsignStorageKey)));
+      setFavoriteRegistrations(parseFavoriteRegistrations(window.localStorage.getItem(favoriteRegistrationStorageKey)));
       setAircraftFilterPresets(parseAircraftFilterPresets(window.localStorage.getItem(aircraftFilterPresetStorageKey)));
       const savedSort = window.localStorage.getItem('vector.aircraftSort');
       if (isAircraftSort(savedSort)) {
@@ -373,6 +379,15 @@ export default function Home() {
       return next;
     });
   };
+  const changeFavoriteRegistration = (value: string, add: boolean) => {
+    const registration = normalizeFavoriteRegistration(value);
+    if (!registration) return;
+    setFavoriteRegistrations((current) => {
+      const next = normalizeFavoriteRegistrations(add ? [...current, registration] : current.filter((item) => item !== registration));
+      window.localStorage.setItem(favoriteRegistrationStorageKey, JSON.stringify(next));
+      return next;
+    });
+  };
   const removeFavoriteAircraft = (aircraftId: string) => {
     setFavoriteAircraftIds((current) => {
       const next = current.filter((id) => id !== aircraftId);
@@ -380,10 +395,14 @@ export default function Home() {
       return next;
     });
   };
-  const toggleFavoriteAircraft = (aircraftId: string, flight?: string) => {
+  const toggleFavoriteAircraft = (aircraftId: string, flight?: string, aircraftRegistration?: string) => {
     const callsign = normalizeFavoriteCallsign(flight);
-    if (callsign && favoriteCallsigns.includes(callsign)) {
-      changeFavoriteCallsign(callsign, false);
+    const registration = normalizeFavoriteRegistration(aircraftRegistration);
+    const matchesCallsign = callsign && favoriteCallsigns.includes(callsign);
+    const matchesRegistration = registration && favoriteRegistrations.includes(registration);
+    if (matchesCallsign || matchesRegistration) {
+      if (matchesCallsign) changeFavoriteCallsign(callsign, false);
+      if (matchesRegistration) changeFavoriteRegistration(registration, false);
       removeFavoriteAircraft(aircraftId);
       return;
     }
@@ -406,6 +425,7 @@ export default function Home() {
     distanceRings: distanceRingsVisible,
     favoriteAircraft: favoriteAircraftIds,
     favoriteCallsigns,
+    favoriteRegistrations,
     filterPresets: aircraftFilterPresets,
     radarEventPreferences,
     language,
@@ -414,7 +434,7 @@ export default function Home() {
     mapLabels: labelsVisible,
     theme: themeMode,
     unitSystem,
-  }), [actualRangeVisible, aircraftFavoritesFirst, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, favoriteCallsigns, labelsVisible, language, legTracePeriod, legTraceVisible, radarEventPreferences, themeMode, unitSystem]);
+  }), [actualRangeVisible, aircraftFavoritesFirst, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, favoriteCallsigns, favoriteRegistrations, labelsVisible, language, legTracePeriod, legTraceVisible, radarEventPreferences, themeMode, unitSystem]);
 
   useEffect(() => {
     if (!syncProfileId) {
@@ -500,6 +520,10 @@ export default function Home() {
         setFavoriteCallsigns(saved.favoriteCallsigns);
         window.localStorage.setItem(favoriteCallsignStorageKey, JSON.stringify(saved.favoriteCallsigns));
       }
+      if (saved.favoriteRegistrations) {
+        setFavoriteRegistrations(saved.favoriteRegistrations);
+        window.localStorage.setItem(favoriteRegistrationStorageKey, JSON.stringify(saved.favoriteRegistrations));
+      }
       if (saved.aircraftSort) {
         setAircraftSort(saved.aircraftSort);
         window.localStorage.setItem('vector.aircraftSort', saved.aircraftSort);
@@ -554,14 +578,16 @@ export default function Home() {
 
   const savedFavoriteAircraftIds = useMemo(() => new Set(favoriteAircraftIds), [favoriteAircraftIds]);
   const favoriteCallsignSet = useMemo(() => new Set(favoriteCallsigns), [favoriteCallsigns]);
-  const favoriteAircraftIdSet = useMemo(() => matchingFavoriteAircraftIds(savedFavoriteAircraftIds, favoriteCallsignSet, displayedAircraft),
-    [savedFavoriteAircraftIds, favoriteCallsignSet, displayedAircraft]);
+  const favoriteRegistrationSet = useMemo(() => new Set(favoriteRegistrations), [favoriteRegistrations]);
+  const favoriteAircraftIdSet = useMemo(() => matchingFavoriteAircraftIds(savedFavoriteAircraftIds, favoriteCallsignSet, displayedAircraft, favoriteRegistrationSet),
+    [savedFavoriteAircraftIds, favoriteCallsignSet, displayedAircraft, favoriteRegistrationSet]);
   const eventAircraftIds = useMemo(() => new Set(history.open ? [] : feed.aircraft.map((item) => item.id)), [feed.aircraft, history.open]);
   const radarEvents = useRadarEvents({
     aircraft: feed.aircraft,
     enabled: localPreferencesReady && !history.open,
     favoriteIds: savedFavoriteAircraftIds,
     favoriteCallsigns: favoriteCallsignSet,
+    favoriteRegistrations: favoriteRegistrationSet,
     preferences: radarEventPreferences,
     presets: aircraftFilterPresets,
     receiverLat,
@@ -679,6 +705,7 @@ export default function Home() {
 
         <div className="top-actions">
           <LogbookMenu language={language} favorites={savedFavoriteAircraftIds} favoriteCallsigns={favoriteCallsignSet}
+            favoriteRegistrations={favoriteRegistrationSet}
             liveIds={eventAircraftIds} onFavorite={toggleFavoriteAircraft} onSelect={selectAircraftFromEvent} />
           <EventCenter
             availableAircraftIds={eventAircraftIds}
@@ -761,7 +788,9 @@ export default function Home() {
             </div>
             <div className="panel-buttons">
               <FavoritesMenu language={language} favorites={savedFavoriteAircraftIds} callsigns={favoriteCallsignSet} aircraft={feed.aircraft} status={feed.status}
+                registrations={favoriteRegistrationSet}
                 onAddCallsign={(callsign) => changeFavoriteCallsign(callsign, true)} onRemoveCallsign={(callsign) => changeFavoriteCallsign(callsign, false)}
+                onAddRegistration={(registration) => changeFavoriteRegistration(registration, true)} onRemoveRegistration={(registration) => changeFavoriteRegistration(registration, false)}
                 onRemove={removeFavoriteAircraft} onSelect={(id) => {
                   if (history.open) history.close();
                   setMobileListOpen(false);
@@ -1012,7 +1041,7 @@ export default function Home() {
                   aria-label={t(selectedIsFavorite ? 'removeFromFavorites' : 'addToFavorites')}
                   aria-pressed={selectedIsFavorite}
                   data-tooltip={t(selectedIsFavorite ? 'removeFromFavorites' : 'addToFavorites')}
-                  onClick={() => toggleFavoriteAircraft(selected.id, selected.flight)}
+                  onClick={() => toggleFavoriteAircraft(selected.id, selected.flight, selected.registration)}
                 ><VectorIcon name="favorite" /></button>
                 <button
                   className={following ? 'active' : ''}

@@ -55,6 +55,21 @@ test('initial feed and short reception gaps create no favorite arrival flood', (
   assert.deepEqual(returned.events, []);
 });
 
+test('registration favorite arrivals are exact, deduplicated with callsigns and not repeated by callsign changes', () => {
+  const registrations = new Set(['PH-HLP']);
+  const contact = aircraft('abc123', { flight: 'KLM123', registration: 'ph-hlp' });
+  const observe = (state: ReturnType<typeof emptyRadarEventMonitorState>, items: Aircraft[], time: number, callsigns = new Set<string>()) =>
+    detectRadarEvents(state, items, new Set(), 'live', defaultRadarEventPreferences, time, true, undefined, callsigns, registrations);
+  const absent = observe(emptyRadarEventMonitorState(), [], 0, new Set(['KLM123']));
+  const entered = observe(absent.state, [contact], 1000, new Set(['KLM123']));
+  assert.deepEqual(entered.events.map((event) => [event.kind, event.aircraftId]), [['favorite-entered', 'abc123']]);
+  assert.equal(observe(entered.state, [{ ...contact, flight: 'NEW' }], 2000).events.length, 0);
+  assert.equal(observe(emptyRadarEventMonitorState(), [contact], 0).events.length, 0);
+  assert.equal(observe(absent.state, [{ ...contact, flight: 'PHHLP', registration: 'PH-HLPX' }], 1000).events.length, 0);
+  const gap = observe(entered.state, [], 2000);
+  assert.equal(observe(gap.state, [contact], 3000).events.length, 0);
+});
+
 test('detects emergency squawk changes and receiver recovery once', () => {
   const initial = detectRadarEvents(
     emptyRadarEventMonitorState(),

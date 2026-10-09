@@ -19,6 +19,7 @@ type UseRadarEventsOptions = {
   enabled: boolean;
   favoriteIds: ReadonlySet<string>;
   favoriteCallsigns: ReadonlySet<string>;
+  favoriteRegistrations: ReadonlySet<string>;
   preferences: RadarEventPreferences;
   presets: AircraftFilterPreset[];
   receiverLat?: number;
@@ -26,7 +27,7 @@ type UseRadarEventsOptions = {
   status: FeedStatus;
 };
 
-export function useRadarEvents({ aircraft, enabled, favoriteIds, favoriteCallsigns, preferences, presets, receiverLat, receiverLon, status }: UseRadarEventsOptions) {
+export function useRadarEvents({ aircraft, enabled, favoriteIds, favoriteCallsigns, favoriteRegistrations, preferences, presets, receiverLat, receiverLon, status }: UseRadarEventsOptions) {
   const [events, setEvents] = useState<RadarEvent[]>([]);
   const [ready, setReady] = useState(false);
   const monitorRef = useRef(emptyRadarEventMonitorState());
@@ -68,6 +69,7 @@ export function useRadarEvents({ aircraft, enabled, favoriteIds, favoriteCallsig
         { presets, receiverKey: `${receiverLat}:${receiverLon}`,
           distanceKm: (item) => distanceKilometres(receiverLat, receiverLon, item.latitude, item.longitude) },
         favoriteCallsigns,
+        favoriteRegistrations,
       );
       monitorRef.current = result.state;
       setEvents((current) => mergeRadarEvents(current, result.events, now));
@@ -80,7 +82,7 @@ export function useRadarEvents({ aircraft, enabled, favoriteIds, favoriteCallsig
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', observe);
     };
-  }, [aircraft, enabled, favoriteIds, favoriteCallsigns, preferences, presets, ready, receiverLat, receiverLon, status]);
+  }, [aircraft, enabled, favoriteIds, favoriteCallsigns, favoriteRegistrations, preferences, presets, ready, receiverLat, receiverLon, status]);
 
   const markAllRead = useCallback(() => {
     setEvents((current) => {

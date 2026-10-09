@@ -4,6 +4,33 @@ const aircraftIdPattern = /^~?[0-9a-f]{6}$/;
 
 export const favoriteAircraftStorageKey = 'vector.favoriteAircraft';
 export const favoriteCallsignStorageKey = 'vector.favoriteCallsigns';
+export const favoriteRegistrationStorageKey = 'vector.favoriteRegistrations';
+
+export type FavoriteIdentifierKind = 'auto' | 'callsign' | 'registration';
+
+export function normalizeFavoriteRegistration(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.replace(/\s/g, '').toUpperCase();
+  return normalized.length >= 3 && normalized.length <= 12 && /^[A-Z0-9]+(?:-[A-Z0-9]+)?$/.test(normalized) ? normalized : undefined;
+}
+
+export function normalizeFavoriteRegistrations(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.flatMap((item) => {
+    const registration = normalizeFavoriteRegistration(item);
+    return registration ? [registration] : [];
+  }))].sort().slice(0, 2_000);
+}
+
+export function parseFavoriteRegistrations(value: string | null): string[] {
+  try { return normalizeFavoriteRegistrations(JSON.parse(value ?? '[]')); } catch { return []; }
+}
+
+export function parseFavoriteIdentifier(value: string, kind: FavoriteIdentifierKind = 'auto') {
+  const type = kind === 'auto' ? value.includes('-') ? 'registration' : 'callsign' : kind;
+  const normalized = type === 'registration' ? normalizeFavoriteRegistration(value) : normalizeFavoriteCallsign(value);
+  return normalized ? { type, value: normalized } : undefined;
+}
 
 export function normalizeFavoriteCallsign(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -23,12 +50,12 @@ export function parseFavoriteCallsigns(value: string | null): string[] {
   try { return normalizeFavoriteCallsigns(JSON.parse(value ?? '[]')); } catch { return []; }
 }
 
-/** Resolve callsign rules against this snapshot, never save the current aircraft as a permanent match. */
-export function matchingFavoriteAircraftIds(ids: ReadonlySet<string>, callsigns: ReadonlySet<string>, aircraft: readonly Aircraft[]): ReadonlySet<string> {
-  if (!callsigns.size) return ids;
+/** Resolve identifier rules against this snapshot, without saving a match as a permanent ICAO favorite. */
+export function matchingFavoriteAircraftIds(ids: ReadonlySet<string>, callsigns: ReadonlySet<string>, aircraft: readonly Aircraft[], registrations: ReadonlySet<string> = new Set()): ReadonlySet<string> {
+  if (!callsigns.size && !registrations.size) return ids;
   const matches = new Set(ids);
   for (const item of aircraft) {
-    if (callsigns.has(normalizeFavoriteCallsign(item.flight) ?? '')) matches.add(item.id);
+    if (callsigns.has(normalizeFavoriteCallsign(item.flight) ?? '') || registrations.has(normalizeFavoriteRegistration(item.registration) ?? '')) matches.add(item.id);
   }
   return matches;
 }

@@ -10,9 +10,11 @@ Labels avoid other labels and map controls. Selected, keyboard-focused/hovered, 
 
 ## Favorites
 
-The star beside the aircraft filters opens all saved favorites, including offline ones. Use **Add callsign** to save an exact callsign (1–8 letters or digits), without waiting for a live aircraft. Case and spaces are ignored; partial matches and wildcards are not supported. A callsign favorite follows whichever aircraft is currently transmitting it, whereas the star in aircraft details saves that individual aircraft.
+The star beside the aircraft filters opens all saved favorites, including offline ones. Enter a **Callsign or registration** without waiting for a live aircraft. **Automatic** recognizes a hyphenated registration such as `PH-HLP`; otherwise it treats the value as a callsign. Choose **Registration** explicitly for registrations without a hyphen, such as `N123AB`.
 
-Callsign favorites work with the map, favorite sorting/filtering, arrival notifications and device synchronization. In the logbook, they match the latest recorded callsign; the receiver must also run a version supporting callsign favorites. Removing an entry from the favorites overview requires confirmation.
+Registrations accept 3–12 letters or digits with an optional hyphen; callsigns accept 1–8 letters or digits. Case and spaces are ignored; wildcards are not supported. Registrations follow the aircraft even when its callsign changes. Callsign favorites follow whichever aircraft transmits that exact callsign. The star in aircraft details saves the individual ICAO identity.
+
+All favorite types work with map/list filters, sorting, arrival notifications and device synchronization. In the logbook, registrations and callsigns match their latest recorded values; the receiver must also support these favorite types. Removing an entry from the favorites overview requires confirmation.
 
 ## Filters and saved views
 

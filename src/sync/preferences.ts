@@ -10,7 +10,7 @@ import {
   type AircraftSort,
 } from '../domain/aircraft-filter-preset.ts';
 import { legTracePeriods, type LegTracePeriod } from '../domain/aircraft-trace.ts';
-import { normalizeFavoriteAircraftIds, normalizeFavoriteCallsigns } from '../domain/favorite-aircraft.ts';
+import { normalizeFavoriteAircraftIds, normalizeFavoriteCallsigns, normalizeFavoriteRegistrations } from '../domain/favorite-aircraft.ts';
 import { normalizeRadarEventPreferences, type RadarEventPreferences } from '../domain/radar-event.ts';
 import type { Language } from '../i18n.ts';
 import { normalizeThemeMode, type ThemeMode } from '../theme.ts';
@@ -30,6 +30,7 @@ export type SyncPreferences = {
   distanceRings?: boolean;
   favoriteAircraft?: string[];
   favoriteCallsigns?: string[];
+  favoriteRegistrations?: string[];
   filterPresets?: AircraftFilterPreset[];
   language?: Language;
   legTrace?: boolean;
@@ -40,7 +41,7 @@ export type SyncPreferences = {
   unitSystem?: UnitSystem;
 };
 
-type ScalarSyncPreferences = Omit<SyncPreferences, 'aircraftFilters' | 'favoriteAircraft' | 'favoriteCallsigns' | 'filterPresets'>;
+type ScalarSyncPreferences = Omit<SyncPreferences, 'aircraftFilters' | 'favoriteAircraft' | 'favoriteCallsigns' | 'favoriteRegistrations' | 'filterPresets'>;
 
 export type SyncPreferencePatch = {
   aircraftFilters?: Partial<SyncedAircraftFilters>;
@@ -49,6 +50,7 @@ export type SyncPreferencePatch = {
     remove?: string[];
   };
   favoriteCallsigns?: { add?: string[]; remove?: string[] };
+  favoriteRegistrations?: { add?: string[]; remove?: string[] };
   filterPresets?: {
     remove?: string[];
     upsert?: AircraftFilterPreset[];
@@ -94,6 +96,7 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
     preferences.favoriteAircraft = normalizeFavoriteAircraftIds(value.favoriteAircraft).slice(0, 2_000);
   }
   if (Array.isArray(value.favoriteCallsigns)) preferences.favoriteCallsigns = normalizeFavoriteCallsigns(value.favoriteCallsigns);
+  if (Array.isArray(value.favoriteRegistrations)) preferences.favoriteRegistrations = normalizeFavoriteRegistrations(value.favoriteRegistrations);
 
   if (Array.isArray(value.filterPresets)) {
     preferences.filterPresets = normalizeAircraftFilterPresets(value.filterPresets);
@@ -150,6 +153,11 @@ export function normalizeSyncPreferencePatch(value: unknown): SyncPreferencePatc
     const remove = normalizeFavoriteCallsigns(value.favoriteCallsigns.remove);
     if (add.length || remove.length) patch.favoriteCallsigns = { add, remove };
   }
+  if (isObject(value.favoriteRegistrations)) {
+    const add = normalizeFavoriteRegistrations(value.favoriteRegistrations.add);
+    const remove = normalizeFavoriteRegistrations(value.favoriteRegistrations.remove);
+    if (add.length || remove.length) patch.favoriteRegistrations = { add, remove };
+  }
 
   if (isObject(value.filterPresets)) {
     const remove = normalizeAircraftFilterPresetIds(value.filterPresets.remove);
@@ -184,6 +192,12 @@ export function applySyncPreferencePatch(currentValue: unknown, patchValue: unkn
     for (const callsign of patch.favoriteCallsigns.remove ?? []) callsigns.delete(callsign);
     for (const callsign of patch.favoriteCallsigns.add ?? []) callsigns.add(callsign);
     next.favoriteCallsigns = normalizeFavoriteCallsigns([...callsigns]);
+  }
+  if (patch.favoriteRegistrations) {
+    const registrations = new Set(current.favoriteRegistrations ?? []);
+    for (const registration of patch.favoriteRegistrations.remove ?? []) registrations.delete(registration);
+    for (const registration of patch.favoriteRegistrations.add ?? []) registrations.add(registration);
+    next.favoriteRegistrations = normalizeFavoriteRegistrations([...registrations]);
   }
 
   if (patch.filterPresets) {
@@ -234,6 +248,12 @@ export function createSyncPreferencePatch(previousValue: unknown, nextValue: unk
   const addCallsigns = [...nextCallsigns].filter((callsign) => !previousCallsigns.has(callsign));
   const removeCallsigns = [...previousCallsigns].filter((callsign) => !nextCallsigns.has(callsign));
   if (addCallsigns.length || removeCallsigns.length) patch.favoriteCallsigns = { add: addCallsigns, remove: removeCallsigns };
+
+  const previousRegistrations = new Set(previous.favoriteRegistrations ?? []);
+  const nextRegistrations = new Set(next.favoriteRegistrations ?? []);
+  const addRegistrations = [...nextRegistrations].filter((registration) => !previousRegistrations.has(registration));
+  const removeRegistrations = [...previousRegistrations].filter((registration) => !nextRegistrations.has(registration));
+  if (addRegistrations.length || removeRegistrations.length) patch.favoriteRegistrations = { add: addRegistrations, remove: removeRegistrations };
 
   const previousPresets = new Map((previous.filterPresets ?? []).map((preset) => [preset.id, preset]));
   const nextPresets = new Map((next.filterPresets ?? []).map((preset) => [preset.id, preset]));

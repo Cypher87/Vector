@@ -1,4 +1,4 @@
-import { normalizeFavoriteCallsign, normalizeFavoriteCallsigns } from './favorite-aircraft.ts';
+import { normalizeFavoriteCallsign, normalizeFavoriteCallsigns, normalizeFavoriteRegistration, normalizeFavoriteRegistrations } from './favorite-aircraft.ts';
 
 export const logbookVisitGapMs = 30 * 60_000;
 export const logbookPageSize = 30;
@@ -10,7 +10,7 @@ export type LogbookEntry = Omit<LogbookObservation, 'at'> & {
   firstSeen: number; lastSeen: number; visits: number;
 };
 export type LogbookVisit = { firstSeen: number; lastSeen: number; callsigns: string };
-export type LogbookQuery = { search: string; days: number; page: number; sort: 'recent' | 'visits'; hex?: string; favorites?: string[]; favoriteCallsigns?: string[] };
+export type LogbookQuery = { search: string; days: number; page: number; sort: 'recent' | 'visits'; hex?: string; favorites?: string[]; favoriteCallsigns?: string[]; favoriteRegistrations?: string[] };
 export type LogbookResponse = {
   entries: LogbookEntry[]; total: number; page: number; pageSize: number; days: number;
   retentionDays: number; startedAt: number; updatedAt: number | null;
@@ -30,6 +30,11 @@ export function parseLogbookFavorites(value: unknown): string[] {
 export function parseLogbookFavoriteCallsigns(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > 2000 || value.some((item) => !normalizeFavoriteCallsign(item))) throw new Error('Invalid callsigns');
   return normalizeFavoriteCallsigns(value);
+}
+
+export function parseLogbookFavoriteRegistrations(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length > 2000 || value.some((item) => !normalizeFavoriteRegistration(item))) throw new Error('Invalid registrations');
+  return normalizeFavoriteRegistrations(value);
 }
 
 /** Only fresh receiver observations count; never turn a cached snapshot into a visit. */

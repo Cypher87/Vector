@@ -8,7 +8,7 @@
 .favorites-dialog h2 { display: flex; align-items: baseline; gap: 10px; margin: 0; font-size: var(--heading-panel); font-weight: var(--heading-weight); letter-spacing: -.015em; }
 .favorites-dialog h2 > span { color: var(--text-secondary-color); font-size: 13px; font-weight: 400; font-variant-numeric: tabular-nums; }
 .favorites-dialog button { cursor: pointer; }
-.favorites-dialog :is(button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.favorites-dialog :is(button, input, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .favorites-dialog header button, .favorites-dialog nav button, .favorites-remove { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: transparent; color: var(--text-secondary-color); }
 .favorites-dialog .vector-icon { width: 18px; height: 18px; }
 .favorites-dialog button:hover:not(:disabled) { background: var(--theme-card); color: var(--ink); }
@@ -19,7 +19,10 @@
 .favorites-search input::placeholder { color: var(--muted); opacity: 1; }
 .favorites-add { margin: 0 20px 12px; }
 .favorites-add > label { display: block; margin-bottom: 6px; color: var(--text-secondary-color); font-size: 12px; }
-.favorites-add > div { display: flex; gap: 8px; }
+.favorites-add > div { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; }
+.favorites-kind { position: relative; min-width: 0; }
+.favorites-kind select { appearance: none; width: 100%; height: 38px; padding: 0 32px 0 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--theme-input); color: var(--ink); font: inherit; font-size: 13px; }
+.favorites-kind > .vector-icon { position: absolute; top: 50%; right: 10px; width: 14px; height: 14px; transform: translateY(-50%); pointer-events: none; color: var(--text-secondary-color); }
 .favorites-add input { width: 100%; min-width: 0; height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--theme-input); color: var(--ink); font: inherit; text-transform: uppercase; }
 .favorites-add input::placeholder { color: var(--muted); opacity: 1; }
 .favorites-add button { flex-shrink: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 4px; background: var(--theme-card); color: var(--ink); font: inherit; font-size: 13px; }
@@ -56,6 +59,9 @@
   .favorites-search input { height: 40px; font-size: 16px; }
   .favorites-add { margin: 0 16px 12px; }
   .favorites-add input { height: 40px; font-size: 16px; }
+  .favorites-add > div { grid-template-columns: minmax(0, 1fr) auto; }
+  .favorites-kind { grid-column: 1 / -1; }
+  .favorites-kind select { height: 40px; font-size: 16px; }
   .favorites-list li { padding: 10px 16px; gap: 8px; }
   .favorites-dialog header button, .favorites-dialog nav button, .favorites-remove { width: 40px; height: 40px; }
   .favorites-view, .favorites-notice button { min-height: 40px; }

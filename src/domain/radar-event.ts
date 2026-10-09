@@ -1,5 +1,5 @@
 import type { Aircraft, FeedStatus } from './aircraft.ts';
-import { matchingFavoriteAircraftIds, normalizeFavoriteCallsign } from './favorite-aircraft.ts';
+import { matchingFavoriteAircraftIds, normalizeFavoriteCallsign, normalizeFavoriteRegistration } from './favorite-aircraft.ts';
 import { normalizeAircraftFilterPresetIds, normalizeAircraftFilterPresetName } from './aircraft-filter-preset.ts';
 import { observeFilterNotifications, type FilterNotificationContext, type FilterNotificationState, type MatchedFilter } from './filter-notifications.ts';
 
@@ -189,6 +189,7 @@ export function detectRadarEvents(
   visible = true,
   filterContext?: FilterNotificationContext,
   favoriteCallsigns: ReadonlySet<string> = new Set(),
+  favoriteRegistrations: ReadonlySet<string> = new Set(),
 ): { events: RadarEvent[]; state: RadarEventMonitorState } {
   const gap = previous.lastObservedAt !== undefined
     && (timestamp - previous.lastObservedAt > observationGapMs || timestamp < previous.lastObservedAt);
@@ -225,11 +226,14 @@ export function detectRadarEvents(
 
   const fresh = aircraft.filter((item) => Number.isFinite(item.seenSeconds) && item.seenSeconds <= 60);
   const present = new Set(fresh.map((item) => item.id));
-  const favoriteKeys = new Set([...favoriteIds, ...[...favoriteCallsigns].map((callsign) => `callsign:${callsign}`)]);
-  const matchingIds = matchingFavoriteAircraftIds(favoriteIds, favoriteCallsigns, fresh);
+  const favoriteKeys = new Set([...favoriteIds, ...[...favoriteCallsigns].map((callsign) => `callsign:${callsign}`),
+    ...[...favoriteRegistrations].map((registration) => `registration:${registration}`)]);
+  const matchingIds = matchingFavoriteAircraftIds(favoriteIds, favoriteCallsigns, fresh, favoriteRegistrations);
   for (const item of fresh) {
     const callsign = normalizeFavoriteCallsign(item.flight);
     if (callsign) present.add(`callsign:${callsign}`);
+    const registration = normalizeFavoriteRegistration(item.registration);
+    if (registration) present.add(`registration:${registration}`);
   }
   const baseline = !previous.initialized || gap;
   const filtered = observeFilterNotifications(previous.filters, fresh, matchingIds,
@@ -251,7 +255,7 @@ export function detectRadarEvents(
     const changed = emergency && previous.emergencies.get(item.id)?.squawk !== item.squawk;
     if (emergency) state.emergencies.set(item.id, { squawk: item.squawk!, lastSeen: timestamp });
     else state.emergencies.delete(item.id);
-    const keys = [item.id, `callsign:${normalizeFavoriteCallsign(item.flight) ?? ''}`];
+    const keys = [item.id, `callsign:${normalizeFavoriteCallsign(item.flight) ?? ''}`, `registration:${normalizeFavoriteRegistration(item.registration) ?? ''}`];
     const returnedFavorite = keys.some((key) => {
       const absentSince = previous.favorites.get(key);
       return favoriteKeys.has(key) && absentSince !== undefined && absentSince !== null && timestamp - absentSince >= favoriteAbsenceMs;

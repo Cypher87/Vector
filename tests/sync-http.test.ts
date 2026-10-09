@@ -114,7 +114,7 @@ test('a preference update is delivered live to another paired device', async () 
     assert.equal(presenceBody.devices.find((device) => device.id === pairedBody.deviceId)?.online, true);
 
     const saved = await savePreferencesResponse(request('/api/sync/preferences', {
-      body: JSON.stringify({ patch: { favoriteAircraft: { add: ['abc123'] }, favoriteCallsigns: { add: ['klm123'] }, settings: { language: 'en' } } }),
+      body: JSON.stringify({ patch: { favoriteAircraft: { add: ['abc123'] }, favoriteCallsigns: { add: ['klm123'] }, favoriteRegistrations: { add: ['ph-hlp'] }, settings: { language: 'en' } } }),
       headers: { 'content-type': 'application/json', cookie: firstCookie },
       method: 'PUT',
     }));
@@ -132,7 +132,7 @@ test('a preference update is delivered live to another paired device', async () 
       preferences: { favoriteAircraft: string[]; language: string };
     };
     assert.equal(sessionBody.devices.length, 2);
-    assert.deepEqual(sessionBody.preferences, { favoriteAircraft: ['4840d6', 'abc123'], favoriteCallsigns: ['KLM123'], language: 'en' });
+    assert.deepEqual(sessionBody.preferences, { favoriteAircraft: ['4840d6', 'abc123'], favoriteCallsigns: ['KLM123'], favoriteRegistrations: ['PH-HLP'], language: 'en' });
 
     const firstDeviceId = sessionBody.devices.find((device) => !device.current)?.id;
     assert.ok(firstDeviceId);
@@ -160,6 +160,42 @@ test('a preference update is delivered live to another paired device', async () 
     const offlineSession = await sessionResponse(request('/api/sync/session', { headers: { cookie: secondCookie } }));
     const offlineBody = await offlineSession.json() as { deviceId: string; devices: { id: string; online?: boolean }[] };
     assert.equal(offlineBody.devices.find((device) => device.id === offlineBody.deviceId)?.online, false);
+  } finally {
+    if (previousStore === undefined) delete process.env.VECTOR_SYNC_STORE;
+    else process.env.VECTOR_SYNC_STORE = previousStore;
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test('all three favorite collections fit initial synchronization and replacement patches, with a bounded payload', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'vector-sync-capacity-'));
+  const previousStore = process.env.VECTOR_SYNC_STORE;
+  process.env.VECTOR_SYNC_STORE = join(directory, 'sync.json');
+  const favorites = (offset: number) => ({
+    favoriteAircraft: Array.from({ length: 2000 }, (_, i) => (offset + i).toString(16).padStart(6, '0')),
+    favoriteCallsigns: Array.from({ length: 2000 }, (_, i) => `K${String(offset + i).padStart(7, '0')}`),
+    favoriteRegistrations: Array.from({ length: 2000 }, (_, i) => `PH-${String(offset + i).padStart(9, '0')}`),
+  });
+  const initial = favorites(0);
+  const next = favorites(2000);
+  try {
+    const created = await createProfileResponse(new Request('http://radar.test/api/sync/profile', {
+      method: 'POST', headers: { 'content-type': 'application/json', origin: 'http://radar.test' },
+      body: JSON.stringify({ preferences: initial }),
+    }));
+    assert.equal(created.status, 201);
+    assert.deepEqual((await created.json()).preferences, initial);
+    const cookie = created.headers.get('set-cookie')!.split(';')[0];
+    const save = (body: string) => savePreferencesResponse(new Request('http://radar.test/api/sync/preferences', {
+      method: 'PUT', headers: { 'content-type': 'application/json', cookie, origin: 'http://radar.test' }, body,
+    }));
+    const patch = Object.fromEntries((Object.keys(initial) as (keyof typeof initial)[]).map((key) => [key, { add: next[key], remove: initial[key] }]));
+    const replaced = await save(JSON.stringify({ patch }));
+    assert.equal(replaced.status, 200);
+    assert.deepEqual((await replaced.json()).preferences, next);
+    const oversized = await save(JSON.stringify({ padding: '€'.repeat(66_000) }));
+    assert.equal(oversized.status, 400);
+    assert.equal((await oversized.json()).error, 'REQUEST_TOO_LARGE');
   } finally {
     if (previousStore === undefined) delete process.env.VECTOR_SYNC_STORE;
     else process.env.VECTOR_SYNC_STORE = previousStore;

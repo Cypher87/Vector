@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { logbookVisitGapMs, parseLogbookSnapshot, parseLogbookQuery, parseLogbookFavorites, parseLogbookFavoriteCallsigns } from '../src/domain/logbook.ts';
+import { logbookVisitGapMs, parseLogbookSnapshot, parseLogbookQuery, parseLogbookFavorites, parseLogbookFavoriteCallsigns, parseLogbookFavoriteRegistrations } from '../src/domain/logbook.ts';
 import { LogbookStore } from '../src/server/logbook-store.ts';
 import { logbookSettings } from '../src/server/logbook-runtime.ts';
 
@@ -90,6 +90,8 @@ test('logbook search is literal, pagination stable, date filters and retention b
 });
 
 test('logbook rejects unbounded or injected queries and invalid configuration', () => {
+  assert.deepEqual(parseLogbookFavoriteRegistrations([' ph-hlp ', 'PH-HLP']), ['PH-HLP']);
+  for (const value of [null, '*', ['*'], ['A--B'], ['1234567890123'], Array(2001).fill('PH-HLP')]) assert.throws(() => parseLogbookFavoriteRegistrations(value));
   assert.deepEqual(parseLogbookFavoriteCallsigns(['klm 123', 'KLM123']), ['KLM123']);
   for (const value of [null, '*', ['*'], ['123456789'], Array(2001).fill('KLM123')]) assert.throws(() => parseLogbookFavoriteCallsigns(value));
   assert.deepEqual(parseLogbookFavorites(['ABC123', 'abc123', 'def456']), ['abc123', 'def456']);
@@ -111,5 +113,20 @@ test('logbook favorites combine fixed aircraft and exact latest callsign rules',
     assert.deepEqual(store.query(favorites, now).entries.map((entry) => entry.hex), ['abc123', 'def456']);
     store.record(snapshot(now + 1000, [{ ...item, hex: 'def456', flight: 'KLM999' }]), now + 1000);
     assert.deepEqual(store.query(favorites, now + 1000).entries.map((entry) => entry.hex), ['abc123']);
+  } finally { store.close(); }
+});
+
+test('logbook registration favorites match the latest registration independently of flight callsigns', () => {
+  const store = new LogbookStore(':memory:', 90, now);
+  try {
+    store.record(snapshot(now, [item, { ...item, hex: 'def456', flight: 'OTHER', r: 'ph-hlp' },
+      { ...item, hex: 'eeeeee', flight: 'PHHLP', r: 'PH-HLPX' }, { ...item, hex: 'ffffff', flight: 'KLM123' }]), now);
+    const favorites = { ...query(), favorites: ['abc123'], favoriteCallsigns: ['KLM123'], favoriteRegistrations: ['PH-HLP'] };
+    assert.deepEqual(store.query(favorites, now).entries.map((entry) => entry.hex), ['abc123', 'def456', 'ffffff']);
+    store.record(snapshot(now + 1000, [{ ...item, hex: 'def456', flight: 'NEW', r: 'ph-hlp' }]), now + 1000);
+    assert.equal(store.query(favorites, now + 1000).total, 3);
+    store.record(snapshot(now + 2000, [{ ...item, hex: 'def456', r: 'PH-OTHER' }]), now + 2000);
+    assert.equal(store.query(favorites, now + 2000).total, 2);
+    assert.equal(store.query({ ...favorites, search: 'unmatched' }, now + 2000).total, 0);
   } finally { store.close(); }
 });

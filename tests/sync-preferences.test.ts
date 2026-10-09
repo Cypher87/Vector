@@ -183,3 +183,14 @@ test('filter preset patches preserve independent changes from multiple devices',
     ],
   });
 });
+
+test('registration favorites merge per item without replacing callsigns or fixed aircraft', () => {
+  const original = { favoriteAircraft: ['abc123'], favoriteCallsigns: ['KLM123'], favoriteRegistrations: ['PH-HLP'] };
+  assert.deepEqual(normalizeSyncPreferences({ favoriteRegistrations: ['ph-hlp', 'PH-HLP', '*', '../bad'] }), { favoriteRegistrations: ['PH-HLP'] });
+  const add = createSyncPreferencePatch(original, { ...original, favoriteRegistrations: ['PH-HLP', 'N123AB'] });
+  const remove = createSyncPreferencePatch(original, { ...original, favoriteRegistrations: [] });
+  assert.deepEqual(add, { favoriteRegistrations: { add: ['N123AB'], remove: [] } });
+  assert.deepEqual(applySyncPreferencePatch(applySyncPreferencePatch(original, add), remove), { ...original, favoriteRegistrations: ['N123AB'] });
+  assert.deepEqual(applySyncPreferencePatch(original, remove), { ...original, favoriteRegistrations: [] });
+  assert.deepEqual(normalizeSyncPreferencePatch({ settings: { favoriteRegistrations: ['PH-HLP'] }, favoriteRegistrations: { add: ['*'], remove: 'PH-HLP' } }), {});
+});

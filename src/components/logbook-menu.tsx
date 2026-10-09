@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { logbookPageSize, type LogbookResponse } from '../domain/logbook';
 import { formatLogbookDuration } from '../domain/logbook-duration';
-import { normalizeFavoriteCallsign } from '../domain/favorite-aircraft';
+import { normalizeFavoriteCallsign, normalizeFavoriteRegistration } from '../domain/favorite-aircraft';
 import { localeForLanguage, translate, type Language } from '../i18n';
 import { VectorIcon } from './vector-icon';
 
@@ -57,9 +57,10 @@ function LogbookVisits({ hex, days, language }: { hex: string; days: number; lan
   </div>;
 }
 
-export function LogbookMenu({ language, favorites, favoriteCallsigns, liveIds, onFavorite, onSelect }: {
+export function LogbookMenu({ language, favorites, favoriteCallsigns, favoriteRegistrations, liveIds, onFavorite, onSelect }: {
   language: Language; favorites: ReadonlySet<string>; favoriteCallsigns: ReadonlySet<string>; liveIds: ReadonlySet<string>;
-  onFavorite: (id: string, callsign?: string) => void; onSelect: (id: string) => void;
+  favoriteRegistrations: ReadonlySet<string>;
+  onFavorite: (id: string, callsign?: string, registration?: string) => void; onSelect: (id: string) => void;
 }) {
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
   const [open, setOpen] = useState(false);
@@ -76,8 +77,10 @@ export function LogbookMenu({ language, favorites, favoriteCallsigns, liveIds, o
   const receiverPage = Math.floor((page - 1) * resultsPerPage / logbookPageSize) + 1;
   const query = new URLSearchParams({ q: search.trim(), days: String(days), page: String(receiverPage), sort }).toString();
   const favoriteFilter = favoritesOnly ? JSON.stringify({ favorites: [...favorites].filter((id) => /^[a-f0-9]{6}$/.test(id)).sort(),
-    ...(favoriteCallsigns.size ? { favoriteCallsigns: [...favoriteCallsigns].sort() } : {}) }) : undefined;
-  const isFavorite = (id: string, callsign: string) => favorites.has(id) || favoriteCallsigns.has(normalizeFavoriteCallsign(callsign) ?? '');
+    ...(favoriteCallsigns.size ? { favoriteCallsigns: [...favoriteCallsigns].sort() } : {}),
+    ...(favoriteRegistrations.size ? { favoriteRegistrations: [...favoriteRegistrations].sort() } : {}) }) : undefined;
+  const isFavorite = (id: string, callsign: string, registration: string) => favorites.has(id)
+    || favoriteCallsigns.has(normalizeFavoriteCallsign(callsign) ?? '') || favoriteRegistrations.has(normalizeFavoriteRegistration(registration) ?? '');
   const result = useLogbook(open, query, favoriteFilter);
   const data = result?.data;
   const pageCount = Math.max(1, Math.ceil((data?.total ?? 0) / resultsPerPage));
@@ -134,8 +137,8 @@ export function LogbookMenu({ language, favorites, favoriteCallsigns, liveIds, o
           <h3>{favoritesOnly ? t('logbookNoFavorites') : search ? t('logbookNoResults') : t('logbookEmpty')}</h3></div>}
         {entries?.map((entry) => <article className={`logbook-entry${expanded === entry.hex ? ' expanded' : ''}`} key={entry.hex}>
           <div className="logbook-entry-heading">
-            <button type="button" className={`logbook-favorite ${isFavorite(entry.hex, entry.callsign) ? 'active' : ''}`}
-              aria-label={`${t('logbookFavorite')}: ${entry.registration || entry.hex}`} aria-pressed={isFavorite(entry.hex, entry.callsign)} onClick={() => onFavorite(entry.hex, entry.callsign)}><VectorIcon name="favorite" /></button>
+            <button type="button" className={`logbook-favorite ${isFavorite(entry.hex, entry.callsign, entry.registration) ? 'active' : ''}`}
+              aria-label={`${t('logbookFavorite')}: ${entry.registration || entry.hex}`} aria-pressed={isFavorite(entry.hex, entry.callsign, entry.registration)} onClick={() => onFavorite(entry.hex, entry.callsign, entry.registration)}><VectorIcon name="favorite" /></button>
             <button type="button" className="logbook-identity" aria-expanded={expanded === entry.hex}
               aria-controls={`logbook-visits-${entry.hex}`} onClick={() => setExpanded(expanded === entry.hex ? null : entry.hex)}>
               <strong>{entry.registration || entry.hex.toUpperCase()} <VectorIcon name="chevronDown" /></strong><span>{entry.callsign || '—'} · {entry.aircraftType || t('logbookUnknownType')}</span>
