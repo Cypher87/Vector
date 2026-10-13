@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { logbookPageSize, type LogbookResponse } from '../domain/logbook';
+import { logbookPageSize, type LogbookEntry, type LogbookResponse, type LogbookVisit } from '../domain/logbook';
+import type { LogbookReplayRequest, LogbookReplayResult } from '../domain/logbook-replay';
 import { formatLogbookDuration } from '../domain/logbook-duration';
 import { normalizeFavoriteCallsign, normalizeFavoriteRegistration } from '../domain/favorite-aircraft';
 import { localeForLanguage, translate, type Language } from '../i18n';
@@ -40,9 +41,33 @@ function useLogbook(enabled: boolean, query: string, favorites?: string) {
   return enabled && result?.query === requestKey ? result : undefined;
 }
 
-function LogbookVisits({ hex, days, language }: { hex: string; days: number; language: Language }) {
+type ReplaySighting = (request: LogbookReplayRequest, signal: AbortSignal) => Promise<LogbookReplayResult>;
+
+function LogbookVisits({ entry, days, language, onReplay, onClose }: {
+  entry: LogbookEntry; days: number; language: Language; onReplay: ReplaySighting; onClose: () => void;
+}) {
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
-  const result = useLogbook(true, `hex=${hex}&days=${days}`);
+  const result = useLogbook(true, `hex=${entry.hex}&days=${days}`);
+  const request = useRef<AbortController | undefined>(undefined);
+  const [replay, setReplay] = useState<{ visit: number; status: 'loading' | 'unavailable' | 'failed' }>();
+  useEffect(() => () => request.current?.abort(), []);
+  const openReplay = async (visit: LogbookVisit) => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setReplay({ visit: visit.firstSeen, status: 'loading' });
+    try {
+      const result = await onReplay({ hex: entry.hex, registration: entry.registration,
+        aircraftType: entry.aircraftType, description: entry.description,
+        firstSeen: visit.firstSeen, lastSeen: visit.lastSeen }, controller.signal);
+      if (controller.signal.aborted) return;
+      if (result.status === 'ready') onClose();
+      else if (result.status === 'cancelled') setReplay(undefined);
+      else setReplay({ visit: visit.firstSeen, status: result.status });
+    } catch {
+      if (!controller.signal.aborted) setReplay({ visit: visit.firstSeen, status: 'failed' });
+    }
+  };
   const date = new Intl.DateTimeFormat(localeForLanguage[language], { dateStyle: 'medium', timeStyle: 'short' });
   return <div className="logbook-visits">
     <h3>{t('logbookRecentVisits')}</h3>
@@ -53,14 +78,23 @@ function LogbookVisits({ hex, days, language }: { hex: string; days: number; lan
           <dl className="logbook-visit-duration"><dt>{t('logbookDuration')}</dt>
             <dd>{formatLogbookDuration(visit.firstSeen, visit.lastSeen, language)}</dd></dl>
         </div>
+        <button type="button" className="logbook-replay" disabled={replay?.status === 'loading'}
+          aria-label={`${t('logbookReplay')}: ${date.format(visit.firstSeen)}`}
+          aria-busy={replay?.visit === visit.firstSeen && replay.status === 'loading'} onClick={() => { void openReplay(visit); }}>
+          <VectorIcon name="history" />{t(replay?.visit === visit.firstSeen && replay.status === 'loading' ? 'logbookLoading' : 'logbookReplay')}
+        </button>
+        {replay?.visit === visit.firstSeen && replay.status !== 'loading' && <p className="logbook-replay-status" role="status">
+          {t(replay.status === 'unavailable' ? 'logbookReplayUnavailable' : 'logbookReplayFailed')}
+        </p>}
       </li>)}</ol>}
   </div>;
 }
 
-export function LogbookMenu({ language, favorites, favoriteCallsigns, favoriteRegistrations, liveIds, onFavorite, onSelect }: {
+export function LogbookMenu({ language, favorites, favoriteCallsigns, favoriteRegistrations, liveIds, onFavorite, onSelect, onReplay }: {
   language: Language; favorites: ReadonlySet<string>; favoriteCallsigns: ReadonlySet<string>; liveIds: ReadonlySet<string>;
   favoriteRegistrations: ReadonlySet<string>;
   onFavorite: (id: string, callsign?: string, registration?: string) => void; onSelect: (id: string) => void;
+  onReplay: ReplaySighting;
 }) {
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
   const [open, setOpen] = useState(false);
@@ -150,7 +184,7 @@ export function LogbookMenu({ language, favorites, favoriteCallsigns, favoriteRe
           {expanded === entry.hex && <div className="logbook-entry-details" id={`logbook-visits-${entry.hex}`}>
             <div className="logbook-aircraft-info"><span>{entry.hex.toUpperCase()} · {entry.description || entry.aircraftType || '—'}</span>
               {liveIds.has(entry.hex) && <button type="button" onClick={() => { close(); onSelect(entry.hex); }}>{t('logbookShowLive')} <span aria-hidden="true">↗</span></button>}</div>
-            <LogbookVisits hex={entry.hex} days={days} language={language} />
+            <LogbookVisits key={entry.hex} entry={entry} days={days} language={language} onReplay={onReplay} onClose={close} />
           </div>}
         </article>)}
       </div>

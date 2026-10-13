@@ -13,7 +13,7 @@ export async function openFilterGroup(page: Page, group: 'categories' | 'flight'
 }
 
 /** Synthetic readsb replay, using the same 16-byte record format as the receiver. */
-function replayFile(path: string) {
+export function replayFile(path: string) {
   const match = path.match(/^(\d{4})\/(\d{2})\/(\d{2})\/heatmap\/(\d{2})\.bin\.ttf$/);
   if (!match) throw new Error(`Unexpected replay path: ${path}`);
   const start = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) + Number(match[4]) * 1_800_000;
@@ -45,6 +45,7 @@ export class RadarFixture {
   receiverFailures = 0;
   receiverPositionKnown = true;
   aircraftUnavailable = false;
+  omittedAircraftIds: string[] = [];
   timestamp: number | undefined;
   longitudeOffset = 0;
   aircraftRequests = 0;
@@ -96,7 +97,7 @@ export class RadarFixture {
             { hex: 'abc123', flight: 'VECTOR01', r: 'TEST-1', t: 'A320', category: 'A3', type: 'adsb_icao', lat: 52.30, lon: 4.80 + seconds * 0.0015 + this.longitudeOffset, alt_baro: 20_000, gs: 200, track: 90, seen: 0, seen_pos: 0, messages: this.aircraftRequests * 50 },
             { hex: 'def456', flight: 'BALLOON', r: 'TEST-2', t: 'BALL', category: 'B2', type: 'adsb_icao', lat: 52.45, lon: 4.65, alt_baro: 2_000, gs: 10, track: 45, seen: 0, messages: this.aircraftRequests * 30 },
             ...this.extraAircraft,
-          ] });
+          ].filter((aircraft) => !this.omittedAircraftIds.includes(String(aircraft.hex))) });
         }
         if (path.startsWith('traces/')) {
           this.traceRequests.push(path);

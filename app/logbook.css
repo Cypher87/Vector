@@ -70,6 +70,10 @@
 .logbook-visit-duration { display: flex; align-items: baseline; gap: 6px; margin: 0; white-space: nowrap; }
 .logbook-visit-duration dt { color: var(--text-secondary-color); }
 .logbook-visit-duration dd { margin: 0; font-weight: 500; font-variant-numeric: tabular-nums; }
+.logbook-replay { display: inline-flex; align-items: center; justify-content: center; gap: 6px; justify-self: end; min-height: 36px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 4px; background: none; color: var(--ink); font-size: 12px; white-space: nowrap; }
+.logbook-replay:hover:not(:disabled) { border-color: var(--muted); background: var(--accent-soft); }
+.logbook-replay .vector-icon { width: 15px; height: 15px; }
+.logbook-visits .logbook-replay-status { grid-column: 1 / -1; margin: 0; color: var(--text-secondary-color); }
 .logbook-dialog footer { display: flex; align-items: center; justify-content: flex-end; flex-shrink: 0; padding: 8px 20px; border-top: 1px solid var(--line); color: var(--text-secondary-color); font-size: 12px; font-variant-numeric: tabular-nums; }
 .logbook-dialog nav { display: flex; align-items: center; gap: 10px; }
 .logbook-dialog button:disabled { opacity: .4; cursor: default; }
@@ -80,7 +84,7 @@
 @media (min-width: 721px) {
   .logbook-entry { grid-template-columns: minmax(0, 1fr) 340px; align-items: center; }
   .logbook-times { margin: 0; }
-  .logbook-visits li { grid-template-columns: minmax(0, 1fr) 250px; align-items: baseline; column-gap: 16px; }
+  .logbook-visits li { grid-template-columns: minmax(0, 1fr) 190px auto; align-items: center; column-gap: 12px; }
 }
 @media (max-width: 720px) {
   .logbook-dialog { max-height: calc(100dvh - 20px); }
@@ -93,6 +97,9 @@
   .logbook-filter-toggle, .logbook-aircraft-info button { min-height: 40px; }
   .logbook-entry { padding: 10px 16px; }
   .logbook-times { margin-left: 0; }
+  .logbook-visits li { grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; }
+  .logbook-visits li > span { grid-column: 1 / -1; }
+  .logbook-replay { min-height: 40px; }
   .logbook-dialog footer { padding: 8px 16px; }
 }
 @media (max-width: 420px) {

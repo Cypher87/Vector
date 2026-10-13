@@ -12,6 +12,7 @@ import { HistoryControls } from '../src/components/history-controls';
 import { FlightProfile } from '../src/components/flight-profile';
 import { ReceiverDashboard } from '../src/components/receiver-dashboard';
 import { LogbookMenu } from '../src/components/logbook-menu';
+import type { LogbookReplayRequest } from '../src/domain/logbook-replay';
 import { FavoritesMenu } from '../src/components/favorites-menu';
 import { SyncMenu } from '../src/components/sync-menu';
 import { SettingsMenu } from '../src/components/settings-menu';
@@ -609,6 +610,24 @@ export default function Home() {
     setMapFocus({ latitude: aircraft.latitude, longitude: aircraft.longitude, request: Date.now() });
   };
 
+  const replayLogbookSighting = async (request: LogbookReplayRequest, signal: AbortSignal) => {
+    const result = await history.loadSighting(request, signal);
+    if (result.status !== 'ready' || signal.aborted) return result;
+    const aircraft = result.aircraft;
+    const favoriteIds = matchingFavoriteAircraftIds(savedFavoriteAircraftIds, favoriteCallsignSet, [aircraft], favoriteRegistrationSet);
+    setQuery('');
+    if (!matchesAircraftFilters(aircraft, aircraftFilters, {
+      favoriteIds, distanceKm: distanceKilometres(receiverLat, receiverLon, aircraft.latitude, aircraft.longitude),
+    })) resetAircraftFilters();
+    setSelectedId(aircraft.id);
+    setFollowing(false);
+    setDetailsOpen(true);
+    setMobileListOpen(false);
+    setMobileDetailsExpanded(false);
+    setMapFocus({ latitude: aircraft.latitude, longitude: aircraft.longitude, request: Date.now() });
+    return result;
+  };
+
   const filterMatchedAircraft = useMemo(() => displayedAircraft.filter((item) => matchesAircraftFilters(item, aircraftFilters, {
     favoriteIds: favoriteAircraftIdSet,
     distanceKm: aircraftFilters.distance === null ? undefined : distanceKilometres(receiverLat, receiverLon, item.latitude, item.longitude),
@@ -706,7 +725,7 @@ export default function Home() {
         <div className="top-actions">
           <LogbookMenu language={language} favorites={savedFavoriteAircraftIds} favoriteCallsigns={favoriteCallsignSet}
             favoriteRegistrations={favoriteRegistrationSet}
-            liveIds={eventAircraftIds} onFavorite={toggleFavoriteAircraft} onSelect={selectAircraftFromEvent} />
+            liveIds={eventAircraftIds} onFavorite={toggleFavoriteAircraft} onSelect={selectAircraftFromEvent} onReplay={replayLogbookSighting} />
           <EventCenter
             availableAircraftIds={eventAircraftIds}
             events={radarEvents.events}
@@ -915,7 +934,7 @@ export default function Home() {
             favoriteIds={favoriteAircraftIdSet}
             historyOpen={history.open}
             labelsVisible={labelsVisible}
-            legTraceVisible={legTraceVisible && !history.open}
+            legTraceVisible={history.open ? history.sighting?.hex === selectedId : legTraceVisible}
             tracePoints={selectedTrace.points}
             highlightedTracePoint={detailsOpen && selectedOnMap && profileHighlight?.id === selected?.id
               && selectedTrace.points.some((point) => point.timestamp === profileHighlight?.point.timestamp)
@@ -1090,7 +1109,8 @@ export default function Home() {
 
             <AircraftRoute route={selectedRoute} callsign={selected.flight} language={language} />
 
-            <FlightProfile key={`${selected.id}:${history.open}`} points={selectedTrace.points} loading={selectedTrace.loading}
+            <FlightProfile key={`${selected.id}:${history.open}:${history.sighting?.key ?? ''}`} points={selectedTrace.points} loading={selectedTrace.loading}
+              initiallyOpen={history.sighting?.hex === selected.id}
               language={language} unitSystem={unitSystem} period={legTracePeriod} historyOpen={history.open}
               onPeriodChange={changeLegTracePeriod} onHighlight={highlightProfilePoint} />
 

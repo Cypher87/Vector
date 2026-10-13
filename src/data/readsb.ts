@@ -62,9 +62,14 @@ async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
   return response.json();
 }
 
+export class ReadsbHttpError extends Error {
+  readonly status: number;
+  constructor(status: number) { super(`Readsb returned HTTP ${status}`); this.status = status; }
+}
+
 async function fetchBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
   const response = await fetch(url, { cache: 'no-store', signal });
-  if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
+  if (!response.ok) throw new ReadsbHttpError(response.status);
   return response.arrayBuffer();
 }
 
@@ -259,7 +264,8 @@ export async function loadAircraftReplayChunk(
   const previousPositions = new Map<string, [number, number]>();
   const snapshots = slices.map((sliceStart, sliceIndex): AircraftHistorySnapshot => {
     const sliceEnd = slices[sliceIndex + 1] ?? signed.length;
-    const timestamp = unsigned[sliceStart + 2] / 1_000 + unsigned[sliceStart + 1] * 4_294_967.296;
+    // Reassemble integer milliseconds before division to avoid rounding across a sighting boundary.
+    const timestamp = (unsigned[sliceStart + 2] + unsigned[sliceStart + 1] * 4_294_967_296) / 1_000;
     const aircraft: Aircraft[] = [];
 
     for (let index = sliceStart + 4; index < sliceEnd; index += 4) {

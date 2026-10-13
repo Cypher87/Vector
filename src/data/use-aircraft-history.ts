@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Aircraft, AircraftHistorySnapshot, AircraftMetadata } from '../domain/aircraft';
 import { combineAircraftMetadata, mergeAircraftMetadata } from '../domain/aircraft-metadata';
-import { loadAircraftMetadata, loadAircraftReplayChunk } from './readsb';
+import { logbookReplayWindow, selectLogbookReplay, type LogbookReplayRequest, type LogbookReplayResult } from '../domain/logbook-replay';
+import { loadAircraftMetadata, loadAircraftReplayChunk, ReadsbHttpError } from './readsb';
 
 export type HistorySource = 'receiver' | 'session';
 
@@ -17,6 +18,7 @@ type HistoryState = {
   snapshots: AircraftHistorySnapshot[];
   source: HistorySource;
   speed: number;
+  sighting?: { hex: string; key: string };
 };
 
 type AircraftHistoryOptions = {
@@ -138,7 +140,7 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
     sessionSnapshotsRef.current = nextSnapshots;
 
     setState((current) => {
-      if (!current.open || current.source !== 'session') return current;
+      if (!current.open || current.source !== 'session' || current.sighting) return current;
       const wasAtEnd = current.index >= current.snapshots.length - 1;
       const index = current.playing
         ? Math.min(current.index, nextSnapshots.length - 1)
@@ -167,8 +169,82 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
       playing: false,
       snapshots,
       source: 'session',
+      sighting: undefined,
     }));
   }, [aircraft, lastUpdate]);
+
+  const loadReplay = useCallback(async (target: Date, signal: AbortSignal) => {
+    const cacheKey = replayCacheKey(target);
+    const cached = replayCacheRef.current.get(cacheKey);
+    if (cached) return cached;
+    const snapshots = await loadAircraftReplayChunk(historyBaseUrl, target, signal);
+    // A currently recording half-hour is mutable; only retain completed chunks.
+    if (!signal.aborted && receiverChunkStart(target.getTime()) < receiverChunkStart(lastUpdate ?? Date.now())) {
+      replayCacheRef.current.set(cacheKey, snapshots);
+      if (replayCacheRef.current.size > 12) {
+        const oldestKey = replayCacheRef.current.keys().next().value;
+        if (oldestKey) replayCacheRef.current.delete(oldestKey);
+      }
+    }
+    return snapshots;
+  }, [historyBaseUrl, lastUpdate]);
+
+  const enrichSnapshots = useCallback(async (snapshots: AircraftHistorySnapshot[], signal: AbortSignal) => {
+    const metadataIds = [...new Set(snapshots.flatMap((snapshot) => snapshot.aircraft.map((item) => item.id)))]
+      .filter((id) => /^[0-9a-f]{6}$/.test(id) && !metadataLookupRef.current.has(id));
+    if (metadataIds.length > 0) {
+      try {
+        const databaseMetadata = await loadAircraftMetadata(metadataIds, AbortSignal.any([signal, AbortSignal.timeout(3_000)]));
+        if (!signal.aborted) {
+          for (const id of metadataIds) metadataLookupRef.current.add(id);
+          for (const [id, metadata] of databaseMetadata) {
+            aircraftMetadataRef.current.set(id, combineAircraftMetadata(metadata, aircraftMetadataRef.current.get(id) ?? {}));
+          }
+        }
+      } catch { /* Metadata is optional; recorded positions remain usable. */ }
+    }
+    return snapshots.map((snapshot) => ({ ...snapshot,
+      aircraft: snapshot.aircraft.map((item) => mergeAircraftMetadata(item, aircraftMetadataRef.current.get(item.id))),
+    }));
+  }, []);
+
+  const loadSighting = useCallback(async (request: LogbookReplayRequest, cancellation: AbortSignal): Promise<LogbookReplayResult> => {
+    requestRef.current?.abort();
+    const window = logbookReplayWindow(request);
+    if (!window || window.start > Date.now() / 1000) return { status: 'unavailable' };
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const signal = AbortSignal.any([controller.signal, cancellation, AbortSignal.timeout(15_000)]);
+    setState((current) => ({ ...current, loading: false, playing: false }));
+    try {
+      // Request the exact dates, including an in-progress chunk; do not clamp to yesterday or another period.
+      const recordings = receiverHaveReplay ? await Promise.all(window.chunks.map(async (time) => {
+        try { return { snapshots: await loadReplay(new Date(time), signal), failed: false }; }
+        catch (error) { return { snapshots: [], failed: !(error instanceof ReadsbHttpError && [404, 410].includes(error.status)) }; }
+      })) : [];
+      if (controller.signal.aborted || cancellation.aborted) return { status: 'cancelled' };
+      if (signal.aborted) return { status: 'failed' };
+      const selection = selectLogbookReplay(request, [...recordings.map((result) => result.snapshots), sessionSnapshotsRef.current]);
+      if (!selection) return { status: recordings.some((result) => result.failed) ? 'failed' : 'unavailable' };
+      // Logbook identities help older recordings, but never replace their callsign or position.
+      aircraftMetadataRef.current.set(request.hex, combineAircraftMetadata({
+        registration: request.registration || undefined, aircraftType: request.aircraftType || undefined,
+        description: request.description || undefined,
+      }, aircraftMetadataRef.current.get(request.hex) ?? {}));
+      const snapshots = await enrichSnapshots(selection.snapshots, signal);
+      if (controller.signal.aborted || cancellation.aborted) return { status: 'cancelled' };
+      if (signal.aborted) return { status: 'failed' };
+      const selected = snapshots[selection.index].aircraft.find((aircraft) => aircraft.id === request.hex)!;
+      setState((current) => ({ ...current, error: false, index: selection.index, loading: false, open: true,
+        playbackTimestamp: snapshots[selection.index].timestamp, playing: false, snapshots,
+        source: recordings.some((result) => result.snapshots.length > 0) ? 'receiver' : 'session',
+        sighting: { hex: request.hex, key: `${request.hex}:${request.firstSeen}:${request.lastSeen}` },
+      }));
+      return { status: 'ready', aircraft: selected };
+    } catch {
+      return { status: controller.signal.aborted || cancellation.aborted ? 'cancelled' : 'failed' };
+    }
+  }, [enrichSnapshots, loadReplay, receiverHaveReplay]);
 
   const loadReceiverAt = useCallback(async (
     target: Date,
@@ -182,44 +258,13 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
 
     const controller = new AbortController();
     requestRef.current = controller;
-    setState((current) => ({ ...current, error: false, loading: true, open: true, playing: false }));
+    setState((current) => ({ ...current, error: false, loading: true, open: true, playing: false, sighting: undefined }));
     try {
       const receiverTarget = availableReceiverTarget(target, lastUpdate ?? Date.now());
-      const cacheKey = replayCacheKey(receiverTarget);
-      let snapshots = replayCacheRef.current.get(cacheKey);
-      if (!snapshots) {
-        snapshots = await loadAircraftReplayChunk(historyBaseUrl, receiverTarget, controller.signal);
-        replayCacheRef.current.set(cacheKey, snapshots);
-        if (replayCacheRef.current.size > 12) {
-          const oldestKey = replayCacheRef.current.keys().next().value;
-          if (oldestKey) replayCacheRef.current.delete(oldestKey);
-        }
-      }
+      const snapshots = await loadReplay(receiverTarget, controller.signal);
       if (controller.signal.aborted) return;
-      const metadataIds = [...new Set(snapshots.flatMap((snapshot) => snapshot.aircraft.map((item) => item.id)))]
-        .filter((id) => /^[0-9a-f]{6}$/.test(id) && !metadataLookupRef.current.has(id));
-      if (metadataIds.length > 0) {
-        try {
-          const databaseMetadata = await loadAircraftMetadata(metadataIds, controller.signal);
-          if (controller.signal.aborted) return;
-          for (const id of metadataIds) metadataLookupRef.current.add(id);
-          for (const [id, metadata] of databaseMetadata) {
-            aircraftMetadataRef.current.set(
-              id,
-              combineAircraftMetadata(metadata, aircraftMetadataRef.current.get(id) ?? {}),
-            );
-          }
-        } catch {
-          if (controller.signal.aborted) return;
-        }
-      }
-      const enrichedSnapshots = snapshots.map((snapshot) => ({
-        ...snapshot,
-        aircraft: snapshot.aircraft.map((item) => mergeAircraftMetadata(
-          item,
-          aircraftMetadataRef.current.get(item.id),
-        )),
-      }));
+      const enrichedSnapshots = await enrichSnapshots(snapshots, controller.signal);
+      if (controller.signal.aborted) return;
       const index = closestSnapshotIndex(enrichedSnapshots, receiverTarget.getTime() / 1_000);
       setState((current) => ({
         ...current,
@@ -240,9 +285,10 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
         setState((current) => ({ ...current, error: true, loading: false, playing: false }));
       }
     }
-  }, [historyBaseUrl, lastUpdate, receiverHaveReplay, sessionFallback]);
+  }, [enrichSnapshots, loadReplay, lastUpdate, receiverHaveReplay, sessionFallback]);
 
   const loadAt = useCallback(async (target: Date) => {
+    requestRef.current?.abort();
     const currentChunkStart = receiverChunkStart(lastUpdate ?? Date.now());
     if (target.getTime() >= currentChunkStart && sessionSnapshotsRef.current.length > 0) {
       sessionFallback(target, false);
@@ -252,6 +298,7 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
   }, [lastUpdate, loadReceiverAt, sessionFallback]);
 
   const openHistory = useCallback(() => {
+    requestRef.current?.abort();
     const target = new Date((lastUpdate ?? Date.now()) - 5 * 60 * 1_000);
     const snapshots = sessionSnapshotsRef.current.length > 0
       ? [...sessionSnapshotsRef.current]
@@ -278,7 +325,7 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
 
   const close = useCallback(() => {
     requestRef.current?.abort();
-    setState((current) => ({ ...current, loading: false, open: false, playing: false }));
+    setState((current) => ({ ...current, loading: false, open: false, playing: false, sighting: undefined }));
   }, []);
 
   const setIndex = useCallback((index: number) => {
@@ -299,7 +346,7 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
       if (current.snapshots.length < 2) return current;
 
       const atEnd = current.index >= current.snapshots.length - 1;
-      const hasNextReceiverChunk = current.source === 'receiver'
+      const hasNextReceiverChunk = !current.sighting && current.source === 'receiver'
         && receiverChunkStart((current.snapshots[current.index]?.timestamp ?? 0) * 1_000) < latestReceiverChunkStart(lastUpdate ?? Date.now());
       const restartCurrentPeriod = atEnd && !hasNextReceiverChunk;
       const index = restartCurrentPeriod ? 0 : current.index;
@@ -353,7 +400,7 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
   useEffect(() => {
     if (!state.open || !state.playing || state.index < state.snapshots.length - 1) return;
     const current = state.snapshots[state.index];
-    const hasNextReceiverChunk = current
+    const hasNextReceiverChunk = !state.sighting && current
       && state.source === 'receiver'
       && receiverChunkStart(current.timestamp * 1_000) < latestReceiverChunkStart(lastUpdate ?? Date.now());
     const sessionSnapshots = sessionSnapshotsRef.current;
@@ -364,7 +411,7 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
       if (hasNextReceiverChunk) {
         const nextChunk = receiverChunkStart(current.timestamp * 1_000) + REPLAY_CHUNK_MS;
         void loadReceiverAt(new Date(nextChunk), { fallbackToSession: false, playAfterLoad: true });
-      } else if (state.source === 'receiver' && firstSessionIndex >= 0) {
+      } else if (!state.sighting && state.source === 'receiver' && firstSessionIndex >= 0) {
         setState((value) => ({
           ...value,
           error: false,
@@ -380,7 +427,7 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [lastUpdate, loadReceiverAt, state.index, state.open, state.playing, state.snapshots, state.source]);
+  }, [lastUpdate, loadReceiverAt, state.index, state.open, state.playing, state.snapshots, state.source, state.sighting]);
 
   useEffect(() => () => requestRef.current?.abort(), []);
 
@@ -404,6 +451,7 @@ export function useAircraftHistory({ aircraft, historyBaseUrl, lastUpdate, recei
     close,
     currentSnapshot,
     loadAt,
+    loadSighting,
     openHistory,
     setIndex,
     setSpeed,

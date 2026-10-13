@@ -11,12 +11,13 @@ import { VectorIcon } from './vector-icon';
 type Props = {
   points: AircraftTracePoint[]; loading: boolean; language: Language; unitSystem: UnitSystem;
   period: LegTracePeriod; historyOpen: boolean;
+  initiallyOpen?: boolean;
   onPeriodChange: (period: LegTracePeriod) => void;
   onHighlight: (point?: AircraftTracePoint) => void;
 };
 
-export function FlightProfile({ points, loading, language, unitSystem, period, historyOpen, onPeriodChange, onHighlight }: Props) {
-  const [open, setOpen] = useState(false);
+export function FlightProfile({ points, loading, language, unitSystem, period, historyOpen, initiallyOpen = false, onPeriodChange, onHighlight }: Props) {
+  const [open, setOpen] = useState(initiallyOpen);
   const contentId = useId();
   const [cursor, setCursor] = useState<number>();
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
