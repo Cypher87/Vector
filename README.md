@@ -2,7 +2,7 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.10.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.11.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
@@ -33,6 +33,8 @@ sudo bash /tmp/vector-install.sh
 Vector is installed under `/opt/vector` and runs as the unprivileged `vector` user. The `vector.service` systemd service starts at boot, restarts after failures, and listens on `0.0.0.0:3000`.
 
 The installer detects readsb and its data directories, configures read access, migrates local tar1090 URLs, and downloads the aircraft database. It preserves your labels, location, preferences, and recordings. Missing readsb recording options are added after asking about the required brief receiver restart. SDR and feeder settings stay unchanged. tar1090 is not removed.
+
+NFS history uses the share's existing read permissions. Vector's access maintenance runs separately from readsb and never scans the history archive during receiver startup. See [NFS history and recovery](docs/STANDALONE.md#nfs-history).
 
 No `.env` editing is needed for a standard installation. Questions appear only when a choice is necessary, such as multiple receivers or an intentional external source. Updates build separately while the current app keeps running, then switch over and verify fresh receiver data. Failed activation restores the previous app, runtime, configuration and service state. See [installation details and recovery](docs/STANDALONE.md).
 

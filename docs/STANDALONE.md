@@ -17,12 +17,27 @@ The installer checks for at least 2 GiB free and builds the candidate in a separ
 1. Detect the running readsb systemd service and its actual live/history output paths.
 2. Back up configuration and affected service files in root-only `/var/lib/vector-installer/`.
 3. Prepare the aircraft database, preserving the last valid copy if downloading fails.
-4. Reuse existing read permissions; readable output needs no ACL support (including on ACL-less tmpfs mounts). For restricted output, test ACL support before granting narrowly scoped access. A root-owned startup helper checks access when readsb recreates `/run` data after a restart.
+4. Reuse existing read permissions; readable output needs no ACL support (including on ACL-less tmpfs mounts). For restricted local output, test ACL support before granting narrowly scoped access. An independent service checks live-file access after readsb recreates `/run` data; its failure cannot fail readsb startup. Network mounts retain their existing server permissions.
 5. Add missing recording/output options to the standard `/etc/default/readsb` configuration, if needed. Receiver device, gain, network, MLAT, feeder, and location settings are preserved.
 6. Switch `/etc/vector/vector.env` to direct file access, preserving other settings. Staged settings are validated before replacing the live configuration.
 7. Install/start Vector and the daily metadata updater. Verify that the API returns fresh receiver data, not merely that the process is running.
 
 Existing readsb recordings are retained. If the installer creates a new history directory, it uses `/var/lib/readsb/vector-history` with a separate daily cleanup job and a **seven-day retention period**. Existing history directories and their retention policies are not changed. New history takes time to accumulate; a completed replay block will not exist immediately after recording is enabled.
+
+### NFS history
+
+Existing NFS/NFS4 history paths remain supported. Vector skips recursive permission scans and ACL changes on network mounts, including mounts nested inside a local data directory. The `vector` user needs read/traverse access through the share's existing permissions. No mount or export options are rewritten. Startup access maintenance only visits live output, never the historical archive. Application updates also replace the old blocking permission hook automatically.
+
+If an older installation is stuck in `readsb.service: start-post operation timed out`, remove only Vector's old post-start command, keeping its drop-in and recording paths. This saves a backup beside the original file:
+
+```bash
+sudo sed -i.vector-nfs-backup '\|^ExecStartPost=.* /usr/local/lib/vector/readsb-access\.mjs[[:space:]]*$|d' /etc/systemd/system/readsb.service.d/90-vector-access.conf
+sudo systemctl daemon-reload
+sudo systemctl reset-failed readsb.service
+sudo systemctl restart readsb.service
+```
+
+This does not change or delete receiver recordings. Install the corrected Vector version to apply the permanent service changes.
 
 readsb remains the decoder and recorder. Vector uses no tar1090 application, web endpoints, or icons, in either local or remote mode. The separate `tar1090-db` metadata dataset is retained. The installer does not uninstall other applications, stop shared web servers, or remove receiver data; an existing tar1090 installation is left untouched, but Vector does not use it.
 

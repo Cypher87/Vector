@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { configPath, ownedHistory, planReadsb, migrationSettings, patchEnvironment, serviceName, dataDirectory } from './lib/readsb-migration.mjs';
 import { MigrationFiles, atomicWrite, snapshot } from './lib/migration-files.mjs';
-import { grantReadAccess, restoreAccess } from './readsb-access.mjs';
+import { grantReadAccess, liveAccessSpec, removeReadAccess, restoreAccess } from './readsb-access.mjs';
 import { ReleaseSwitch } from './lib/release-switch.mjs';
 
 const app = '/opt/vector/app';
@@ -16,10 +16,11 @@ const node = '/opt/vector/runtime/node/bin/node';
 const admin = '/usr/local/lib/vector';
 const backups = '/var/lib/vector-installer';
 const unitRoot = '/etc/systemd/system';
+const accessService = 'vector-readsb-access.service';
 const log = (message) => console.log(`[Vector] ${message}`);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const system = { run, ask, readFile, mkdir, chown, lstat, realpath, statfs, unlink, snapshot, atomicWrite,
-  MigrationFiles, ReleaseSwitch, grantReadAccess, fetch: (...args) => fetch(...args), sleep, log };
+  MigrationFiles, ReleaseSwitch, grantReadAccess, removeReadAccess, fetch: (...args) => fetch(...args), sleep, log };
 
 export function run(command, args, input, timeout = 60_000) {
   return new Promise((resolve, reject) => {
@@ -134,10 +135,34 @@ async function serviceState(name, io) {
 }
 
 async function stopVector(io) {
-  for (const name of ['vector-aircraft-db.timer', 'vector-aircraft-db.service', 'vector.service']) {
+  for (const name of [accessService, 'vector-aircraft-db.timer', 'vector-aircraft-db.service', 'vector.service']) {
     const load = (await io.run('systemctl', ['show', name, '--property=LoadState', '--value'])).trim();
     if (load !== 'not-found') await io.run('systemctl', ['stop', name]);
   }
+}
+
+async function configureReadsbAccess(spec, roots, transaction, release, io) {
+  const service = serviceName(spec.service);
+  liveAccessSpec(spec);
+  if (!Number.isInteger(spec.uid) || spec.uid <= 0 || spec.roots.length > 3) throw new Error('Invalid reader configuration');
+  for (const root of spec.roots) dataDirectory(root);
+  const dropinPath = join(unitRoot, `${service}.d/90-vector-access.conf`);
+  const existingDropin = await io.snapshot(dropinPath);
+  if (existingDropin && !existingDropin.content.startsWith('# Managed by Vector;')) throw new Error('An unrelated receiver integration already occupies the Vector drop-in path');
+  const accessUnitPath = join(unitRoot, accessService);
+  const existingAccessUnit = await io.snapshot(accessUnitPath);
+  if (existingAccessUnit && !existingAccessUnit.content.startsWith('# Managed by Vector;')) throw new Error('An unrelated unit occupies the Vector access service path');
+  // An application-only update preserves receiver paths and other startup hooks,
+  // while replacing our old blocking hook with the independent helper.
+  let dropin = roots ? `# Managed by Vector; receiver command and SDR settings remain unchanged.\n[Service]\nReadWritePaths=${roots.join(' ')}\n`
+    : existingDropin?.content.replace(/^ExecStartPost=[^\n]* \/usr\/local\/lib\/vector\/readsb-access\.mjs(?: --live-only)?[ \t]*\r?\n?/gm, '');
+  if (!dropin) return false;
+  if (!/^Wants=vector-readsb-access\.service\r?$/m.test(dropin)) dropin = `${dropin.trimEnd()}\n\n[Unit]\nWants=${accessService}\n`;
+  // Wants + After on the helper runs it separately after readsb is ready. Its
+  // failure or timeout must never count as a receiver startup failure.
+  await transaction.write(accessUnitPath, `# Managed by Vector; live output access maintenance.\n[Unit]\nDescription=Vector readsb live output access\nAfter=${service}\n\n[Service]\nType=oneshot\nExecStart=${release ? `${release.runtime}/bin/node` : node} ${admin}/readsb-access.mjs --live-only\nTimeoutStartSec=60s\nTimeoutStopSec=5s\nNice=10\nIOSchedulingClass=idle\n`, 0o644);
+  await transaction.write(dropinPath, dropin, 0o644);
+  return true;
 }
 
 export async function recover(transaction, io = system) {
@@ -214,12 +239,13 @@ export async function install({ yes = false, keepSource = false, release } = {},
   }
   const id = `${new Date().toISOString().replace(/[^0-9]/g, '')}-${randomUUID()}`;
   const transaction = new MigrationFiles(join(backups, id));
-  transaction.state.services = await Promise.all(['vector.service', 'vector-aircraft-db.timer', 'vector-readsb-history-clean.timer', ...(release ? ['vector-updater.service'] : [])].map((name) => serviceState(name, io)));
+  transaction.state.services = await Promise.all(['vector.service', 'vector-aircraft-db.timer', accessService, 'vector-readsb-history-clean.timer', ...(release ? ['vector-updater.service'] : [])].map((name) => serviceState(name, io)));
   transaction.state.acls = [];
   await transaction.save();
   await atomicWrite(join(backups, 'latest.json'), JSON.stringify({ id }));
   log(`Recovery backup: ${transaction.directory}`);
   const stagedConfig = `/etc/vector/.migration-${id}.env`;
+  let accessConfigured = false;
   try {
     if (release) {
       await new io.ReleaseSwitch(transaction).prepare(release.directory, release.runtime);
@@ -259,13 +285,13 @@ export async function install({ yes = false, keepSource = false, release } = {},
         const info = await lstat(ownedHistory);
         transaction.state.ownedHistory = owned.path === ownedHistory && info.ino === owned.ino && info.dev === owned.dev;
       }
-      const spec = { uid: Number((await run('id', ['-u', 'vector'])).trim()), roots: [...new Set([plan.live, plan.history])], service: selected.service };
-      await grantReadAccess(spec, run, async (acl) => { transaction.state.acls.push(acl); await transaction.save(); });
+      const spec = { uid: Number((await run('id', ['-u', 'vector'])).trim()), liveRoot: plan.live,
+        roots: [...new Set([plan.live, plan.history])], service: selected.service };
+      await grantReadAccess(spec, run, async (acl) => { transaction.state.acls.push(acl); await transaction.save(); }, {
+        onSkip: (mount) => log(`${mount.type} storage ${mount.path}: keeping existing server permissions; no recursive ACL changes.`),
+      });
       await transaction.write('/etc/vector/readsb-access.json', JSON.stringify(spec), 0o600);
-      const dropinPath = join(unitRoot, `${selected.service}.d/90-vector-access.conf`);
-      const existingDropin = await snapshot(dropinPath);
-      if (existingDropin && !existingDropin.content.startsWith('# Managed by Vector;')) throw new Error('An unrelated receiver integration already occupies the Vector drop-in path');
-      await transaction.write(dropinPath, `# Managed by Vector; receiver command and SDR settings remain unchanged.\n[Service]\nReadWritePaths=${roots.join(' ')}\nExecStartPost=+${release ? `${release.runtime}/bin/node` : node} ${admin}/readsb-access.mjs\n`, 0o644);
+      accessConfigured = await configureReadsbAccess(spec, roots, transaction, release, io);
       await run('systemd-analyze', ['verify', selected.service]);
       if (plan.restart) {
         const old = await snapshot('/etc/default/readsb');
@@ -275,11 +301,23 @@ export async function install({ yes = false, keepSource = false, release } = {},
       }
       await run('systemctl', ['daemon-reload']);
       if (plan.restart) await run('systemctl', ['restart', selected.service]);
+      await run('systemctl', ['start', '--no-block', accessService]);
       await waitFor(() => readableReceiver(stagedConfig, true, io, release), 45, io);
       if (transaction.state.ownedHistory) {
         await transaction.write('/etc/tmpfiles.d/vector-readsb-history.conf', `# Only the history directory created by Vector; existing receiver history is untouched.\ne ${ownedHistory} - - - 7d -\n`);
         await transaction.write(join(unitRoot, 'vector-readsb-history-clean.service'), `[Unit]\nDescription=Clean Vector-created readsb history\n[Service]\nType=oneshot\nExecStart=/usr/bin/systemd-tmpfiles --clean /etc/tmpfiles.d/vector-readsb-history.conf\n`);
         await transaction.write(join(unitRoot, 'vector-readsb-history-clean.timer'), '[Unit]\nDescription=Daily cleanup of Vector-created history\n[Timer]\nOnCalendar=daily\nPersistent=true\n[Install]\nWantedBy=timers.target\n');
+      }
+    } else if (keepSource && environment.READSB_SOURCE === 'local') {
+      const savedAccess = await snapshot('/etc/vector/readsb-access.json');
+      if (savedAccess) {
+        const spec = JSON.parse(savedAccess.content);
+        accessConfigured = await configureReadsbAccess(spec, undefined, transaction, release, io);
+        if (accessConfigured) {
+          await run('systemd-analyze', ['verify', serviceName(spec.service)]);
+          await run('systemctl', ['daemon-reload']);
+          await run('systemctl', ['start', '--no-block', accessService]);
+        }
       }
     }
     log((await asVector('check-readsb.mjs', stagedConfig, io, [], release)).trim());
@@ -294,6 +332,7 @@ export async function install({ yes = false, keepSource = false, release } = {},
     for (const name of units) {
       await transaction.write(join(unitRoot, name), await readFile(join(privilegedSource, 'packaging/systemd', name), 'utf8'));
     }
+    if (accessConfigured) units.push(accessService);
     if (transaction.state.ownedHistory) units.push('vector-readsb-history-clean.service', 'vector-readsb-history-clean.timer');
     // The rollback journal omits unchanged files; repeat installs must still verify every unit.
     await run('systemd-analyze', ['verify', ...units.map((name) => join(unitRoot, name))]);
@@ -316,7 +355,8 @@ export async function install({ yes = false, keepSource = false, release } = {},
   } finally { await unlink(stagedConfig).catch((error) => { if (error.code !== 'ENOENT') throw error; }); }
 }
 
-async function detach() {
+export async function detach(io = system) {
+  const { snapshot, unlink, run, removeReadAccess, log } = io;
   const saved = await snapshot('/etc/vector/readsb-access.json');
   if (!saved) return;
   const spec = JSON.parse(saved.content);
@@ -324,17 +364,17 @@ async function detach() {
   const path = join(unitRoot, `${serviceName(spec.service)}.d/90-vector-access.conf`);
   const dropin = await snapshot(path);
   if (dropin && !dropin.content.startsWith('# Managed by Vector;')) throw new Error('The receiver integration was edited; refusing to remove it');
+  const accessUnitPath = join(unitRoot, accessService);
+  const accessUnit = await snapshot(accessUnitPath);
+  if (accessUnit && !accessUnit.content.startsWith('# Managed by Vector;')) throw new Error('The Vector access service was edited; refusing to remove it');
+  if (accessUnit) await run('systemctl', ['stop', accessService]);
   if (dropin) await unlink(path);
-  // Remove only Vector's named ACL entries. Recordings and other permissions stay.
-  for (const root of spec.roots) {
-    dataDirectory(root);
-    await run('setfacl', ['-R', '-P', '-x', `u:${spec.uid},d:u:${spec.uid}`, '--', root]);
-    const parents = root.split('/').slice(1, -1);
-    let parent = '';
-    for (const part of parents) { parent += `/${part}`; await run('setfacl', ['-x', `u:${spec.uid}`, '--', parent]); }
-  }
-  await unlink('/etc/vector/readsb-access.json');
+  if (accessUnit) await unlink(accessUnitPath);
+  // Detach first, even if later permission cleanup cannot complete.
   await run('systemctl', ['daemon-reload']);
+  // Remove only Vector's named ACL entries. Recordings and other permissions stay.
+  await removeReadAccess(spec, run, { onSkip: (mount) => log(`${mount.type} storage ${mount.path}: server permissions left unchanged.`) });
+  await unlink('/etc/vector/readsb-access.json');
   log('Receiver integration removed. readsb recordings and their retention job remain independent of Vector.');
 }
 

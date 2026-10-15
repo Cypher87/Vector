@@ -7,9 +7,9 @@ import { parseEnv } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { dataDirectory, argumentValue, patchEnvironment, planReadsb, readerAcl, readerCanAccess, migrationSettings } from '../scripts/lib/readsb-migration.mjs';
 import { MigrationFiles, snapshot, atomicWrite } from '../scripts/lib/migration-files.mjs';
-import { install, recover } from '../scripts/migrate-install.mjs';
+import { detach, install, recover } from '../scripts/migrate-install.mjs';
 import { ReleaseSwitch } from '../scripts/lib/release-switch.mjs';
-import { grantReadAccess, restoreAccess } from '../scripts/readsb-access.mjs';
+import { grantReadAccess, liveAccessSpec, readerFilesystem, readerMounts, removeReadAccess, restoreAccess } from '../scripts/readsb-access.mjs';
 
 const help = '--write-json --write-globe-history --heatmap --json-trace-hist-only --write-json-binCraft-only';
 const unit = '[Service]\nEnvironmentFile=/etc/default/readsb\nExecStart=/usr/bin/readsb --write-json /run/readsb $RECEIVER_OPTIONS $DECODER_OPTIONS $NET_OPTIONS $JSON_OPTIONS\n';
@@ -17,6 +17,7 @@ const defaults = '# Existing receiver settings\nRECEIVER_OPTIONS="--device-type 
 const vectorEnv = 'READSB_LIVE_URL=http://127.0.0.1/tar1090/data/\nREADSB_HISTORY_URL=http://127.0.0.1/tar1090/globe_history/\nVECTOR_SITE_NAME="My receiver"\nPORT=3000\n';
 const fullArgs = ['/usr/bin/readsb', '--write-json', '/run/readsb', '--write-globe-history=/var/globe_history', '--heatmap', '30'];
 const vectorUnits = ['vector.service', 'vector-aircraft-db.service', 'vector-aircraft-db.timer'];
+const localVectorUnits = [...vectorUnits, 'vector-readsb-access.service'];
 const historyUnits = ['vector-readsb-history-clean.service', 'vector-readsb-history-clean.timer'];
 const verifyArgs = (names: string[]) => ['verify', ...names.map((name) => join('/etc/systemd/system', name))];
 
@@ -149,6 +150,7 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
     unlink: (path: string) => unlink(map(path)),
     chown: async () => {}, statfs: () => statfs(root), MigrationFiles: Files, ReleaseSwitch: Releases,
     grantReadAccess: async () => { calls.push('grant ACL'); },
+    removeReadAccess: async () => { calls.push('remove ACL'); },
     run: async (command: string, args: string[]) => {
       calls.push(`${command} ${args.join(' ')}`);
       if (command === 'id') return '900\n';
@@ -209,7 +211,7 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
     const { id } = JSON.parse(await readFile(map('/var/lib/vector-installer/latest.json'), 'utf8'));
     await recover(new Files(`/var/lib/vector-installer/${id}`, await journal()), io as unknown as Parameters<typeof recover>[1]);
   };
-  return { root, map, calls, verifications, state, migrate, journal, stage, rollback, cleanup: () => rm(root, { recursive: true, force: true }) };
+  return { root, map, calls, verifications, state, io, migrate, journal, stage, rollback, cleanup: () => rm(root, { recursive: true, force: true }) };
 }
 
 test('Linux release migration switches the complete build and manual rollback restores the legacy installation', { skip: process.platform !== 'linux' }, async () => {
@@ -281,14 +283,14 @@ test('guided migration detects a ready receiver without questions, preserves pre
   const sim = await simulation();
   try {
     await sim.migrate();
-    assert.deepEqual(sim.verifications.at(-1), verifyArgs(vectorUnits));
+    assert.deepEqual(sim.verifications.at(-1), verifyArgs(localVectorUnits));
     assert.equal(parseEnv(await readFile(sim.map('/etc/vector/vector.env'), 'utf8')).VECTOR_SITE_NAME, 'My receiver');
     assert.equal(sim.calls.includes('question'), false);
     assert.equal(sim.calls.some((call) => call === 'systemctl restart readsb.service'), false);
     assert.equal(await readFile(sim.map('/etc/default/readsb'), 'utf8'), defaults);
     const first = await readFile(sim.map('/etc/vector/vector.env'), 'utf8');
     await sim.migrate();
-    assert.deepEqual(sim.verifications.at(-1), verifyArgs(vectorUnits));
+    assert.deepEqual(sim.verifications.at(-1), verifyArgs(localVectorUnits));
     assert.equal((await sim.journal()).status, 'complete');
     if (process.platform === 'linux') {
       assert.equal((await sim.journal()).files.some((file: { path: string }) => /\.(service|timer)$/.test(file.path)), false, 'unchanged units are still verified, without adding them to the rollback journal');
@@ -313,6 +315,149 @@ test('Linux permission helper grants inheritable read-only access and ACL remova
     await execute('setfacl', ['-R', '-P', '-x', 'u:77777,d:u:77777', '--', root]);
     await execute('setfacl', ['-R', '-P', '-x', 'u:77777,d:u:77777', '--', root]);
     assert.doesNotMatch(await execute('getfacl', ['-cpn', root]), /user:77777/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('network filesystem detection uses the most specific mount, including NFS4 and escaped mount names', () => {
+  const mounts = readerMounts('1 0 8:1 / / rw - ext4 /dev/root rw\n'
+    + '2 1 0:2 / /mnt/archive rw shared:3 - nfs4 nas:/archive rw\n'
+    + '3 2 8:1 /cache /mnt/archive/cache rw - ext4 /dev/root rw\n'
+    + '4 1 0:4 / /mnt/NAS\\040history rw - nfs nas:/history rw\n');
+  assert.equal(readerFilesystem('/mnt/archive/2026/10/15', mounts)?.type, 'nfs4');
+  assert.equal(readerFilesystem('/mnt/archive/cache/file', mounts)?.type, 'ext4');
+  assert.equal(readerFilesystem('/mnt/archive-other', mounts)?.type, 'ext4');
+  assert.equal(readerFilesystem('/mnt/NAS history/2026', mounts)?.type, 'nfs');
+  assert.equal(readerFilesystem('/run/readsb', readerMounts('')), undefined);
+});
+
+test('NFS overmounts hide old local mounts and their children regardless of mount-table order', () => {
+  const mounts = readerMounts('4 2 0:4 / /mnt/archive rw - nfs4 nas:/history rw\n'
+    + '3 2 8:1 /cache /mnt/archive/cache rw - ext4 /dev/root rw\n'
+    + '2 1 8:1 /archive /mnt/archive rw - ext4 /dev/root rw\n'
+    + '1 0 8:1 / / rw - ext4 /dev/root rw\n');
+  assert.equal(readerFilesystem('/mnt/archive', mounts)?.type, 'nfs4');
+  assert.equal(readerFilesystem('/mnt/archive/cache/recording', mounts)?.type, 'nfs4');
+  assert.equal(readerFilesystem('/run/readsb', mounts)?.type, 'ext4');
+  const rooted = readerMounts('1 1 8:1 / / rw - ext4 /dev/root rw\n'
+    + '2 1 0:2 / / rw - overlay overlay rw\n3 2 0:3 / /mnt/nfs rw - nfs nas:/history rw\n');
+  assert.equal(readerFilesystem('/mnt/nfs/recording', rooted)?.type, 'nfs');
+});
+
+test('network ACL setup and removal never touch even an unreachable share', async () => {
+  const roots = ['/mnt/vector-unreachable/history', '/mnt/vector-unreachable/other'];
+  const mountInfo = '1 0 8:1 / / rw - ext4 /dev/root rw\n2 1 0:2 / /mnt/vector-unreachable rw - nfs4 nas:/history rw\n';
+  const commands: string[] = [];
+  const skipped: string[] = [];
+  const run = async (command: string) => { commands.push(command); assert.equal(command, 'id'); return ''; };
+  const spec = { uid: 77777, roots };
+  await grantReadAccess(spec, run, undefined, { mountInfo, onSkip: (mount: { path: string }) => { skipped.push(mount.path); } });
+  await removeReadAccess(spec, run, { mountInfo });
+  assert.deepEqual(commands, ['id']);
+  assert.deepEqual(skipped, ['/mnt/vector-unreachable']);
+});
+
+test('startup access selects only live output for both old and new installer configurations', () => {
+  const spec = { uid: 77777, roots: ['/run/readsb', '/mnt/archive/history'] };
+  assert.deepEqual(liveAccessSpec(spec).roots, ['/run/readsb']);
+  assert.deepEqual(liveAccessSpec({ ...spec, roots: [...spec.roots].reverse(), liveRoot: '/run/readsb' }).roots, ['/run/readsb']);
+  assert.throws(() => liveAccessSpec({ ...spec, liveRoot: '/mnt/unrelated' }), /Invalid live/);
+  assert.throws(() => liveAccessSpec({ ...spec, roots: [] }));
+  assert.deepEqual(spec.roots, ['/run/readsb', '/mnt/archive/history']);
+});
+
+test('local ACL setup and removal skip nested network mounts without changing their files', { skip: process.platform !== 'linux' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'vector-network-access-'));
+  const run = async (command: string, args: string[], input?: string) => command === 'id' ? '' : execFileSync(command, args, { input, encoding: 'utf8' });
+  try {
+    const share = join(root, 'archive');
+    await mkdir(share, { mode: 0o700 });
+    await writeFile(join(share, 'history'), 'keep', { mode: 0o600 });
+    const live = join(root, 'aircraft.json');
+    await writeFile(live, '{}', { mode: 0o600 });
+    const mountInfo = `1 0 8:1 / / rw - ext4 /dev/root rw\n2 1 0:2 / ${share} rw - nfs nas:/history rw\n`;
+    const spec = { uid: 77777, roots: [root] };
+    await grantReadAccess(spec, run, undefined, { mountInfo });
+    assert.match(await run('getfacl', ['-cpn', live]), /user:77777:r--/);
+    assert.doesNotMatch(await run('getfacl', ['-cpn', share]), /user:77777/);
+    assert.equal((await lstat(join(share, 'history'))).mode & 0o777, 0o600);
+    // Detach preserves the access mask and all unrelated ACL entries.
+    await run('setfacl', ['-m', 'u:77778:rw-,m::r--', live]);
+    await removeReadAccess(spec, run, { mountInfo });
+    const after = await run('getfacl', ['-cpn', live]);
+    assert.doesNotMatch(after, /user:77777/);
+    assert.match(after, /user:77778:rw-/);
+    assert.match(after, /mask::r--/);
+    assert.equal(await readFile(join(share, 'history'), 'utf8'), 'keep');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('guided installation replaces the blocking hook with an independent live-only service', async () => {
+  const sim = await simulation();
+  try {
+    const path = sim.map('/etc/systemd/system/readsb.service.d/90-vector-access.conf');
+    await mkdir(join(path, '..'), { recursive: true });
+    await writeFile(path, '# Managed by Vector; old integration.\n[Service]\nReadWritePaths=/run/readsb /var/globe_history\nExecStartPost=+/opt/vector/runtime/node/bin/node /usr/local/lib/vector/readsb-access.mjs\n');
+    await sim.migrate();
+    const dropin = await readFile(path, 'utf8');
+    assert.doesNotMatch(dropin, /ExecStartPost|Requires=|After=/);
+    assert.match(dropin, /Wants=vector-readsb-access\.service/);
+    const helper = await readFile(sim.map('/etc/systemd/system/vector-readsb-access.service'), 'utf8');
+    assert.match(helper, /After=readsb\.service/);
+    assert.match(helper, /ExecStart=.*readsb-access\.mjs --live-only/);
+    assert.match(helper, /TimeoutStartSec=60s/);
+    assert.doesNotMatch(helper, /Before=|Requires=|BindsTo=|\/var\/globe_history/);
+    assert.ok(sim.calls.includes('systemctl start --no-block vector-readsb-access.service'));
+    assert.equal(JSON.parse(await readFile(sim.map('/etc/vector/readsb-access.json'), 'utf8')).liveRoot, '/run/readsb');
+    assert.equal(sim.calls.includes('systemctl restart readsb.service'), false);
+  } finally { await sim.cleanup(); }
+});
+
+test('web updates migrate legacy access hooks while retaining source paths, receiver options and other hooks', async () => {
+  const env = 'READSB_SOURCE=local\nREADSB_LIVE_DIR=/run/readsb\nREADSB_HISTORY_DIR=/mnt/archive/history\n';
+  const sim = await simulation(fullArgs, env);
+  try {
+    const path = sim.map('/etc/systemd/system/readsb.service.d/90-vector-access.conf');
+    await mkdir(join(path, '..'), { recursive: true });
+    await writeFile(path, '# Managed by Vector; old integration.\n[Service]\nReadWritePaths=/run/readsb /mnt/archive/history /srv/recordings\nExecStartPost=+/opt/vector/runtime/old/bin/node /usr/local/lib/vector/readsb-access.mjs\nExecStartPost=/usr/bin/true\n');
+    await writeFile(sim.map('/etc/vector/readsb-access.json'), JSON.stringify({ uid: 900, roots: ['/run/readsb', '/mnt/archive/history'], service: 'readsb.service' }));
+    await sim.migrate({ keepSource: true });
+    const upgraded = await readFile(path, 'utf8');
+    assert.doesNotMatch(upgraded, /ExecStartPost=.*readsb-access/);
+    assert.match(upgraded, /ExecStartPost=\/usr\/bin\/true/);
+    assert.match(upgraded, /ReadWritePaths=\/run\/readsb \/mnt\/archive\/history \/srv\/recordings/);
+    assert.match(upgraded, /Wants=vector-readsb-access\.service/);
+    assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), env);
+    assert.equal(await readFile(sim.map('/etc/default/readsb'), 'utf8'), defaults);
+    assert.equal(sim.calls.includes('grant ACL'), false);
+    assert.equal(sim.calls.includes('systemctl restart readsb.service'), false);
+    assert.deepEqual(sim.verifications.at(-1), verifyArgs(localVectorUnits));
+    await sim.migrate({ keepSource: true });
+    assert.equal(await readFile(path, 'utf8'), upgraded);
+    await detach(sim.io as unknown as Parameters<typeof detach>[0]);
+    await assert.rejects(() => lstat(path), { code: 'ENOENT' });
+    await assert.rejects(() => lstat(sim.map('/etc/systemd/system/vector-readsb-access.service')), { code: 'ENOENT' });
+    assert.ok(sim.calls.lastIndexOf('systemctl daemon-reload') < sim.calls.lastIndexOf('remove ACL'));
+  } finally { await sim.cleanup(); }
+});
+
+test('documented emergency repair backs up the drop-in and removes only the old Vector post-start command', { skip: process.platform !== 'linux' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'vector-nfs-repair-'));
+  try {
+    const path = join(root, '90-vector-access.conf');
+    const original = '# Managed by Vector; receiver command and SDR settings remain unchanged.\n[Service]\n'
+      + 'ReadWritePaths=/run/readsb /mnt/archive/history\n'
+      + 'ExecStartPost=+/opt/vector/runtime/node/bin/node /usr/local/lib/vector/readsb-access.mjs\n'
+      + 'ExecStartPost=/usr/bin/true\n';
+    await writeFile(path, original);
+    const guide = await readFile(new URL('../docs/STANDALONE.md', import.meta.url), 'utf8');
+    const expression = guide.match(/sudo sed -i\.vector-nfs-backup '([^']+)'/)?.[1];
+    assert.ok(expression);
+    execFileSync('sed', ['-i.vector-nfs-backup', expression, path]);
+    const repaired = await readFile(path, 'utf8');
+    assert.doesNotMatch(repaired, /readsb-access\.mjs/);
+    assert.match(repaired, /ExecStartPost=\/usr\/bin\/true/);
+    assert.match(repaired, /ReadWritePaths=\/run\/readsb \/mnt\/archive\/history/);
+    assert.equal(await readFile(`${path}.vector-nfs-backup`, 'utf8'), original);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -411,13 +556,13 @@ test('missing recording options ask once, preserve receiver settings and install
   const sim = await simulation(['/usr/bin/readsb', '--write-json', '/run/readsb']);
   try {
     await sim.migrate();
-    assert.deepEqual(sim.verifications.at(-1), verifyArgs([...vectorUnits, ...historyUnits]));
+    assert.deepEqual(sim.verifications.at(-1), verifyArgs([...localVectorUnits, ...historyUnits]));
     assert.equal(sim.calls.filter((call) => call === 'question').length, 1);
     assert.ok(sim.calls.includes('systemctl restart readsb.service'));
     assert.match(await readFile(sim.map('/etc/default/readsb'), 'utf8'), /--gain 42/);
     assert.match(await readFile(sim.map('/etc/tmpfiles.d/vector-readsb-history.conf'), 'utf8'), /7d/);
     await sim.migrate();
-    assert.deepEqual(sim.verifications.at(-1), verifyArgs([...vectorUnits, ...historyUnits]));
+    assert.deepEqual(sim.verifications.at(-1), verifyArgs([...localVectorUnits, ...historyUnits]));
     if (process.platform === 'linux') {
       assert.equal((await sim.journal()).files.some((file: { path: string }) => /\.(service|timer)$/.test(file.path)), false);
     }
@@ -569,7 +714,7 @@ test('Linux systemd accepts the actual verification arguments on initial and rep
     await writeFile(join(unitDir, 'readsb.service'), '[Unit]\nDescription=Isolated readsb validation fixture\n[Service]\nExecStart=/usr/bin/true\n');
     const dropin = join(unitDir, 'readsb.service.d/90-vector-access.conf');
     await writeFile(dropin, (await readFile(dropin, 'utf8')).replaceAll('/opt/vector/runtime/node/bin/node', process.execPath));
-    for (const name of vectorUnits.filter((name) => name.endsWith('.service'))) {
+    for (const name of localVectorUnits.filter((name) => name.endsWith('.service'))) {
       const path = join(unitDir, name);
       await writeFile(path, (await readFile(path, 'utf8')).replaceAll('/opt/vector/runtime/node/bin/node', process.execPath));
     }
