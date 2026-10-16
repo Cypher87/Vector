@@ -25,6 +25,8 @@ import type { Aircraft, AircraftTracePoint, FeedStatus, UnitSystem } from '../sr
 import { aircraftKind, aircraftKindLabel } from '../src/domain/aircraft-kind';
 import { aircraftTypeSummary } from '../src/domain/aircraft-label';
 import { activeAircraftFilterKeys, matchesAircraftFilters, normalizeAircraftFilters } from '../src/domain/aircraft-filters';
+import { areaDistanceKm, drawingMapArea, maxAreaPoints, normalizeMapArea, type AreaCoordinate, type AreaDrawing, type MapArea } from '../src/domain/map-area';
+import type { AreaOverlayItem } from '../src/map/area-overlay';
 import {
   aircraftFilterPresetStorageKey,
   emptyAircraftFilters,
@@ -148,9 +150,12 @@ export default function Home() {
   const [legTracePeriod, setLegTracePeriod] = useState<LegTracePeriod>(defaultLegTracePeriod);
   const [actualRangeVisible, setActualRangeVisible] = useState(false);
   const [distanceRingsVisible, setDistanceRingsVisible] = useState(false);
+  const [areasVisible, setAreasVisible] = useState(true);
+  const [areaDrawing, setAreaDrawing] = useState<AreaDrawing>();
+  const [areaReturnRequest, setAreaReturnRequest] = useState(0);
   const [technicalDataOpen, setTechnicalDataOpen] = useState(false);
   const [mobileDetailsExpanded, setMobileDetailsExpanded] = useState(false);
-  const [mapFocus, setMapFocus] = useState<{ latitude?: number; longitude?: number; request: number }>();
+  const [mapFocus, setMapFocus] = useState<{ latitude?: number; longitude?: number; area?: MapArea; request: number }>();
   const [unitOverride, setUnitOverride] = useState<UnitSystem>();
   const [language, setLanguage] = useState<Language>('nl');
   const [themeMode, setThemeMode] = useState<ThemeMode>(defaultThemeMode);
@@ -188,6 +193,7 @@ export default function Home() {
       setLegTracePeriod(parseLegTracePeriod(window.localStorage.getItem('vector.legTracePeriod')));
       if (window.localStorage.getItem('vector.actualRangeOutline') === 'true') setActualRangeVisible(true);
       if (window.localStorage.getItem('vector.distanceRings') === 'true') setDistanceRingsVisible(true);
+      if (window.localStorage.getItem('vector.mapAreas') === 'false') setAreasVisible(false);
       if (window.localStorage.getItem('vector.autoHideDetails') === 'true') setAutoHideDetails(true);
       setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
       setFavoriteCallsigns(parseFavoriteCallsigns(window.localStorage.getItem(favoriteCallsignStorageKey)));
@@ -298,6 +304,10 @@ export default function Home() {
     setAutoHideDetails(enabled);
     window.localStorage.setItem('vector.autoHideDetails', String(enabled));
   };
+  const changeAreasVisible = (visible: boolean) => {
+    setAreasVisible(visible);
+    window.localStorage.setItem('vector.mapAreas', String(visible));
+  };
   const clearAircraftSelection = () => {
     setSelectedId(null);
     setFollowing(false);
@@ -310,7 +320,49 @@ export default function Home() {
       window.localStorage.setItem('vector.aircraftFilters', JSON.stringify(next));
       return next;
     });
+    if (key === 'area') {
+      const area = normalizeMapArea(value);
+      if (area) { setFollowing(false); setMapFocus((current) => ({ area, request: (current?.request ?? 0) + 1 })); }
+    }
   };
+  const returnToAreaFilter = useCallback(() => {
+    setAreaDrawing(undefined);
+    setMobileListOpen(true);
+    setAreaReturnRequest((request) => request + 1);
+  }, []);
+  const startAreaDrawing = (kind: MapArea['kind']) => {
+    const area = aircraftFilters.area;
+    if (kind === 'circle' && area?.kind === 'circle') {
+      setAreaDrawing({ kind, points: [[...area.center]], radiusKm: area.radiusKm });
+      setMapFocus((current) => ({ area, request: (current?.request ?? 0) + 1 }));
+    } else setAreaDrawing({ kind, points: [] });
+    setFollowing(false);
+    setMobileListOpen(false);
+    setMobileDetailsExpanded(false);
+  };
+  const addAreaPoint = (point: AreaCoordinate) => {
+    setAreaDrawing((current) => {
+      if (!current) return current;
+      const coordinate: AreaCoordinate = [point[0], Math.max(-85, Math.min(85, point[1]))];
+      const previous = current.points.at(-1);
+      if (previous && areaDistanceKm(previous, coordinate) < .005) return current;
+      if (current.kind === 'circle') return { kind: 'circle', points: current.points.length ? [current.points[0], coordinate] : [coordinate] };
+      return current.points.length >= maxAreaPoints ? current : { ...current, points: [...current.points, coordinate] };
+    });
+  };
+  const finishAreaDrawing = () => {
+    const area = areaDrawing && drawingMapArea(areaDrawing);
+    if (!area) return;
+    changeAircraftFilter('area', area);
+    changeAreasVisible(true);
+    returnToAreaFilter();
+  };
+  useEffect(() => {
+    if (!areaDrawing) return;
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); returnToAreaFilter(); } };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [areaDrawing, returnToAreaFilter]);
   const resetAircraftFilters = () => {
     setAircraftFilters(emptyAircraftFilters);
     window.localStorage.removeItem('vector.aircraftFilters');
@@ -324,11 +376,13 @@ export default function Home() {
     window.localStorage.setItem(aircraftFavoritesFirstStorageKey, String(value));
   };
   const applyAircraftFilterPreset = (preset: AircraftFilterPreset) => {
+    setAreaDrawing(undefined);
     setAircraftFilters(preset.filters);
     setAircraftSort(preset.sort);
     changeAircraftFavoritesFirst(preset.favoritesFirst ?? false);
     window.localStorage.setItem('vector.aircraftFilters', JSON.stringify(preset.filters));
     window.localStorage.setItem('vector.aircraftSort', preset.sort);
+    if (preset.filters.area) { setFollowing(false); setMapFocus((current) => ({ area: preset.filters.area!, request: (current?.request ?? 0) + 1 })); }
   };
   const saveAircraftFilterPreset = (name: string) => {
     const id = createAircraftFilterPresetId();
@@ -433,9 +487,10 @@ export default function Home() {
     legTrace: legTraceVisible,
     legTracePeriod,
     mapLabels: labelsVisible,
+    mapAreas: areasVisible,
     theme: themeMode,
     unitSystem,
-  }), [actualRangeVisible, aircraftFavoritesFirst, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, favoriteCallsigns, favoriteRegistrations, labelsVisible, language, legTracePeriod, legTraceVisible, radarEventPreferences, themeMode, unitSystem]);
+  }), [actualRangeVisible, aircraftFavoritesFirst, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, favoriteCallsigns, favoriteRegistrations, labelsVisible, language, legTracePeriod, legTraceVisible, radarEventPreferences, themeMode, unitSystem, areasVisible]);
 
   useEffect(() => {
     if (!syncProfileId) {
@@ -480,6 +535,10 @@ export default function Home() {
       if (saved.mapLabels !== undefined) {
         setLabelsVisible(saved.mapLabels);
         window.localStorage.setItem('vector.mapLabels', String(saved.mapLabels));
+      }
+      if (saved.mapAreas !== undefined) {
+        setAreasVisible(saved.mapAreas);
+        window.localStorage.setItem('vector.mapAreas', String(saved.mapAreas));
       }
       if (saved.aircraftMotion !== undefined) {
         setAircraftMotionEnabled(saved.aircraftMotion);
@@ -578,6 +637,19 @@ export default function Home() {
   }, [feed.aircraft, history.currentSnapshot, history.open]);
 
   const savedFavoriteAircraftIds = useMemo(() => new Set(favoriteAircraftIds), [favoriteAircraftIds]);
+  const mapAreas = useMemo(() => {
+    const items = new Map<string, AreaOverlayItem>();
+    for (const preset of aircraftFilterPresets) {
+      const area = preset.filters.area;
+      if (area && !items.has(JSON.stringify(area))) items.set(JSON.stringify(area), { id: preset.id, name: preset.name, area, active: false });
+    }
+    const area = aircraftFilters.area;
+    if (area) {
+      const key = JSON.stringify(area), existing = items.get(key);
+      items.set(key, existing ? { ...existing, active: true } : { id: 'active', name: translate(language, 'filterArea'), area, active: true });
+    }
+    return [...items.values()];
+  }, [aircraftFilterPresets, aircraftFilters.area, language]);
   const favoriteCallsignSet = useMemo(() => new Set(favoriteCallsigns), [favoriteCallsigns]);
   const favoriteRegistrationSet = useMemo(() => new Set(favoriteRegistrations), [favoriteRegistrations]);
   const favoriteAircraftIdSet = useMemo(() => matchingFavoriteAircraftIds(savedFavoriteAircraftIds, favoriteCallsignSet, displayedAircraft, favoriteRegistrationSet),
@@ -833,6 +905,8 @@ export default function Home() {
                 onReset={resetAircraftFilters}
                 onSavePreset={saveAircraftFilterPreset}
                 onUpdatePreset={updateSavedAircraftFilterPreset}
+                onDrawArea={startAreaDrawing}
+                areaReturnRequest={areaReturnRequest}
               />
               <button className="mobile-sheet-close" aria-label={t('closeList')} onClick={() => setMobileListOpen(false)} type="button">
                 <VectorIcon name="close" />
@@ -930,6 +1004,14 @@ export default function Home() {
             dataBaseUrl={feed.config.dataBaseUrl}
             distanceRingsVisible={distanceRingsVisible}
             focusTarget={mapFocus}
+            areas={mapAreas}
+            areasVisible={areasVisible}
+            areaDrawing={areaDrawing}
+            onAreasVisibleChange={changeAreasVisible}
+            onAreaPoint={addAreaPoint}
+            onAreaDrawingChange={setAreaDrawing}
+            onAreaFinish={finishAreaDrawing}
+            onAreaCancel={returnToAreaFilter}
             following={following && selectedOnMap}
             favoriteIds={favoriteAircraftIdSet}
             historyOpen={history.open}
@@ -990,7 +1072,7 @@ export default function Home() {
             onTogglePlaying={history.togglePlaying}
           />
 
-          {selected && !mobileDetailsExpanded && (
+          {selected && !mobileDetailsExpanded && !areaDrawing && (
             <aside className="mobile-aircraft-summary" aria-label={`${formatCallsign(selected.flight)} ${t('details')}`}>
               <span className="mobile-summary-media" title={selectedKind ? aircraftKindLabel(selectedKind, language) : undefined}>
                 <span className="mobile-summary-icon">

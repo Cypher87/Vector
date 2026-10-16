@@ -1,11 +1,12 @@
 import type { Aircraft } from './aircraft.ts';
 import { canNotifyForPreset, type AircraftFilterPreset } from './aircraft-filter-preset.ts';
 import { matchesAircraftFilters } from './aircraft-filters.ts';
+import { aircraftHasAreaPosition, areaContains } from './map-area.ts';
 
 export const filterMatchDelayMs = 10_000;
 export const filterMatchRearmMs = 5 * 60_000;
 export type MatchedFilter = { id: string; name: string };
-type Contact = { since: number; notified: boolean; outsideSince?: number };
+type Contact = { since: number; notified: boolean; outsideSince?: number; lastSeen: number };
 type WatchedFilter = { signature: string; contacts: Map<string, Contact> };
 export type FilterNotificationState = Map<string, WatchedFilter>;
 export type FilterNotificationContext = {
@@ -30,6 +31,7 @@ export function observeFilterNotifications(
   const matches = new Map<string, MatchedFilter[]>();
   const entered = new Set<string>();
   const distances = new Map<string, number | undefined>();
+  const byId = new Map(aircraft.map((item) => [item.id, item]));
   for (const preset of context.presets) {
     if (!preset.notifyOnMatch || !canNotifyForPreset(preset)) continue;
     const signature = JSON.stringify([
@@ -51,8 +53,8 @@ export function observeFilterNotifications(
       const previousContact = reset ? undefined : old.contacts.get(item.id);
       const contact = previousContact?.outsideSince !== undefined && timestamp - previousContact.outsideSince >= filterMatchRearmMs
         ? undefined : previousContact;
-      const next: Contact = contact ? { since: contact.since, notified: contact.notified }
-        : { since: timestamp, notified: reset };
+      const next: Contact = contact ? { since: contact.since, notified: contact.notified, lastSeen: timestamp }
+        : { since: timestamp, notified: reset, lastSeen: timestamp };
       if (!next.notified && timestamp - next.since >= filterMatchDelayMs) {
         next.notified = true;
         entered.add(item.id);
@@ -62,6 +64,18 @@ export function observeFilterNotifications(
     if (!reset) {
       for (const [id, contact] of old.contacts) {
         if (matching.has(id) || !contact.notified) continue;
+        if (preset.filters.area) {
+          const item = byId.get(id);
+          const known = item && aircraftHasAreaPosition(item);
+          // A missing position or changing altitude/type inside the area is not
+          // evidence of leaving it. Only observed exits can rearm an area alert.
+          if (!known || areaContains(preset.filters.area, item.longitude!, item.latitude!)) {
+            if (known || timestamp - contact.lastSeen < 30 * 60_000) contacts.set(id, {
+              ...contact, lastSeen: known ? timestamp : contact.lastSeen, outsideSince: undefined,
+            });
+            continue;
+          }
+        }
         const outsideSince = contact.outsideSince ?? timestamp;
         if (timestamp - outsideSince < filterMatchRearmMs) contacts.set(id, { ...contact, outsideSince });
       }

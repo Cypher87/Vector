@@ -8,6 +8,7 @@ import { VectorIcon } from './vector-icon';
 import type { UnitSystem } from '../domain/aircraft';
 import { AircraftFilterFields, type ChangeAircraftFilter } from './aircraft-filter-fields';
 import { AircraftSavedFilters, FilterPresetNameForm } from './aircraft-saved-filters';
+import type { MapArea } from '../domain/map-area';
 
 type AircraftFilterMenuProps = {
   activeFilterCount: number;
@@ -27,11 +28,14 @@ type AircraftFilterMenuProps = {
   onReset: () => void;
   onSavePreset: (name: string) => string;
   onUpdatePreset: (presetId: string) => void;
+  onDrawArea: (kind: MapArea['kind']) => void;
+  areaReturnRequest: number;
 };
 
 export function AircraftFilterMenu({ activeFilterCount, filters, language, unitSystem, resultCount,
   receiverPositionKnown, presets, sort, favoritesFirst, onApplyPreset, onChangeFilter,
   onDeletePreset, onRenamePreset, onNotificationsChange, onReset, onSavePreset, onUpdatePreset,
+  onDrawArea, areaReturnRequest,
 }: AircraftFilterMenuProps) {
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
   const menuRef = useRef<HTMLDetailsElement>(null);
@@ -48,6 +52,18 @@ export function AircraftFilterMenu({ activeFilterCount, filters, language, unitS
   const selected = presets.find((preset) => preset.id === selectedId) ?? matching;
   const modified = !!selected && !aircraftFilterPresetMatches(selected, filters, sort, favoritesFirst);
   const atLimit = presets.length >= maxAircraftFilterPresets;
+  useEffect(() => {
+    if (!areaReturnRequest) return;
+    const frame = requestAnimationFrame(() => {
+      setTab('filters');
+      if (menuRef.current) menuRef.current.open = true;
+      const group = menuRef.current?.querySelector<HTMLDetailsElement>('[data-filter-group="area"]');
+      if (group) group.open = true;
+      group?.querySelector('summary')?.focus();
+      group?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [areaReturnRequest]);
 
   useEffect(() => {
     const closeOnOutsidePointer = (event: PointerEvent) => {
@@ -140,6 +156,12 @@ export function AircraftFilterMenu({ activeFilterCount, filters, language, unitS
         <div className="filter-workspace-body" ref={bodyRef}>
           <div role="tabpanel" id={`${groupName}-filters-panel`} aria-labelledby={`${groupName}-filters-tab`} hidden={tab !== 'filters'}>
             <AircraftFilterFields filters={filters} language={language} unitSystem={unitSystem}
+              presets={presets} onDrawArea={(kind) => {
+                if (!validFields()) return;
+                if (selected) setSelectedId(selected.id);
+                if (menuRef.current) menuRef.current.open = false;
+                onDrawArea(kind);
+              }}
               receiverPositionKnown={receiverPositionKnown} groupName={groupName} onChange={(key, value) => {
                 if (selected) setSelectedId(selected.id);
                 onChangeFilter(key, value);

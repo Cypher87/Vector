@@ -11,7 +11,7 @@ for (const language of ['en', 'nl']) {
     await page.locator('.filter-menu > summary').click();
     const filter = page.locator('.filter-popover');
     const groups = filter.locator('.filter-group');
-    await expect(groups).toHaveCount(4);
+    await expect(groups).toHaveCount(5);
     await expect(filter.locator('.filter-group[open]')).toHaveCount(0);
     const initial = (await filter.boundingBox())!;
     expect(initial.height).toBeLessThan(510);

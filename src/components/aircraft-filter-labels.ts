@@ -29,6 +29,13 @@ export function aircraftFilterLabel(key: AircraftFilterKey, filters: AircraftFil
   if (key === 'position') return t(positionLabels[filters.position]);
   if (key === 'typeCodes') return filters.typeCodes.join(', ');
   if (key === 'alert') return t(alertLabels[filters.alert]);
+  if (key === 'area') {
+    if (filters.area?.kind === 'circle') {
+      const { factor, unit } = filterMeasurement('distance', units);
+      return `${t('areaCircle')} · ${(filters.area.radiusKm * factor).toLocaleString(language, { maximumFractionDigits: 1 })} ${unit}`;
+    }
+    return t('areaPolygon');
+  }
   const { factor, unit } = filterMeasurement(key, units);
   const format = (value: number) => (value * factor).toLocaleString(language === 'nl' ? 'nl-NL' : 'en-GB', { maximumFractionDigits: 1 });
   if (key === 'distance') return `${t('distance')} ≤ ${format(filters.distance!)} ${unit}`;

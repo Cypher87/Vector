@@ -1,6 +1,6 @@
 import { test as base, expect, type Page } from '@playwright/test';
 
-export async function openFilterGroup(page: Page, group: 'categories' | 'flight' | 'distance' | 'advanced' | 'presets') {
+export async function openFilterGroup(page: Page, group: 'categories' | 'flight' | 'distance' | 'area' | 'advanced' | 'presets') {
   if (group === 'presets') {
     await page.locator('[data-filter-tab="saved"]').click();
     return;

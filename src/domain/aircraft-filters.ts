@@ -1,5 +1,6 @@
 import type { Aircraft, AircraftKind, UnitSystem } from './aircraft.ts';
 import { aircraftKind } from './aircraft-kind.ts';
+import { aircraftHasAreaPosition, areaContains, normalizeMapArea, type MapArea } from './map-area.ts';
 
 export const filterCategories = ['light', 'airliner', 'heavy', 'turboprop', 'helicopter', 'glider', 'balloon', 'other'] as const;
 export type FilterCategory = typeof filterCategories[number];
@@ -15,6 +16,7 @@ export type AircraftFilters = {
   categories: FilterCategory[];
   altitude: FilterRange; // feet, reported altitude (not above terrain)
   distance: number | null; // kilometres from the configured/reported receiver
+  area: MapArea | null;
   speed: FilterRange; // knots, ground speed
   flightStatus: typeof filterFlightStatuses[number];
   source: typeof filterSources[number];
@@ -24,7 +26,7 @@ export type AircraftFilters = {
 };
 export type AircraftFilterKey = keyof AircraftFilters;
 export const emptyAircraftFilters: AircraftFilters = {
-  favoritesOnly: false, categories: [], altitude: { min: null, max: null }, distance: null,
+  favoritesOnly: false, categories: [], altitude: { min: null, max: null }, distance: null, area: null,
   speed: { min: null, max: null }, flightStatus: 'all', source: 'all', position: 'all', typeCodes: [], alert: 'all',
 };
 export const aircraftFilterKeys = Object.keys(emptyAircraftFilters) as AircraftFilterKey[];
@@ -49,6 +51,8 @@ export function normalizeAircraftFilterPatch(value: unknown): Partial<AircraftFi
   if (validRange(value.altitude, -2_000, 200_000)) result.altitude = { min: value.altitude.min, max: value.altitude.max };
   if (validRange(value.speed, 0, 3_000)) result.speed = { min: value.speed.min, max: value.speed.max };
   if (value.distance === null || finiteIn(value.distance, 0, 20_000)) result.distance = value.distance;
+  if (value.area === null) result.area = null;
+  else { const area = normalizeMapArea(value.area); if (area) result.area = area; }
   if (Array.isArray(value.typeCodes)) result.typeCodes = normalizeTypeCodes(value.typeCodes);
   if (typeof value.airborneOnly === 'boolean') result.flightStatus = value.airborneOnly ? 'airborne' : 'all';
   if (typeof value.adsbOnly === 'boolean') result.source = value.adsbOnly ? 'adsb' : 'all';
@@ -90,6 +94,7 @@ export function matchesAircraftFilters(aircraft: Aircraft, filters: AircraftFilt
   if (filters.categories.length && !filters.categories.includes(aircraftFilterCategory(aircraftKind(aircraft)))) return false;
   if (!inRange(aircraft.altitudeFt, filters.altitude) || !inRange(aircraft.groundSpeedKts, filters.speed)) return false;
   if (filters.distance !== null && (!Number.isFinite(context.distanceKm) || context.distanceKm! > filters.distance + 1e-8)) return false;
+  if (filters.area && (!aircraftHasAreaPosition(aircraft) || !areaContains(filters.area, aircraft.longitude!, aircraft.latitude!))) return false;
   const hasPosition = Number.isFinite(aircraft.latitude) && Number.isFinite(aircraft.longitude);
   if (filters.position === 'with' && !hasPosition || filters.position === 'without' && hasPosition) return false;
   const source = aircraft.source.startsWith('adsb') ? 'adsb' : aircraft.source === 'mlat' ? 'mlat' : 'other';

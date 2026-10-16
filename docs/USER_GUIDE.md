@@ -18,11 +18,11 @@ All favorite types work with map/list filters, sorting, arrival notifications an
 
 ## Filters and saved views
 
-**Favorites only** is directly accessible in the filter menu. Other controls are grouped into **Aircraft category**, **Altitude and speed** (including flight status), **Distance**, and **Advanced**. Advanced filters cover data source, position availability, exact ICAO type codes such as `B738, A320`, and emergency/squawk values.
+**Favorites only** is directly accessible in the filter menu. Other controls are grouped into **Aircraft category**, **Altitude and speed** (including flight status), **Distance**, **Area**, and **Advanced**. Advanced filters cover data source, position availability, exact ICAO type codes such as `B738, A320`, and emergency/squawk values.
 
 Groups show active choices in their headings. Opening one closes the previous group without changing filters or unfinished edits. The menu floats above the map and closes when you click outside or press Escape. Active filter chips below search can be removed individually; saved views retain all filter groups and sorting.
 
-The **Filters** tab edits the current view; **Saved** lists saved views with their criteria and sort order. **Save as new** is always available in the footer. After applying a saved view and changing its filters, the footer shows **Unsaved changes**: choose **Update** to replace its criteria, or **Save as new** to keep both. Changing filters never overwrites a saved view automatically. Use the pencil to rename, edit its filters or delete with confirmation. Duplicate names are rejected; up to 20 views can be saved. Updating keeps the same notification rule and device-sync identity; removing all criteria also turns off that rule's notifications.
+The **Filters** tab edits the current view; **Saved** lists saved views with their criteria and sort order. **Save filter** is available in the Filters footer. After applying a saved view and changing its filters, the footer shows **Unsaved changes**: choose **Update** to replace its criteria, or **Save filter** to keep both. Changing filters never overwrites a saved view automatically. Use the pencil to rename, edit its filters or delete with confirmation. Duplicate names are rejected; up to 20 views can be saved. Updating keeps the same notification rule and device-sync identity; removing all criteria also turns off that rule's notifications.
 
 Choose altitude, distance from the receiver, speed, callsign, or last reception in the list's sort selector. The adjacent arrow reverses the order; its tooltip describes the current direction. The star puts favorites first without hiding other aircraft. Missing sort values always stay at the bottom, including favorites. Equal values use callsign and ICAO ID as a stable tie-breaker. The displayed list reading follows the selected criterion. Sorting and favorite priority are saved locally, included in saved views, and synchronized with paired devices; existing saved views remain compatible.
 
@@ -37,6 +37,14 @@ Filter rules:
 - Changing display units does not change the physical range being filtered. Older four-toggle filters and saved views migrate automatically.
 
 Paired devices synchronize filters. Independent groups merge separately; simultaneous changes to the same group use the last server-processed change.
+
+### Map areas
+
+Choose **Area → Draw circle** or **Draw area**. Click/tap the centre and radius for a circle, or the corners for a polygon; choose **Done** to return to the filters. Drag a circle's centre to move it without changing its radius; the focused centre handle also supports arrow keys (Shift for larger steps). You can enter the radius, press Enter while the map has focus to place a point, undo the last point, or cancel with Escape. Circles support 0.1–500 km; polygons support up to 32 corners and cannot cross themselves.
+
+Combine the area with other criteria and choose **Save filter**. Its bell under **Saved** enables matching-arrival notifications. **Change** reveals the drawing options and, when available, **Saved areas** to reuse another area's shape. **Edit circle** opens the existing circle for repositioning or resizing. Choose **Done**, then **Update** to change a saved filter; deleting the filter removes its saved area. Geometry and alert rules synchronize together.
+
+The **Areas** layer shows saved outlines and the current area's boundary; hiding it does not disable filtering or notifications. Area matching requires a fresh known position. Notifications confirm a match for ten seconds and only rearm after an observed exit of five minutes. Missing positions and changes to other criteria while still inside do not count as exits. Alerts operate while this browser has Vector open and connected, not as background push notifications.
 
 ## Traces, flight profiles, and replay
 

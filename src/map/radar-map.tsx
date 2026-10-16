@@ -32,6 +32,10 @@ import { aircraftWakeZoomOpacity, aircraftWakeZoomProfile, maximumAircraftWakeSc
 import { drawAircraftWakeRoute, hasAircraftWake, updateAircraftWakeRouteElement } from './aircraft-wake-element';
 import { createFrameProjector } from './frame-projector';
 import { applyMapTheme } from './map-theme';
+import { createAreaOverlay, type AreaOverlayItem } from './area-overlay';
+import { createAreaCenterHandle } from './area-center-handle';
+import { areaBounds, type AreaCoordinate, type AreaDrawing, type MapArea } from '../domain/map-area';
+import { MapAreaEditor } from '../components/map-area-editor';
 
 type RadarMapProps = {
   actualRangeAvailable: boolean;
@@ -45,7 +49,15 @@ type RadarMapProps = {
   dataBaseUrl: string;
   distanceRingsVisible: boolean;
   favoriteIds: ReadonlySet<string>;
-  focusTarget?: { latitude?: number; longitude?: number; request: number };
+  focusTarget?: { latitude?: number; longitude?: number; area?: MapArea; request: number };
+  areas: AreaOverlayItem[];
+  areasVisible: boolean;
+  areaDrawing?: AreaDrawing;
+  onAreasVisibleChange: (visible: boolean) => void;
+  onAreaPoint: (point: AreaCoordinate) => void;
+  onAreaDrawingChange: (drawing: AreaDrawing) => void;
+  onAreaFinish: () => void;
+  onAreaCancel: () => void;
   following: boolean;
   historyOpen: boolean;
   labelsVisible: boolean;
@@ -189,7 +201,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   };
 };
 
-export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, wakeTraces, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, live, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId, shadowTimestamp, theme, unitSystem }: RadarMapProps) {
+export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, wakeTraces, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, live, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId, shadowTimestamp, theme, unitSystem, areas, areasVisible, areaDrawing, onAreasVisibleChange, onAreaPoint, onAreaDrawingChange, onAreaFinish, onAreaCancel }: RadarMapProps) {
   const centerLongitude = center[0];
   const centerLatitude = center[1];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -235,6 +247,57 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const themeRef = useRef(theme);
   const shadowTimestampRef = useRef(shadowTimestamp ?? Date.now() / 1_000);
   const navigationControlRef = useRef<ReturnType<typeof createMapNavigationControl> | undefined>(undefined);
+  const [ready, setReady] = useState(false);
+  const areaOverlayRef = useRef<ReturnType<typeof createAreaOverlay> | undefined>(undefined);
+  const areaCenterRef = useRef<ReturnType<typeof createAreaCenterHandle> | undefined>(undefined);
+  const areaItemsRef = useRef(areas);
+  const areaChangeRef = useRef(onAreaDrawingChange);
+  const areaDrawingRef = useRef(areaDrawing);
+  const areaPointRef = useRef(onAreaPoint);
+  const areasVisibleRef = useRef(areasVisible);
+  const areasToggleRef = useRef(onAreasVisibleChange);
+  const drawingActive = !!areaDrawing;
+  useEffect(() => { areaDrawingRef.current = areaDrawing; areaPointRef.current = onAreaPoint;
+    areaItemsRef.current = areas; areaChangeRef.current = onAreaDrawingChange;
+    areasVisibleRef.current = areasVisible; areasToggleRef.current = onAreasVisibleChange;
+  }, [areaDrawing, onAreaPoint, areasVisible, onAreasVisibleChange, areas, onAreaDrawingChange]);
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const overlay = createAreaOverlay(mapRef.current);
+    const handle = createAreaCenterHandle(mapRef.current,
+      (draft) => overlay.update(areasVisibleRef.current ? areaItemsRef.current : [], draft),
+      (draft) => areaChangeRef.current(draft));
+    areaOverlayRef.current = overlay;
+    areaCenterRef.current = handle;
+    return () => { handle.dispose(); overlay.dispose(); areaOverlayRef.current = undefined; areaCenterRef.current = undefined; };
+  }, [ready]);
+  useEffect(() => { areaOverlayRef.current?.update(areasVisible ? areas : [], areaDrawing); }, [areas, areasVisible, areaDrawing, ready]);
+  useEffect(() => { areaCenterRef.current?.update(areaDrawing, language); }, [areaDrawing, language, ready]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!ready || !map || !drawingActive) return;
+    const enabled = map.doubleClickZoom.isEnabled();
+    const canvas = map.getCanvas();
+    const previousKeys = canvas.getAttribute('aria-keyshortcuts');
+    const previousDescription = canvas.getAttribute('aria-description');
+    const placePoint = (event: KeyboardEvent) => {
+      if (event.target !== canvas || event.key !== 'Enter' || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+      event.preventDefault(); event.stopPropagation();
+      const center = map.getCenter().wrap();
+      areaPointRef.current([center.lng, center.lat]);
+    };
+    canvas.addEventListener('keydown', placePoint);
+    canvas.setAttribute('aria-keyshortcuts', 'Enter');
+    canvas.setAttribute('aria-description', translate(language, 'areaKeyboardPoint'));
+    canvas.focus({ preventScroll: true });
+    map.doubleClickZoom.disable();
+    return () => {
+      if (enabled) map.doubleClickZoom.enable();
+      canvas.removeEventListener('keydown', placePoint);
+      if (previousKeys === null) canvas.removeAttribute('aria-keyshortcuts'); else canvas.setAttribute('aria-keyshortcuts', previousKeys);
+      if (previousDescription === null) canvas.removeAttribute('aria-description'); else canvas.setAttribute('aria-description', previousDescription);
+    };
+  }, [drawingActive, ready, language]);
   const onActualRangeVisibleChangeRef = useRef(onActualRangeVisibleChange);
   const onAircraftShadowsVisibleChangeRef = useRef(onAircraftShadowsVisibleChange);
   const onAircraftWakesVisibleChangeRef = useRef(onAircraftWakesVisibleChange);
@@ -246,7 +309,6 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const onSelectRef = useRef(onSelect);
   const updateLabelVisibilityRef = useRef<() => void>(() => undefined);
   const [error, setError] = useState<string>();
-  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     actualRangeAvailableRef.current = actualRangeAvailable;
@@ -284,8 +346,9 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       labelsVisible,
       legTraceVisible,
       historyOpen,
+      areasVisible,
     );
-  }, [actualRangeAvailable, actualRangeVisible, aircraftShadowsVisible, aircraftWakesVisible, distanceRingsVisible, historyOpen, labelsVisible, language, legTraceVisible, shadowTimestamp]);
+  }, [actualRangeAvailable, actualRangeVisible, aircraftShadowsVisible, aircraftWakesVisible, distanceRingsVisible, historyOpen, labelsVisible, language, legTraceVisible, shadowTimestamp, areasVisible]);
 
   const updateWakePositions = useCallback(function requestWakeDraw() {
     // Feed, marker motion, move and rotate may all request the same frame.
@@ -831,6 +894,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       () => onLabelsVisibleChangeRef.current(!labelsVisibleRef.current),
       () => onLegTraceVisibleChangeRef.current(!legTraceVisibleRef.current),
       () => onHistoryToggleRef.current(),
+      { visible: areasVisibleRef.current, onToggle: () => areasToggleRef.current(!areasVisibleRef.current) },
     );
     navigationControlRef.current = navigationControl;
     map.addControl(navigationControl, 'top-right');
@@ -849,7 +913,11 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       });
       attributionObserver.observe(attributionElement, { attributes: true });
     }
-    map.on('click', () => onDeselectRef.current());
+    map.on('click', (event) => {
+      if (areaCenterRef.current?.suppressMapClick()) return;
+      if (areaDrawingRef.current) areaPointRef.current([event.lngLat.wrap().lng, event.lngLat.lat]);
+      else onDeselectRef.current();
+    });
     map.on('moveend', updateLabelVisibility);
     map.on('zoomstart', () => {
       zoomingRef.current = true;
@@ -1044,7 +1112,9 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
         aircraftMarker = undefined;
       }
       if (!aircraftMarker) {
-        aircraftMarker = createAircraftMarker(() => onSelectRef.current(item.id));
+        aircraftMarker = createAircraftMarker(() => {
+          if (!areaDrawingRef.current) onSelectRef.current(item.id);
+        });
         aircraftMarker.marker.setLngLat(nextPosition);
         aircraftMarker.shadowMarker.setLngLat(nextPosition);
         aircraftMarker.shadowMarker.addTo(map);
@@ -1164,9 +1234,14 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   }, [highlightedTracePoint, ready, selectedId]);
 
   useEffect(() => {
-    if (!ready || focusTarget?.latitude === undefined || focusTarget.longitude === undefined) return;
+    if (!ready || !focusTarget) return;
     const map = mapRef.current;
     if (!map) return;
+    if (focusTarget.area) {
+      map.fitBounds(areaBounds(focusTarget.area), { padding: 60, maxZoom: 12, duration: 650 });
+      return;
+    }
+    if (focusTarget.latitude === undefined || focusTarget.longitude === undefined) return;
     map.easeTo({
       center: [focusTarget.longitude, focusTarget.latitude],
       zoom: Math.max(map.getZoom(), 8.5),
@@ -1195,8 +1270,11 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   return (
     <>
       <div className="maplibre-surface" data-icon-animation={live && !historyOpen ? 'running' : 'paused'}
+        data-area-drawing={drawingActive}
         data-wake-enabled={aircraftWakesVisible}
         data-wake-tone={theme === 'dark' ? 'light' : 'dark'} ref={containerRef} />
+      {areaDrawing && <MapAreaEditor drawing={areaDrawing} language={language} units={unitSystem}
+        onChange={onAreaDrawingChange} onFinish={onAreaFinish} onCancel={onAreaCancel} />}
       {!ready && !error && <div className="map-loading">{translate(language, 'mapLoading')}</div>}
       {error && <div className="map-error"><strong>{translate(language, 'mapUnavailable')}</strong><span>{error}</span></div>}
     </>

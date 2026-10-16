@@ -7,6 +7,10 @@ test('dense traffic keeps zoom responsive with trails enabled', async ({ page, r
   await page.addInitScript(() => {
     localStorage.setItem('vector.mapLabels', 'false');
     localStorage.setItem('vector.aircraftMotion', 'true');
+    localStorage.setItem('vector.aircraftFilterPresets', JSON.stringify(Array.from({ length: 20 }, (_, index) => ({
+      id: `area-${index}`, name: `Area ${index + 1}`, sort: 'altitude-desc',
+      filters: { area: { kind: 'circle', center: [4.5 + index % 5 * .15, 52.1 + Math.floor(index / 5) * .1], radiusKm: 5 } },
+    }))));
   });
   radar.extraAircraft = Array.from({ length: 180 }, (_, i) => ({
     hex: (0xee0000 + i).toString(16), flight: `PERF${i}`, t: 'A320', desc: 'L2J', category: 'A3',
@@ -15,6 +19,7 @@ test('dense traffic keeps zoom responsive with trails enabled', async ({ page, r
   }));
   await page.goto('/');
   await expect(page.locator('.aircraft-map-marker')).toHaveCount(182);
+  await expect(page.locator('.map-area-shape')).toHaveCount(20);
   // Build real traveled routes via feed updates, never a straight invented tail.
   for (let step = 0; step < 8; step++) {
     const nextFeed = radar.aircraftRequests + 1;

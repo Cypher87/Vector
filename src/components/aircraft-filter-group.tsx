@@ -2,11 +2,11 @@ import type { ReactNode } from 'react';
 import { VectorIcon } from './vector-icon';
 
 /** Native, keyboard-accessible accordion. Keep fields mounted to preserve unfinished edits. */
-export function AircraftFilterGroup({ id, name, title, summary, active = false, children }: {
-  id: string; name: string; title: string; summary: string; active?: boolean; children: ReactNode;
+export function AircraftFilterGroup({ id, name, title, summary, active = false, summaryWhenClosed = false, children }: {
+  id: string; name: string; title: string; summary: string; active?: boolean; summaryWhenClosed?: boolean; children: ReactNode;
 }) {
   return (
-    <details className={`filter-group ${active ? 'has-filters' : ''}`} data-filter-group={id} name={name}>
+    <details className={`filter-group ${active ? 'has-filters' : ''} ${summaryWhenClosed ? 'filter-group-summary-closed' : ''}`} data-filter-group={id} name={name}>
       <summary aria-label={title}>
         <span className="filter-group-copy">
           <strong>{title}</strong>

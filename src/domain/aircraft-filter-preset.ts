@@ -1,5 +1,6 @@
 import { activeAircraftFilterKeys, normalizeAircraftFilters, filterValueEqual, type AircraftFilters } from './aircraft-filters.ts';
 import { isAircraftSort, type AircraftSort } from './aircraft-sort.ts';
+import { normalizeMapArea } from './map-area.ts';
 export { emptyAircraftFilters, normalizeAircraftFilters, type AircraftFilterKey, type AircraftFilters } from './aircraft-filters.ts';
 
 export { isAircraftSort, type AircraftSort } from './aircraft-sort.ts';
@@ -57,6 +58,7 @@ export function normalizeAircraftFilterPresets(value: unknown): AircraftFilterPr
     if (!isObject(item) || typeof item.id !== 'string' || !presetIdPattern.test(item.id) || ids.has(item.id)) continue;
     const name = normalizeAircraftFilterPresetName(item.name);
     if (!name || !isAircraftSort(item.sort)) continue;
+    if (isObject(item.filters) && item.filters.area != null && !normalizeMapArea(item.filters.area)) continue;
     ids.add(item.id);
     presets.push({
       id: item.id,

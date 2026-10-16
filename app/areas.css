@@ -1,0 +1,45 @@
+.map-areas-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
+.map-area-shape, .map-area-draft { stroke: var(--accent); stroke-width: 1.5px; fill: var(--accent); fill-opacity: .035; stroke-opacity: .65; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.map-area-shape.active, .map-area-draft { stroke-width: 2px; stroke-opacity: 1; fill-opacity: .07; }
+.map-area-draft:is(polyline) { fill: none; }
+.map-area-label { font-size: 11px; font-weight: 550; fill: var(--ink); stroke: var(--theme-control); stroke-width: 5px; stroke-linejoin: round; paint-order: stroke; }
+.map-area-vertex { fill: var(--theme-control); stroke: var(--accent); stroke-width: 2px; }
+.map-area-center-handle { z-index: 100000; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--accent); cursor: grab; touch-action: none; }
+.map-area-center-handle .vector-icon { width: 22px; height: 22px; padding: 2px; border-radius: 50%; background: var(--theme-control); box-shadow: var(--shadow-control); }
+.map-area-center-handle.dragging { cursor: grabbing; }
+.map-area-center-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.maplibre-surface[data-area-drawing='true'] .aircraft-map-marker { pointer-events: none; }
+.maplibre-surface[data-area-drawing='true'] .maplibregl-canvas-container { cursor: crosshair; }
+.map-area-editor { position: absolute; z-index: 8; top: 14px; left: 14px; right: 68px; width: fit-content; max-width: calc(100% - 82px); padding: 12px; display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--theme-popover); color: var(--ink); box-shadow: var(--shadow-popover); font-size: 13px; }
+.area-editor-heading { display: grid; gap: 3px; }
+.area-editor-heading > strong { font-size: 14px; font-weight: 600; }
+.area-editor-heading > span { color: var(--text-secondary-color); font-size: 12px; }
+.area-editor-actions, .filter-area-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.area-editor-actions button, .filter-area-actions button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 4px; background: none; color: var(--ink); font-size: 12px; cursor: pointer; }
+.area-editor-actions .vector-icon, .filter-area-actions .vector-icon { width: 16px; height: 16px; }
+.area-editor-actions button:hover:not(:disabled), .filter-area-actions button:hover { border-color: var(--muted); background: var(--accent-soft); }
+.area-editor-actions .primary { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.area-editor-actions button:disabled { opacity: .4; cursor: default; }
+.area-radius { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: var(--text-secondary-color); }
+.area-radius input { width: 90px; height: 36px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--theme-input); color: var(--ink); font: inherit; }
+.area-editor-error, .area-radius input[aria-invalid='true'] { color: var(--danger); }
+.map-area-editor :is(button, input):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.filter-group-summary-closed[open] > summary .filter-group-copy small { display: none; }
+.filter-area-value { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.filter-area-value > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 13px; font-weight: 550; }
+.filter-area-value button { flex: 0 0 auto; min-height: 36px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: none; color: var(--ink); font-size: 12px; cursor: pointer; }
+.filter-area-value .filter-area-clear { display: grid; place-items: center; width: 36px; padding: 0; border-color: transparent; color: var(--muted-strong); }
+.filter-area-value .vector-icon { width: 16px; height: 16px; }
+.filter-area-value button:hover { background: var(--accent-soft); border-color: var(--muted); }
+.filter-area-choices { display: grid; gap: 8px; font-size: 13px; }
+.filter-area-choices[hidden] { display: none; }
+.filter-area-value + .filter-area-choices:not([hidden]) { margin-top: 10px; }
+.filter-popover .filter-area-choices > .filter-field { border: 0; padding: 0; }
+@media (max-width: 720px) {
+  .map-area-center-handle { width: 44px; height: 44px; }
+  .map-area-editor { top: 10px; left: 10px; right: 60px; max-width: calc(100% - 70px); padding: 10px; }
+  .area-editor-actions button, .area-radius input { min-height: 40px; }
+  .area-radius input { font-size: 16px; }
+  .filter-area-value button, .filter-area-actions button { min-height: 40px; }
+  .filter-area-value .filter-area-clear { width: 40px; }
+}

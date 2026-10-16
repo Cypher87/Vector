@@ -7,6 +7,9 @@ import {
 import { translate, type Language } from '../i18n';
 import { aircraftFilterLabel, alertLabels, categoryLabels, flightStatusLabels, measurementLabels, positionLabels } from './aircraft-filter-labels';
 import { AircraftFilterGroup } from './aircraft-filter-group';
+import type { AircraftFilterPreset } from '../domain/aircraft-filter-preset';
+import type { MapArea } from '../domain/map-area';
+import { VectorIcon } from './vector-icon';
 
 export type ChangeAircraftFilter = <K extends AircraftFilterKey>(key: K, value: AircraftFilters[K]) => void;
 
@@ -98,8 +101,9 @@ function TypeCodeField({ value, language, onChange }: { value: string[]; languag
   );
 }
 
-export function AircraftFilterFields({ filters, language, unitSystem, receiverPositionKnown, groupName, onChange }: {
+export function AircraftFilterFields({ filters, language, unitSystem, receiverPositionKnown, groupName, onChange, presets, onDrawArea }: {
   filters: AircraftFilters; language: Language; unitSystem: UnitSystem; receiverPositionKnown: boolean; groupName: string; onChange: ChangeAircraftFilter;
+  presets: AircraftFilterPreset[]; onDrawArea: (kind: MapArea['kind']) => void;
 }) {
   const t = (key: Parameters<typeof translate>[1]) => translate(language, key);
   const activeKeys = activeAircraftFilterKeys(filters);
@@ -113,6 +117,14 @@ export function AircraftFilterFields({ filters, language, unitSystem, receiverPo
   const distanceValue = filters.distance === null ? '' : filters.distance * distance.factor;
   const distancePreset = [25, 50, 100, 200].find((value) => distanceValue !== '' && Math.abs(value - distanceValue) < 1e-6);
   const [customDistance, setCustomDistance] = useState(false);
+  const areaPresets = presets.filter((preset) => preset.filters.area);
+  const selectedArea = areaPresets.find((preset) => JSON.stringify(preset.filters.area) === JSON.stringify(filters.area));
+  const areaLabel = filters.area ? aircraftFilterLabel('area', filters, language, unitSystem) : t('areaNone');
+  const areaSignature = JSON.stringify(filters.area);
+  const [editingArea, setEditingArea] = useState<string>();
+  const areaChoicesOpen = editingArea === areaSignature;
+  const areaChoicesId = useId();
+  const areaChangeRef = useRef<HTMLButtonElement>(null);
   return (
     <div className="filter-options filter-fields">
       <label className="filter-favorite">
@@ -162,6 +174,35 @@ export function AircraftFilterFields({ filters, language, unitSystem, receiverPo
       )}
         {!receiverPositionKnown && <small className="filter-warning">{t('filterReceiverMissing')}</small>}
       </div>
+      </AircraftFilterGroup>
+      <AircraftFilterGroup id="area" name={groupName} title={t('filterArea')} active={!!filters.area}
+        summary={selectedArea?.name ?? areaLabel} summaryWhenClosed>
+        {filters.area && <div className="filter-area-value">
+          <span title={selectedArea ? `${selectedArea.name} · ${areaLabel}` : areaLabel}>{selectedArea?.name ?? areaLabel}</span>
+          <button type="button" ref={areaChangeRef} aria-expanded={areaChoicesOpen} aria-controls={areaChoicesId}
+            onClick={() => setEditingArea(areaChoicesOpen ? undefined : areaSignature)}>{t(areaChoicesOpen ? 'cancel' : 'areaChange')}</button>
+          <button type="button" className="filter-area-clear" aria-label={t('areaClear')} title={t('areaClear')}
+            onClick={() => { setEditingArea(undefined); onChange('area', null); }}><VectorIcon name="close" /></button>
+        </div>}
+        <div className="filter-area-choices" id={areaChoicesId} hidden={!!filters.area && !areaChoicesOpen}>
+          {areaPresets.length > 0 && <label className="filter-field"><span>{t('areaSaved')}</span>
+            <select aria-label={t('areaSaved')} value={selectedArea?.id ?? ''}
+              onChange={(event) => {
+                const preset = areaPresets.find((preset) => preset.id === event.target.value);
+                if (!preset?.filters.area) return;
+                setEditingArea(undefined);
+                onChange('area', preset.filters.area);
+                requestAnimationFrame(() => areaChangeRef.current?.focus());
+              }}>
+              <option value="" disabled>{t('areaChooseSaved')}</option>
+              {areaPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+            </select>
+          </label>}
+          <div className="filter-area-actions">
+            <button type="button" onClick={() => { setEditingArea(undefined); onDrawArea('circle'); }}><VectorIcon name="rings" />{t(filters.area?.kind === 'circle' ? 'areaEditCircle' : 'areaDrawCircle')}</button>
+            <button type="button" onClick={() => { setEditingArea(undefined); onDrawArea('polygon'); }}><VectorIcon name="range" />{t('areaDrawPolygon')}</button>
+          </div>
+        </div>
       </AircraftFilterGroup>
       <AircraftFilterGroup id="advanced" name={groupName} title={t('filterAdvanced')} {...group(['source', 'position', 'typeCodes', 'alert'])}>
         <label className="filter-field">

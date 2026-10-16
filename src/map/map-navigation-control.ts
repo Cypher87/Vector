@@ -48,12 +48,14 @@ export const createMapNavigationControl = (
   onLabelsToggle: () => void,
   onLegTraceToggle: () => void,
   onHistoryToggle: () => void,
+  areas?: { visible: boolean; onToggle: () => void },
 ) => {
   let container: HTMLDivElement | undefined;
   let layerMenu: HTMLDivElement | undefined;
   let documentPointerDown: ((event: PointerEvent) => void) | undefined;
   let controls: {
     actualRange: HTMLButtonElement;
+    areas: HTMLButtonElement;
     aircraftShadows: HTMLButtonElement;
     aircraftWakes: HTMLButtonElement;
     center: HTMLButtonElement;
@@ -74,6 +76,7 @@ export const createMapNavigationControl = (
   let currentLabelsVisible = labelsVisible;
   let currentLegTraceVisible = legTraceVisible;
   let currentHistoryOpen = historyOpen;
+  let currentAreasVisible = areas?.visible ?? true;
   let menuOpen = false;
 
   const button = (className: string, label: string, onClick: () => void, iconName: VectorIconName) => {
@@ -142,6 +145,7 @@ export const createMapNavigationControl = (
     setLayerButtonState(controls.legTrace, labels.legTraceName, labels.legTrace, currentLegTraceVisible);
     setLayerButtonState(controls.actualRange, labels.actualRangeName, labels.actualRange, currentActualRangeVisible);
     setLayerButtonState(controls.distanceRings, labels.distanceRingsName, labels.distanceRings, currentDistanceRingsVisible);
+    setLayerButtonState(controls.areas, translate(currentLanguage, 'mapAreas'), translate(currentLanguage, currentAreasVisible ? 'areaHide' : 'areaShow'), currentAreasVisible);
     controls.actualRange.disabled = !currentActualRangeAvailable;
     controls.legTrace.disabled = currentHistoryOpen;
     controls.aircraftWakes.disabled = currentHistoryOpen;
@@ -161,6 +165,7 @@ export const createMapNavigationControl = (
     nextLabelsVisible: boolean,
     nextLegTraceVisible: boolean,
     nextHistoryOpen: boolean,
+    nextAreasVisible = currentAreasVisible,
   ) => {
     currentLanguage = nextLanguage;
     currentActualRangeAvailable = nextActualRangeAvailable;
@@ -171,6 +176,7 @@ export const createMapNavigationControl = (
     currentLabelsVisible = nextLabelsVisible;
     currentLegTraceVisible = nextLegTraceVisible;
     currentHistoryOpen = nextHistoryOpen;
+    currentAreasVisible = nextAreasVisible;
     updateState();
   };
 
@@ -195,6 +201,7 @@ export const createMapNavigationControl = (
       layerHeading.textContent = labels.mapLayers;
       layerMenu.appendChild(layerHeading);
       controls = {
+        areas: layerButton('vector-map-areas', translate(currentLanguage, 'mapAreas'), () => areas?.onToggle(), 'range'),
         zoomIn: button('vector-map-zoom-in', labels.zoomIn, () => map.zoomIn({ duration: 250 }), 'zoomIn'),
         zoomOut: button('vector-map-zoom-out', labels.zoomOut, () => map.zoomOut({ duration: 250 }), 'zoomOut'),
         center: button('vector-map-recenter', labels.center, () => map.easeTo({
@@ -221,6 +228,7 @@ export const createMapNavigationControl = (
       layerMenu.appendChild(controls.legTrace);
       layerMenu.appendChild(controls.actualRange);
       layerMenu.appendChild(controls.distanceRings);
+      layerMenu.appendChild(controls.areas);
       container.appendChild(layerMenu);
       container.appendChild(controls.zoomIn);
       container.appendChild(controls.zoomOut);

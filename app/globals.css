@@ -2,6 +2,7 @@
 @import 'maplibre-gl/dist/maplibre-gl.css';
 @import './logbook.css';
 @import './favorites.css';
+@import './areas.css';
 
 :root {
   --ink: #f2f0e9;
@@ -799,7 +800,7 @@ html .radar-app select { color-scheme: inherit; }
 .filter-tabs button span { font-size: 11px; color: var(--text-secondary-color); font-variant-numeric: tabular-nums; }
 .filter-workspace-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--muted) transparent; }
 .filter-workspace [role="tabpanel"][hidden] { display: none; }
-.filter-workspace .filter-group > summary { min-height: 54px; }
+.filter-workspace .filter-group > summary { min-height: 48px; padding: 4px 0; }
 .filter-workspace .filter-preset-list { display: grid; gap: 10px; padding: 12px 14px; border: 0; }
 .filter-preset-card { min-width: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--theme-card); overflow: hidden; }
 .filter-preset-card.active { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }

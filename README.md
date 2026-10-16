@@ -2,12 +2,12 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.11.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.12.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
 - Live map with original aircraft-family icons, altitude colors, smooth motion, and collision-aware labels.
-- Search, advanced filters, saved views, and favorites.
+- Search, advanced filters, drawn map areas with entry alerts, saved views, and favorites.
 - Aircraft details with photos, routes, technical data, and interactive flight profiles.
 - Altitude-colored traces, receiver history replay, distance rings, and range outline.
 - Receiver dashboard and events for favorite arrivals, emergencies, and connection changes.
@@ -17,6 +17,8 @@ A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/reads
 - Optional administrator-protected browser updates, with staged builds and recovery.
 
 The star next to the aircraft filters opens all saved favorites, including offline aircraft. Add a callsign or registration such as `PH-HLP`, search, remove with confirmation, or open a live aircraft. Registrations follow the aircraft regardless of its callsign; callsign favorites follow that exact flight identifier. Both synchronize between paired devices. On mobile, open the aircraft list first.
+
+Under **Filter → Area**, draw a circle or polygon and combine it with aircraft criteria. Drag a circle's centre to reposition it without changing its radius. Choose **Save filter** to keep it, then enable its bell under **Saved** for matching arrivals. Saved areas can be reused in other filters; the **Areas** map layer controls their outlines. Areas and alert rules synchronize between paired devices.
 
 ## Install on Raspberry Pi
 
