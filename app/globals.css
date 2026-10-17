@@ -654,7 +654,9 @@ html[data-theme] .aircraft-map-marker .map-plane-label {
   left: calc(50% + var(--label-x, 24px)); top: calc(50% + var(--label-y, -17px)); transform: none;
 }
 html[data-theme] .aircraft-map-marker.selected .map-plane-label { --label-outline: var(--aircraft-color); }
-.aircraft-map-marker.previewed:not(.selected)::after { content: ''; position: absolute; inset: -5px; border: 1px solid color-mix(in srgb, var(--aircraft-color) 65%, transparent); border-radius: 50%; background: color-mix(in srgb, var(--aircraft-color) 10%, transparent); pointer-events: none; }
+/* Preview follows the silhouette; don't enlarge the marker or light up its wake. */
+/* Keep SVG filter changes immediate to avoid black intermediate frames. */
+.aircraft-map-marker.previewed:not(.selected) > .aircraft-map-symbol > .map-aircraft-icon > .aircraft-icon-body { filter: var(--aircraft-marker-filter) brightness(1.18) drop-shadow(0 0 5px color-mix(in srgb, var(--aircraft-color) 75%, transparent)); }
 html[data-theme] .aircraft-map-marker.previewed .map-plane-label { --label-outline: var(--aircraft-color); border-color: var(--label-outline); }
 .map-plane-label.label-compact { padding: 5px 7px; min-width: 0; }
 .map-plane-label.label-compact > span { display: none; }

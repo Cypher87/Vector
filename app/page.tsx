@@ -1014,7 +1014,7 @@ export default function Home() {
             areas={mapAreas}
             areasVisible={areasVisible}
             areaDrawing={areaDrawing}
-            heatmap={{ visible: heatmapVisible, period: heatmapPeriod, data: heatmap.data, onVisibleChange: changeHeatmapVisible, onPeriodChange: changeHeatmapPeriod }}
+            heatmap={{ visible: heatmapVisible, data: heatmap.data, onVisibleChange: changeHeatmapVisible }}
             onAreasVisibleChange={changeAreasVisible}
             onAreaPoint={addAreaPoint}
             onAreaDrawingChange={setAreaDrawing}

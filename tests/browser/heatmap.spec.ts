@@ -38,10 +38,11 @@ test('heatmap is an optional GPU layer with persisted periods, separate legend a
   await expect(page.locator('.heatmap-legend')).toHaveCount(0);
   await page.getByRole('button', { name: 'Map layers', exact: true }).click();
   await page.getByRole('button', { name: 'Show heatmap', exact: true }).click();
-  const period = page.locator('.vector-map-layer-menu').getByRole('combobox', { name: 'Heatmap period', exact: true });
-  await expect(period).toHaveValue('24h');
+  const layerMenu = page.locator('.vector-map-layer-menu');
+  await expect(layerMenu.getByRole('combobox')).toHaveCount(0);
   const legend = page.getByRole('complementary', { name: 'Heatmap', exact: true });
   const directPeriod = legend.getByRole('combobox', { name: 'Heatmap period', exact: true });
+  await expect(page.getByRole('combobox', { name: 'Heatmap period', exact: true })).toHaveCount(1);
   await expect(directPeriod).toHaveValue('24h');
   await expect(page.locator('.maplibre-surface')).toHaveAttribute('data-heatmap-points', '2000');
   await expect(page.locator('.maplibre-surface')).toHaveAttribute('data-heatmap-rendered', 'ready');
@@ -57,7 +58,8 @@ test('heatmap is an optional GPU layer with persisted periods, separate legend a
   await expect(directPeriod).toHaveValue('7d');
   await expect(page.locator('.maplibre-surface')).toHaveAttribute('data-heatmap-rendered', 'ready');
   await page.getByRole('button', { name: 'Map layers', exact: true }).click();
-  await expect(period).toHaveValue('7d');
+  await expect(layerMenu.getByRole('combobox')).toHaveCount(0);
+  await expect(layerMenu.getByRole('button', { name: 'Hide heatmap', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Map layers', exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath('traffic-heatmap-dark.png') });
   await page.locator('.settings-menu summary').click();
@@ -100,7 +102,8 @@ test('heatmap quietly shows available recordings with a period tooltip and disti
   await expect(legend.getByRole('img')).toHaveCount(0);
   await expect(legend).not.toContainText('Incomplete recordings');
   await expect(legend).toHaveAttribute('title', /\d.+ — .+\d/);
-  const period = page.locator('.vector-map-layer-menu').getByRole('combobox', { name: 'Heatmap period', exact: true });
+  await page.getByRole('button', { name: 'Map layers', exact: true }).click();
+  const period = legend.getByRole('combobox', { name: 'Heatmap period', exact: true });
   radar.heatmapEmpty = true;
   await period.selectOption('4h');
   await expect(legend).toContainText('No data');
@@ -109,7 +112,6 @@ test('heatmap quietly shows available recordings with a period tooltip and disti
   radar.heatmapError = true;
   await period.selectOption('8h');
   await expect(legend).toContainText('Heatmap unavailable');
-  await page.getByRole('button', { name: 'Map layers', exact: true }).click();
   await page.getByRole('button', { name: 'History', exact: true }).click();
   await expect(legend).toHaveCount(0);
   await expect(page.locator('.maplibre-surface')).toHaveAttribute('data-heatmap-visible', 'false');

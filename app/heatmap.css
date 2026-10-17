@@ -1,7 +1,4 @@
 .map .vector-map-layer-menu { max-height: calc(100svh - 220px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.vector-heatmap-period { display: grid; gap: 6px; padding: 8px 7px 12px; font-size: var(--text-secondary-size); color: var(--text-secondary-color); }
-.vector-heatmap-period[hidden] { display: none; }
-.vector-heatmap-period select { width: 100%; min-width: 0; height: 36px; padding: 6px 30px 6px 9px; border: 1px solid var(--line); border-radius: 4px; background-color: var(--theme-input); color: var(--ink); font: inherit; }
 .heatmap-legend { position: absolute; z-index: 6; right: var(--map-edge-inset); bottom: var(--map-bottom-inset); width: 185px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--theme-control); box-shadow: var(--shadow-control); font-size: 12px; color: var(--ink); }
 .heatmap-legend header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: -4px -4px 4px 0; }
 .heatmap-legend strong { font-size: 12px; font-weight: 600; }
@@ -16,7 +13,6 @@
 .heatmap-status { color: var(--text-secondary-color); font-size: 12px; line-height: 1.4; }
 .heatmap-status:not(:empty) { margin-top: 6px; }
 @media (max-width: 720px) {
-  .vector-heatmap-period select { height: 40px; font-size: 16px; }
   .heatmap-legend { width: 145px; padding: 8px 10px; }
   .heatmap-legend > select { height: 36px; font-size: 16px; }
   .heatmap-close { width: 32px; height: 32px; }

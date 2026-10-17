@@ -62,6 +62,54 @@ test('aircraft preview links list and map without selection or camera movement',
   await expect(page.locator('.previewed')).toHaveCount(0);
 });
 
+test('preview highlights only the aircraft silhouette, without a ring or resizing', async ({ page, isMobile }, testInfo) => {
+  test.skip(isMobile, 'Touch selection does not have a hover state');
+  await page.addInitScript(() => {
+    localStorage.setItem('vector.aircraftMotion', 'false');
+    localStorage.setItem('vector.mapLabels', 'false');
+  });
+  await page.goto('/');
+  const marker = page.locator('.aircraft-map-marker').filter({ hasText: 'VECTOR01' });
+  const body = marker.locator('.map-aircraft-icon > .aircraft-icon-body');
+  const symbol = marker.locator('.aircraft-map-symbol');
+  const silhouette = body.locator('.aircraft-icon-main').first();
+  const label = marker.locator('.map-plane-label');
+  for (const theme of ['dark', 'light']) {
+    await page.locator('.settings-menu summary').click();
+    await page.getByRole('combobox', { name: 'Theme', exact: true }).selectOption(theme);
+    await page.keyboard.press('Escape');
+    await page.mouse.move(500, 100);
+    await expect(marker).not.toHaveClass(/previewed/);
+    const idleFilter = await body.evaluate((element) => getComputedStyle(element).filter);
+    const color = await silhouette.evaluate((element) => getComputedStyle(element).fill);
+    const scale = await symbol.evaluate((element) => getComputedStyle(element).transform);
+    const labelFilter = await label.evaluate((element) => getComputedStyle(element).filter);
+    // Interpolating the SVG filter briefly rendered a black silhouette on hover.
+    await expect(body).toHaveCSS('transition-duration', '0s');
+    await marker.hover();
+    await expect(marker).toHaveClass(/previewed/);
+    await expect(body).toHaveCSS('filter', /brightness\(1\.18\)/);
+    await expect(body).toHaveCSS('transition-duration', '0s');
+    await expect(silhouette).toHaveCSS('fill', color);
+    await expect(symbol).toHaveCSS('transform', scale);
+    await expect(label).toHaveCSS('filter', labelFilter);
+    await expect(marker.locator('.aircraft-wake-svg')).toHaveCSS('filter', 'none');
+    expect(await marker.evaluate((element) => getComputedStyle(element, '::after').content)).toBe('none');
+    await page.screenshot({ path: testInfo.outputPath(`silhouette-preview-${theme}.png`) });
+    await page.mouse.move(500, 100);
+    await expect(body).toHaveCSS('filter', idleFilter);
+  }
+  // Keyboard users get the same preview, without introducing animation when reduced.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await marker.focus();
+  await expect(marker).toHaveClass(/previewed/);
+  await expect(body).toHaveCSS('filter', /brightness\(1\.18\)/);
+  await expect(body).toHaveCSS('transition-duration', '0s');
+  await marker.press('Enter');
+  await expect(marker).toHaveClass(/selected/);
+  await expect(body).not.toHaveCSS('filter', /brightness/);
+});
+
 for (const language of ['en', 'nl']) {
   test(`list states distinguish loading, offline, empty and filters in ${language}`, async ({ page, radar, isMobile }, testInfo) => {
     if (isMobile) await page.setViewportSize({ width: 360, height: 780 });

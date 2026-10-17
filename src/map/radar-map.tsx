@@ -38,10 +38,10 @@ import { createAreaCenterHandle } from './area-center-handle';
 import { areaBounds, type AreaCoordinate, type AreaDrawing, type MapArea } from '../domain/map-area';
 import { MapAreaEditor } from '../components/map-area-editor';
 import { createTrafficHeatmap } from './traffic-heatmap';
-import type { HeatmapData, HeatmapPeriod } from '../domain/heatmap';
+import type { HeatmapData } from '../domain/heatmap';
 
 type RadarMapProps = {
-  heatmap: { visible: boolean; period: HeatmapPeriod; data?: HeatmapData; onVisibleChange: (visible: boolean) => void; onPeriodChange: (period: HeatmapPeriod) => void };
+  heatmap: { visible: boolean; data?: HeatmapData; onVisibleChange: (visible: boolean) => void };
   actualRangeAvailable: boolean;
   actualRangeVisible: boolean;
   aircraft: Aircraft[];
@@ -375,9 +375,8 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       historyOpen,
       areasVisible,
       heatmap.visible,
-      heatmap.period,
     );
-  }, [actualRangeAvailable, actualRangeVisible, aircraftShadowsVisible, aircraftWakesVisible, distanceRingsVisible, historyOpen, labelsVisible, language, legTraceVisible, shadowTimestamp, areasVisible, heatmap.visible, heatmap.period]);
+  }, [actualRangeAvailable, actualRangeVisible, aircraftShadowsVisible, aircraftWakesVisible, distanceRingsVisible, historyOpen, labelsVisible, language, legTraceVisible, shadowTimestamp, areasVisible, heatmap.visible]);
 
   const updateWakePositions = useCallback(function requestWakeDraw() {
     // Feed, marker motion, move and rotate may all request the same frame.
@@ -927,8 +926,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       () => onLegTraceVisibleChangeRef.current(!legTraceVisibleRef.current),
       () => onHistoryToggleRef.current(),
       { visible: areasVisibleRef.current, onToggle: () => areasToggleRef.current(!areasVisibleRef.current) },
-      { visible: heatmapRef.current.visible, period: heatmapRef.current.period,
-        onToggle: () => heatmapRef.current.onVisibleChange(!heatmapRef.current.visible), onPeriodChange: (period) => heatmapRef.current.onPeriodChange(period) },
+      { visible: heatmapRef.current.visible, onToggle: () => heatmapRef.current.onVisibleChange(!heatmapRef.current.visible) },
     );
     navigationControlRef.current = navigationControl;
     map.addControl(navigationControl, 'top-right');
