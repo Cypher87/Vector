@@ -4,7 +4,7 @@ import { localeForLanguage, translate, type Language } from '../i18n';
 import { VectorIcon } from './vector-icon';
 import { AircraftDatabasePanel } from './aircraft-database-panel';
 
-type ReceiverDashboardProps = {
+export type ReceiverDashboardProps = {
   aircraft: readonly Aircraft[];
   lastUpdate?: number;
   language: Language;

@@ -1,11 +1,13 @@
 'use client';
 
-import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { translate, type Language, type TranslationKey } from '../i18n';
 import type { SyncDeviceSummary } from '../sync/devices';
 import { VectorIcon } from './vector-icon';
 
-type SyncMenuProps = {
+export type SyncMenuProps = {
+  open: boolean;
+  onClose: () => void;
   connected: boolean;
   devices: SyncDeviceSummary[];
   error?: string;
@@ -39,6 +41,8 @@ const inputCode = (value: string) => {
 };
 
 export function SyncMenu({
+  open,
+  onClose,
   connected,
   devices,
   error,
@@ -53,14 +57,12 @@ export function SyncMenu({
   onRenameDevice,
   onStart,
 }: SyncMenuProps) {
-  const [open, setOpen] = useState(false);
   const [code, setCode] = useState('');
   const [generatedCode, setGeneratedCode] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingDeviceId, setEditingDeviceId] = useState<string>();
   const [deviceNameDraft, setDeviceNameDraft] = useState('');
-  const rootRef = useRef<HTMLDivElement>(null);
   const t = (key: TranslationKey) => translate(language, key);
   const dateTime = new Intl.DateTimeFormat(language === 'nl' ? 'nl-NL' : 'en-GB', {
     dateStyle: 'medium',
@@ -81,14 +83,6 @@ export function SyncMenu({
       ? `${t('syncCurrentDevice')} · ${t('syncActiveNow')}`
       : device.online ? t('syncActiveNow') : `${t('syncLastActive')} ${dateTime.format(device.lastSeenAt)}`,
   ].filter(Boolean).join(' · ');
-
-  useEffect(() => {
-    const close = (event: PointerEvent) => {
-      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
-  }, []);
 
   const run = async (operation: () => Promise<unknown>) => {
     setSubmitting(true);
@@ -145,33 +139,17 @@ export function SyncMenu({
       await onDelete();
       setGeneratedCode(undefined);
       setConfirmDelete(false);
-      setOpen(false);
+      onClose();
     });
   };
 
   return (
-    <div className={`sync-menu ${open ? 'open' : ''}`} ref={rootRef}>
-      <button
-        className={`settings-button sync-button ${connected ? 'connected' : ''}`}
-        type="button"
-        aria-expanded={open}
-        aria-label={t('syncOpen')}
-        title={t('syncOpen')}
-        onClick={() => {
-          setOpen((current) => !current);
-          setConfirmDelete(false);
-          onClearError();
-        }}
-      >
-        <VectorIcon name="sync" />
-        {connected && <span className="sync-state-dot" />}
-      </button>
-
+    <div className={`sync-menu ${open ? 'open' : ''}`}>
       {open && (
-        <section className="sync-popover">
+        <section className="sync-popover" role="dialog" aria-label={t('syncTitle')}>
           <header>
             <strong>{t('syncTitle')}</strong>
-            <button type="button" aria-label={t('syncClose')} onClick={() => setOpen(false)}>
+            <button type="button" aria-label={t('syncClose')} onClick={() => { setConfirmDelete(false); onClose(); }}>
               <VectorIcon name="close" />
             </button>
           </header>
@@ -195,7 +173,7 @@ export function SyncMenu({
                               value={deviceNameDraft}
                               onChange={(event) => setDeviceNameDraft(event.target.value)}
                               onKeyDown={(event) => {
-                                if (event.key === 'Escape') cancelDeviceEdit();
+                                if (event.key === 'Escape') { event.stopPropagation(); cancelDeviceEdit(); }
                               }}
                             />
                           </div>

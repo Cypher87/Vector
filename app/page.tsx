@@ -5,6 +5,7 @@ import { AircraftPhoto } from '../src/components/aircraft-photo';
 import { AircraftActiveFilters } from '../src/components/aircraft-active-filters';
 import { AircraftFilterMenu } from '../src/components/aircraft-filter-menu';
 import { AircraftSortControls } from '../src/components/aircraft-sort-controls';
+import { AircraftListState } from '../src/components/aircraft-list-state';
 import { AircraftRoute, AircraftRouteSummary, useAircraftRoute } from '../src/components/aircraft-route';
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
 import { EventCenter } from '../src/components/event-center';
@@ -13,11 +14,10 @@ import { HeatmapLegend } from '../src/components/heatmap-legend';
 import { useHeatmap } from '../src/data/use-heatmap';
 import { defaultHeatmapPeriod, parseHeatmapPeriod, type HeatmapPeriod } from '../src/domain/heatmap';
 import { FlightProfile } from '../src/components/flight-profile';
-import { ReceiverDashboard } from '../src/components/receiver-dashboard';
+import { ReceiverToolsMenu } from '../src/components/receiver-tools-menu';
 import { LogbookMenu } from '../src/components/logbook-menu';
 import type { LogbookReplayRequest } from '../src/domain/logbook-replay';
 import { FavoritesMenu } from '../src/components/favorites-menu';
-import { SyncMenu } from '../src/components/sync-menu';
 import { SettingsMenu } from '../src/components/settings-menu';
 import { vectorVersion } from '../src/version';
 import { VectorIcon } from '../src/components/vector-icon';
@@ -137,11 +137,23 @@ export default function Home() {
     receiverHaveReplay: feed.receiver?.haveReplay === true,
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const receiverDashboardRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [previewedId, setPreviewedId] = useState<string>();
+  const previewAircraft = useCallback((id: string, active: boolean) => {
+    setPreviewedId((current) => active ? id : current === id ? undefined : current);
+  }, []);
+  useEffect(() => {
+    const clear = () => setPreviewedId(undefined);
+    const hide = () => { if (document.visibilityState === 'hidden') clear(); };
+    window.addEventListener('blur', clear);
+    document.addEventListener('visibilitychange', hide);
+    return () => {
+      window.removeEventListener('blur', clear);
+      document.removeEventListener('visibilitychange', hide);
+    };
+  }, []);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [receiverDashboardOpen, setReceiverDashboardOpen] = useState(false);
   const [autoHideDetails, setAutoHideDetails] = useState(false);
   const [mobileListOpen, setMobileListOpen] = useState(false);
   const [following, setFollowing] = useState(false);
@@ -241,18 +253,6 @@ export default function Home() {
 
     window.addEventListener('keydown', handleSearchShortcut);
     return () => window.removeEventListener('keydown', handleSearchShortcut);
-  }, []);
-
-  useEffect(() => {
-    const closeMenusOnOutsideClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (target instanceof Node && !receiverDashboardRef.current?.contains(target)) {
-        setReceiverDashboardOpen(false);
-      }
-    };
-
-    document.addEventListener('click', closeMenusOnOutsideClick);
-    return () => document.removeEventListener('click', closeMenusOnOutsideClick);
   }, []);
 
   const unitSystem = unitOverride ?? feed.config.unitSystem;
@@ -650,7 +650,8 @@ export default function Home() {
   const centerLon = receiverLon ?? 4.7639;
 
   const displayedAircraft = useMemo(() => {
-    if (!history.open || !history.currentSnapshot) return feed.aircraft;
+    if (!history.open) return feed.aircraft;
+    if (!history.currentSnapshot) return [];
     const liveAircraft = new Map(feed.aircraft.map((item) => [item.id, item]));
     return history.currentSnapshot.aircraft.map((item) => mergeAircraftMetadata(
       item,
@@ -740,6 +741,13 @@ export default function Home() {
       distanceKm: (item) => distanceKilometres(receiverLat, receiverLon, item.latitude, item.longitude),
     });
   }, [aircraftSort, aircraftFavoritesFirst, favoriteAircraftIdSet, receiverLat, receiverLon, filterMatchedAircraft, language, query]);
+
+  const visiblePreviewId = !areaDrawing && filteredAircraft.some((item) => item.id === previewedId) ? previewedId : undefined;
+  useEffect(() => {
+    if (!previewedId || visiblePreviewId) return;
+    const frame = requestAnimationFrame(() => setPreviewedId(undefined));
+    return () => cancelAnimationFrame(frame);
+  }, [previewedId, visiblePreviewId]);
 
   const selected = selectedId === null
     ? undefined
@@ -833,49 +841,20 @@ export default function Home() {
             presets={aircraftFilterPresets}
             unreadCount={radarEvents.unreadCount}
           />
-          <SyncMenu
-            connected={vectorSync.connected}
-            devices={vectorSync.devices}
-            error={vectorSync.error}
-            language={language}
-            loading={vectorSync.loading}
-            onClearError={vectorSync.clearError}
-            onCreatePairingCode={vectorSync.createPairingCode}
-            onDelete={vectorSync.deleteProfile}
-            onDisconnect={vectorSync.disconnect}
-            onDisconnectDevice={vectorSync.disconnectDevice}
-            onPair={vectorSync.pair}
-            onRenameDevice={vectorSync.renameDevice}
-            onStart={() => vectorSync.start(preferenceSnapshot)}
-          />
-          <div className={`receiver-dashboard-menu ${receiverDashboardOpen ? 'open' : ''}`} ref={receiverDashboardRef}>
-            <button
-              className="settings-button receiver-dashboard-button"
-              type="button"
-              aria-expanded={receiverDashboardOpen}
-              aria-label={t('openReceiverDashboard')}
-              title={t('openReceiverDashboard')}
-              onClick={() => setReceiverDashboardOpen((current) => !current)}
-            >
-              <VectorIcon name="receiver" />
-            </button>
-            {receiverDashboardOpen && (
-              <ReceiverDashboard
-                aircraft={feed.aircraft}
-                lastUpdate={feed.lastUpdate}
-                language={language}
-                latitude={centerLat}
-                longitude={centerLon}
-                messageCount={feed.messageCount}
-                messageRate={feed.messageRate}
-                onClose={() => setReceiverDashboardOpen(false)}
-                receiver={feed.receiver}
-                receiverName={feed.config.receiverName}
-                status={feed.status}
-                statusLabel={t(statusText[feed.status])}
-              />
-            )}
-          </div>
+          <ReceiverToolsMenu language={language}
+            sync={{
+              connected: vectorSync.connected, devices: vectorSync.devices, error: vectorSync.error,
+              loading: vectorSync.loading, onClearError: vectorSync.clearError,
+              onCreatePairingCode: vectorSync.createPairingCode, onDelete: vectorSync.deleteProfile,
+              onDisconnect: vectorSync.disconnect, onDisconnectDevice: vectorSync.disconnectDevice,
+              onPair: vectorSync.pair, onRenameDevice: vectorSync.renameDevice,
+              onStart: () => vectorSync.start(preferenceSnapshot),
+            }}
+            receiver={{
+              aircraft: feed.aircraft, lastUpdate: feed.lastUpdate, latitude: centerLat, longitude: centerLon,
+              messageCount: feed.messageCount, messageRate: feed.messageRate, receiver: feed.receiver,
+              receiverName: feed.config.receiverName, status: feed.status, statusLabel: t(statusText[feed.status]),
+            }} />
           <SettingsMenu
             language={language}
             themeMode={themeMode}
@@ -972,8 +951,12 @@ export default function Home() {
               const isFavorite = favoriteAircraftIdSet.has(item.id);
               return (
                 <button
-                  className={`aircraft-row ${selected?.id === item.id ? 'selected' : ''} ${isFavorite ? 'favorite' : ''}`}
+                  className={`aircraft-row ${selected?.id === item.id ? 'selected' : ''} ${isFavorite ? 'favorite' : ''} ${visiblePreviewId === item.id ? 'previewed' : ''}`}
                   key={item.id}
+                  onPointerEnter={(event) => { if (event.pointerType !== 'touch') previewAircraft(item.id, true); }}
+                  onPointerLeave={(event) => { if (!event.currentTarget.matches(':focus-visible')) previewAircraft(item.id, false); }}
+                  onFocus={(event) => { if (event.currentTarget.matches(':focus-visible')) previewAircraft(item.id, true); }}
+                  onBlur={() => previewAircraft(item.id, false)}
                   onClick={() => {
                     setSelectedId(item.id);
                     setDetailsOpen(true);
@@ -1007,7 +990,9 @@ export default function Home() {
               );
             })}
             {filteredAircraft.length === 0 && (
-              <div className="empty-list">{t('noAircraftFound')}</div>
+              <AircraftListState language={language} status={feed.status} history={history}
+                hasAircraft={displayedAircraft.length > 0} hasFilters={activeFilterCount > 0} hasSearch={query.trim().length > 0}
+                onClear={() => { setQuery(''); resetAircraftFilters(); searchInputRef.current?.focus(); }} />
             )}
           </div>
         </aside>
@@ -1061,13 +1046,16 @@ export default function Home() {
             onLabelsVisibleChange={changeLabelsVisible}
             onLegTraceVisibleChange={changeLegTraceVisible}
             onSelect={(id) => { setSelectedId(id); setDetailsOpen(true); setMobileDetailsExpanded(false); }}
+            previewedId={visiblePreviewId}
+            onPreview={previewAircraft}
             selectedId={selectedOnMap ? selected?.id : undefined}
             shadowTimestamp={history.open ? history.currentSnapshot?.timestamp : feed.lastUpdate ? feed.lastUpdate / 1_000 : undefined}
             theme={theme}
             unitSystem={unitSystem}
           />
 
-          {heatmapVisible && !history.open && <HeatmapLegend state={heatmap} language={language} />}
+          {heatmapVisible && !history.open && <HeatmapLegend state={heatmap} language={language}
+            onPeriodChange={changeHeatmapPeriod} onClose={() => changeHeatmapVisible(false)} />}
           <div className="altitude-legend" aria-label={`${t('aircraftColorAltitude')} 0 ${t('to')} ${altitudeLegend.ticks.at(-1)?.label} ${altitudeLegend.unit}`}>
             <span>{t('altitude')} <em>{altitudeLegend.unit}</em></span>
             <div aria-hidden="true" style={{ background: altitudeLegendGradient(theme) }}>{altitudeLegend.ticks.map((tick) => <i key={tick.label} style={{ left: `${tick.position}%` }} />)}</div>

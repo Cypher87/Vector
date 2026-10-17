@@ -8,6 +8,8 @@ Aircraft colors represent reported altitude and match the legend and trace color
 
 Labels avoid other labels and map controls. Selected, keyboard-focused/hovered, and favorite aircraft take priority. Ordinary labels show only the callsign below zoom level 7 and disappear below level 5; aircraft icons remain visible. The **Aircraft labels** layer switch hides all labels. Label placement never changes an aircraft's map position.
 
+Hovering or keyboard-focusing an aircraft in the list highlights its map icon, and vice versa. This preview does not select an aircraft, scroll the list or move the map. Touch still selects with one tap.
+
 ## Favorites
 
 The star beside the aircraft filters opens all saved favorites, including offline ones. Enter a **Callsign or registration** without waiting for a live aircraft. **Automatic** recognizes a hyphenated registration such as `PH-HLP`; otherwise it treats the value as a callsign. Choose **Registration** explicitly for registrations without a hyphen, such as `N123AB`.
@@ -24,12 +26,13 @@ Groups show active choices in their headings. Opening one closes the previous gr
 
 The **Filters** tab edits the current view; **Saved** lists saved views with their criteria and sort order. **Save filter** is available in the Filters footer. After applying a saved view and changing its filters, the footer shows **Unsaved changes**: choose **Update** to replace its criteria, or **Save filter** to keep both. Changing filters never overwrites a saved view automatically. Use the pencil to rename, edit its filters or delete with confirmation. Duplicate names are rejected; up to 20 views can be saved. Updating keeps the same notification rule and device-sync identity; removing all criteria also turns off that rule's notifications.
 
-Choose altitude, distance from the receiver, speed, callsign, or last reception in the list's sort selector. The adjacent arrow reverses the order; its tooltip describes the current direction. The star puts favorites first without hiding other aircraft. Missing sort values always stay at the bottom, including favorites. Equal values use callsign and ICAO ID as a stable tie-breaker. The displayed list reading follows the selected criterion. Sorting and favorite priority are saved locally, included in saved views, and synchronized with paired devices; existing saved views remain compatible.
+Choose altitude, distance from the receiver, speed, callsign, or last reception in the list's sort selector. The adjacent arrow reverses the order; its tooltip describes the current direction. The pin puts favorites first without hiding other aircraft; the star above opens your favorites. Missing sort values always stay at the bottom, including favorites. Equal values use callsign and ICAO ID as a stable tie-breaker. The displayed list reading follows the selected criterion. Sorting and favorite priority are saved locally, included in saved views, and synchronized with paired devices; existing saved views remain compatible.
 
 Filter rules:
 
 - Choices within a category or type-code group use **OR**; different groups use **AND**.
 - Search and filters apply to both map and list, in live and history modes. Selection does not bypass filters; the selected aircraft's details remain available.
+- Empty lists distinguish connecting, offline, outdated data and no matches. **Clear search** or **Clear filters** restores the view without deleting saved filters or favorites.
 - Numeric bounds are inclusive; empty bounds mean no limit. Missing measurements never count as zero. Invalid edits leave the previous valid filter in effect.
 - Distance uses the configured/reported receiver position, not the fallback map center. If that position is unknown, an active distance filter returns no matches.
 - Altitude is not height above terrain. Climbing/descending requires a known vertical rate of at least ±128 ft/min (about ±0.65 m/s); ground state comes from the receiver.
@@ -48,7 +51,7 @@ The **Areas** layer shows saved outlines and the current area's boundary; hiding
 
 ## Traffic heatmap
 
-Enable **Map layers → Heatmap** and choose **1 hour**, **4 hours**, **8 hours**, **24 hours** (default), or **7 days**. The layer shows the density of recorded aircraft positions, not receiver signal strength or a count of unique aircraft. Colors are recalibrated to the density within each selected period, including sparse one-hour views; the same color does not imply equal absolute traffic across periods. Hovering the legend shows the actual observation window. Gaps do not trigger a warning; empty periods show **No data**. Missing or unreadable history never becomes invented traffic.
+Enable **Map layers → Heatmap** and choose **1 hour**, **4 hours**, **8 hours**, **24 hours** (default), or **7 days**. Change the period directly in the legend or use its close button to hide the layer. The layer shows the density of recorded aircraft positions, not receiver signal strength or a count of unique aircraft. Colors are recalibrated to the density within each selected period, including sparse one-hour views; the same color does not imply equal absolute traffic across periods. Hovering the legend shows the actual observation window. Gaps do not trigger a warning; empty periods show **No data**. Missing or unreadable history never becomes invented traffic.
 
 The server reads only the requested UTC recording files, on demand, and keeps a bounded local cache separate from the readsb/NFS archive. Initial loading shows progress; subsequent views reuse summaries. The layer refreshes every five minutes while visible, pauses in hidden browser tabs, and is hidden during replay. Its period and visibility synchronize between paired devices. Current aircraft filters do not filter the historical heatmap.
 
@@ -116,6 +119,8 @@ The receiver records without an open browser. History starts when the updated re
 
 Synchronization is optional. Without it, preferences stay in the current browser. It needs no account, email, password, public domain, or Google/Apple configuration.
 
+Open **More → Synchronization** in the top bar. The receiver dashboard is also under **More**; Logbook and Notifications remain directly accessible.
+
 1. Choose **Start synchronization** on the first device to save its preferences on this Vector server.
 2. Choose **Connect a new device** on a connected device.
 3. Enter the six-character code on another device using the same server. The code expires after ten minutes and works only once.
@@ -128,7 +133,7 @@ Save a filter with **Save as new**, then turn on its **bell** in the **Saved** t
 
 Watched filters monitor all received aircraft, independently of the current map view, search and active filters. A match must remain true for ten seconds. Overlapping filters and favorite arrivals share one row per aircraft, showing the matching filter names. Clicking a notification opens the aircraft; any current search or filters hiding it are cleared. A contact must stop matching for five observed minutes before it can trigger again. Startup, reconnection, return from sleep/history, enabling a rule or changing its criteria establish a baseline without notifying about aircraft already present. Emergency squawks take precedence and remain immediate.
 
-The notification choices synchronize with saved views. The event log and read state remain local and can be cleared in the event center. It keeps one latest filter/favorite notification per aircraft, separate emergency codes, and one receiver-status row, for up to 24 hours and 100 entries. Existing duplicates are consolidated automatically. Repeats update the row instead of adding another; a read notification only becomes unread again after a 30-minute quiet period.
+The notification choices synchronize with saved views. Notification history and read state remain local; **Clear notifications** clears these messages, not the aircraft logbook. It keeps one latest filter/favorite notification per aircraft, separate emergency codes, and one receiver-status row, for up to 24 hours and 100 entries. Existing duplicates are consolidated automatically. Repeats update the row instead of adding another; a read notification only becomes unread again after a 30-minute quiet period.
 
 Favorites already present on startup, reconnection, returning after sleep, or when you add a favorite do not trigger arrival alerts. Brief reception gaps are ignored: a previously seen favorite must be absent from fresh live data for five minutes before its return counts again. New emergency squawks are detected immediately from fresh data, including on startup and in background tabs; different emergency codes remain separate alerts. An emergency takes precedence over a simultaneous favorite arrival.
 

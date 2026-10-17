@@ -132,8 +132,8 @@ export function LogbookMenu({ language, favorites, favoriteCallsigns, favoriteRe
     return () => element?.close();
   }, [open]);
   return <>
-    <button ref={button} type="button" className="settings-button" aria-label={t('logbookOpen')} title={t('logbook')} aria-haspopup="dialog" aria-expanded={open}
-      onClick={() => setOpen(true)}><VectorIcon name="logbook" /></button>
+    <button ref={button} type="button" className="settings-button top-action-with-label" aria-label={t('logbookOpen')} title={t('logbook')} aria-haspopup="dialog" aria-expanded={open}
+      onClick={() => setOpen(true)}><VectorIcon name="logbook" /><span className="top-action-label">{t('logbook')}</span></button>
     {open && createPortal(<dialog ref={dialog} className="logbook-dialog" aria-labelledby="logbook-title"
       onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); } }}
       onCancel={(event) => { event.preventDefault(); close(); }} onClick={(event) => {

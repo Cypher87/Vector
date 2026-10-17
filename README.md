@@ -2,15 +2,15 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.13.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.14.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
-- Live map with original aircraft-family icons, altitude colors, smooth motion, and collision-aware labels.
+- Live map with original aircraft-family icons, altitude colors, smooth motion, collision-aware labels, and linked map/list highlighting.
 - Search, advanced filters, drawn map areas with entry alerts, saved views, and favorites.
 - Aircraft details with photos, routes, technical data, and interactive flight profiles.
 - Altitude-colored traces, receiver history replay, distance rings, and range outline.
-- Time-selectable traffic heatmap with continuous recorded routes, relative colors, automatic refresh, and a local server cache.
+- Traffic heatmap with period controls in its legend, continuous recorded routes, relative colors, automatic refresh, and a local server cache.
 - Receiver dashboard and events for favorite arrivals, emergencies, and connection changes.
 - Persistent receiver logbook with search, favorites, live selection, and sighting replay with routes and flight profiles.
 - Desktop and mobile layouts, Dutch/English, coordinated dark/light/automatic appearance, and three unit systems.
@@ -18,6 +18,8 @@ A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/reads
 - Optional administrator-protected browser updates, with staged builds and recovery.
 
 The star next to the aircraft filters opens all saved favorites, including offline aircraft. Add a callsign or registration such as `PH-HLP`, search, remove with confirmation, or open a live aircraft. Registrations follow the aircraft regardless of its callsign; callsign favorites follow that exact flight identifier. Both synchronize between paired devices. On mobile, open the aircraft list first.
+
+**Logbook** and **Notifications** are in the top bar; **More** groups **Synchronization** and **Receiver dashboard**. The aircraft list distinguishes connection problems from empty results and offers a quick search/filter reset.
 
 Under **Filter → Area**, draw a circle or polygon and combine it with aircraft criteria. Drag a circle's centre to reposition it without changing its radius. Choose **Save filter** to keep it, then enable its bell under **Saved** for matching arrivals. Saved areas can be reused in other filters; the **Areas** map layer controls their outlines. Areas and alert rules synchronize between paired devices.
 
@@ -157,7 +159,7 @@ Neither command removes readsb, tar1090, or readsb's recordings. Receiver record
 
 ## Receiver logbook
 
-Open the book icon in the top bar to search observed aircraft by callsign, registration, type or ICAO, with 10 results per page. Each entry shows when it was first/last seen and its number of sightings within the selected period. Expand it for recent sightings and their duration, add a favorite, or select the aircraft on the live map when available. Duration runs from a sighting’s first to last recorded signal. A new sighting means reception resumed after at least 30 minutes; it is not a confirmed flight.
+Open **Logbook** in the top bar to search observed aircraft by callsign, registration, type or ICAO, with 10 results per page. Each entry shows when it was first/last seen and its number of sightings within the selected period. Expand it for recent sightings and their duration, add a favorite, or select the aircraft on the live map when available. Duration runs from a sighting’s first to last recorded signal. A new sighting means reception resumed after at least 30 minutes; it is not a confirmed flight.
 
 **Replay** opens a sighting’s last available position, with its recorded route and flight profile (up to the final 30 minutes). It uses receiver history or positions already captured in this browser session. Logbook retention does not guarantee position history: unavailable or expired recordings leave the logbook open instead of jumping to live data.
 
@@ -165,7 +167,7 @@ The receiver records in the background while Vector runs, even with no browser o
 
 ## Synchronize devices
 
-Open **Synchronization → Start synchronization** to save preferences and favorites on your Vector server. Choose **Connect a new device** and enter the six-character code on another device using the same server. Codes work once and expire after ten minutes; changes then synchronize live.
+Open **More → Synchronization → Start synchronization** to save preferences and favorites on your Vector server. Choose **Connect a new device** and enter the six-character code on another device using the same server. Codes work once and expire after ten minutes; changes then synchronize live.
 
 You can name or disconnect individual devices. Keep at least one device connected: there is no account recovery. See the [user guide](docs/USER_GUIDE.md#device-synchronization) for storage, privacy, and backup details.
 

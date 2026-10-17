@@ -40,7 +40,7 @@ export function AircraftSortControls({ sort, favoritesFirst, language, onSortCha
       <button type="button" className="sort-favorites" aria-label={t('favoritesFirst')}
         aria-pressed={favoritesFirst} data-tooltip={t('favoritesFirst')}
         onClick={() => onFavoritesFirstChange(!favoritesFirst)}>
-        <VectorIcon name="favorite" />
+        <VectorIcon name="pin" />
       </button>
     </div>
   );

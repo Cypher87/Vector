@@ -80,6 +80,8 @@ type RadarMapProps = {
   onLabelsVisibleChange: (visible: boolean) => void;
   onLegTraceVisibleChange: (visible: boolean) => void;
   onSelect: (id: string) => void;
+  onPreview: (id: string, active: boolean) => void;
+  previewedId?: string;
   selectedId?: string;
   shadowTimestamp?: number;
   theme: Theme;
@@ -122,12 +124,12 @@ type DistanceRingElements = {
 
 const shortestAngleDifference = (from: number, to: number) => ((to - from + 540) % 360) - 180;
 const normalizeAngle = (value: number) => ((value % 360) + 360) % 360;
-const aircraftMarkerZIndex = (aircraft: Aircraft, selected: boolean) =>
-  selected ? 100_000 : 10 + Math.max(0, Math.round(aircraft.altitudeFt ?? 0));
+const aircraftMarkerZIndex = (aircraft: Aircraft, selected: boolean, previewed = false) =>
+  selected ? 100_000 : previewed ? 90_000 : 10 + Math.max(0, Math.round(aircraft.altitudeFt ?? 0));
 const markerCorrectionDurationMs = 320;
 const minimumMarkerMovementMetres = 0.35;
 
-const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
+const createAircraftMarker = (onSelect: () => void, onPreview: (active: boolean) => void): AircraftMarker => {
   const element = document.createElement('button');
   element.type = 'button';
   element.className = 'aircraft-map-marker';
@@ -135,6 +137,10 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
     event.stopPropagation();
     onSelect();
   });
+  element.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') onPreview(true); });
+  element.addEventListener('pointerleave', () => { if (!element.matches(':focus-visible')) onPreview(false); });
+  element.addEventListener('focus', () => { if (element.matches(':focus-visible')) onPreview(true); });
+  element.addEventListener('blur', () => onPreview(false));
 
   const icon = createAircraftIconElement();
   const symbol = document.createElement('span');
@@ -205,7 +211,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   };
 };
 
-export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, wakeTraces, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, live, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId, shadowTimestamp, theme, unitSystem, areas, areasVisible, areaDrawing, onAreasVisibleChange, onAreaPoint, onAreaDrawingChange, onAreaFinish, onAreaCancel, heatmap }: RadarMapProps) {
+export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, wakeTraces, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, live, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, onPreview, previewedId, selectedId, shadowTimestamp, theme, unitSystem, areas, areasVisible, areaDrawing, onAreasVisibleChange, onAreaPoint, onAreaDrawingChange, onAreaFinish, onAreaCancel, heatmap }: RadarMapProps) {
   const centerLongitude = center[0];
   const centerLatitude = center[1];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -324,8 +330,12 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const onLabelsVisibleChangeRef = useRef(onLabelsVisibleChange);
   const onLegTraceVisibleChangeRef = useRef(onLegTraceVisibleChange);
   const onSelectRef = useRef(onSelect);
+  const onPreviewRef = useRef(onPreview);
+  const previewedIdRef = useRef(previewedId);
   const updateLabelVisibilityRef = useRef<() => void>(() => undefined);
   const [error, setError] = useState<string>();
+
+  useEffect(() => { onPreviewRef.current = onPreview; }, [onPreview]);
 
   useEffect(() => {
     actualRangeAvailableRef.current = actualRangeAvailable;
@@ -857,7 +867,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       const entries = [...markersRef.current.entries()];
       // Batch writes before measuring, avoiding a layout flush for each individual label.
       for (const [, item] of entries) {
-        const focused = item.element.matches(':hover, :focus-visible');
+        const focused = item.element.classList.contains('previewed') || item.element.matches(':hover, :focus-visible');
         const compact = compactAircraftLabel(zoom, item.selected || item.favorite || focused);
         if (item.label.classList.contains('label-compact') !== compact) {
           item.label.classList.toggle('label-compact', compact);
@@ -868,7 +878,7 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
         const point = map.project(item.marker.getLngLat());
         const size = item.labelSize ??= { width: item.label.offsetWidth, height: item.label.offsetHeight };
         return { id, x: point.x, y: point.y, ...size,
-          selected: item.selected, favorite: item.favorite, focused: item.element.matches(':hover, :focus-visible'), previous: item.labelSide };
+          selected: item.selected, favorite: item.favorite, focused: item.element.classList.contains('previewed') || item.element.matches(':hover, :focus-visible'), previous: item.labelSide };
       });
       const obstacles = [...(containerRef.current?.parentElement?.querySelectorAll('.maplibregl-ctrl, .altitude-legend, .mobile-aircraft-summary, .history-panel') ?? [])]
         .filter((element) => element.getClientRects().length > 0).map((element) => {
@@ -1138,6 +1148,8 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       if (!aircraftMarker) {
         aircraftMarker = createAircraftMarker(() => {
           if (!areaDrawingRef.current) onSelectRef.current(item.id);
+        }, (active) => {
+          if (!active || !areaDrawingRef.current) onPreviewRef.current(item.id, active);
         });
         aircraftMarker.marker.setLngLat(nextPosition);
         aircraftMarker.shadowMarker.setLngLat(nextPosition);
@@ -1215,11 +1227,12 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       );
       updateAircraftIconElement(aircraftMarker.shadowIcon, item, rotation);
       aircraftMarker.element.classList.toggle('selected', aircraftMarker.selected);
+      aircraftMarker.element.classList.toggle('previewed', item.id === previewedIdRef.current);
       aircraftMarker.element.classList.toggle('favorite', aircraftMarker.favorite);
       aircraftMarker.element.classList.toggle('helicopter', kind === 'helicopter' && !item.onGround);
       aircraftMarker.element.dataset.iconMotion = aircraftIconMotionActive(item) ? 'running' : 'paused';
       aircraftMarker.element.classList.toggle('mlat', item.source === 'mlat');
-      aircraftMarker.element.style.zIndex = String(aircraftMarkerZIndex(item, aircraftMarker.selected));
+      aircraftMarker.element.style.zIndex = String(aircraftMarkerZIndex(item, aircraftMarker.selected, item.id === previewedIdRef.current));
       aircraftMarker.element.setAttribute('aria-label', [
         item.flight,
         aircraftKindLabel(kind, language),
@@ -1232,6 +1245,21 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     updateLabelVisibilityRef.current();
     updateWakePositions();
   }, [aircraft, aircraftMotionEnabled, aircraftShadowsVisible, favoriteIds, historyOpen, labelsVisible, language, ready, selectedId, shadowTimestamp, startMarkerAnimation, theme, unitSystem, updateWakePositions]);
+
+  // Preview only touches the old and new marker; don't rebuild icons or restart motion on hover.
+  useEffect(() => {
+    previewedIdRef.current = previewedId;
+    const marker = previewedId ? markersRef.current.get(previewedId) : undefined;
+    if (!marker?.aircraft) return;
+    marker.element.classList.add('previewed');
+    marker.element.style.zIndex = String(aircraftMarkerZIndex(marker.aircraft, marker.selected, true));
+    updateLabelVisibilityRef.current();
+    return () => {
+      marker.element.classList.remove('previewed');
+      if (marker.aircraft) marker.element.style.zIndex = String(aircraftMarkerZIndex(marker.aircraft, marker.selected));
+      updateLabelVisibilityRef.current();
+    };
+  }, [previewedId, ready]);
 
   useEffect(() => {
     const map = mapRef.current;

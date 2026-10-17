@@ -87,12 +87,13 @@ export function EventCenter({ availableAircraftIds, events, language, onClear, o
       <button
         aria-expanded={open}
         aria-label={t('openEventCenter')}
-        className="settings-button event-center-button"
+        className="settings-button event-center-button top-action-with-label"
         onClick={() => setOpen((current) => !current)}
         title={t('openEventCenter')}
         type="button"
       >
         <VectorIcon name="notifications" />
+        <span className="top-action-label">{t('eventCenter')}</span>
         {unreadCount > 0 && <span className="event-unread-count">{Math.min(99, unreadCount)}</span>}
       </button>
 

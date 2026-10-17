@@ -50,7 +50,7 @@ for (const language of ['en', 'nl']) {
     await expect(popover).not.toBeVisible();
     await expect(page.locator(isMobile ? '.mobile-aircraft-summary' : '.flight-title')).toContainText('VECTOR');
     await trigger.click();
-    await popover.getByRole('button', { name: language === 'nl' ? 'Logboek wissen' : 'Clear log', exact: true }).click();
+    await popover.getByRole('button', { name: language === 'nl' ? 'Meldingen wissen' : 'Clear notifications', exact: true }).click();
     await expect(popover.locator('.event-row')).toHaveCount(0);
     await page.reload();
     await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);

@@ -14,6 +14,7 @@ for (const language of ['en', 'nl']) {
     } }));
     await page.goto('/');
     await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);
+    await page.getByRole('button', { name: language === 'nl' ? 'Meer' : 'More', exact: true }).click();
     await page.locator('.receiver-dashboard-button').click();
     const panel = page.locator('.receiver-database');
     await expect(panel.getByRole('status')).toHaveText('Recent');
@@ -44,6 +45,7 @@ test('database status polls while open, warns about old data and never invents m
   await page.goto('/');
   await expect(page.locator('.aircraft-map-marker')).toHaveCount(2);
   expect(requests).toBe(0);
+  await page.getByRole('button', { name: 'More', exact: true }).click();
   await page.locator('.receiver-dashboard-button').click();
   const panel = page.locator('.receiver-database');
   await expect(panel.getByRole('status')).toHaveText('Older than 48 hours');

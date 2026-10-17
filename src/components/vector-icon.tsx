@@ -17,9 +17,11 @@ export type VectorIconName =
   | 'list'
   | 'logbook'
   | 'mobile'
+  | 'more'
   | 'notifications'
   | 'pause'
   | 'play'
+  | 'pin'
   | 'range'
   | 'rings'
   | 'receiver'
@@ -62,9 +64,11 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
   list: ['M9 6h11M9 12h11M9 18h11', 'M4 6h.01M4 12h.01M4 18h.01'],
   logbook: ['M6 3h14v18H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z', 'M3 17a3 3 0 0 1 3-3h14', 'M8 7h7M8 10h4'],
   mobile: ['M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z', 'M11 18h2'],
+  more: ['M6 12a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z', 'M13 12a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z', 'M20 12a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z'],
   notifications: ['M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9', 'M10 21h4'],
   pause: ['M9 5v14M15 5v14'],
   play: ['M8 5v14l11-7Z'],
+  pin: ['M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6Z', 'M12 14v7'],
   range: ['M12 3 19 7l2 8-6 6-8-2-4-7 3-7 6-2Z', 'M12 12h.01'],
   rings: ['M12 12h.01', 'M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z', 'M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z'],
   receiver: [
