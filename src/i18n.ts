@@ -1,6 +1,20 @@
 export type Language = 'nl' | 'en';
 
 const nl = {
+  heatmap: 'Heatmap',
+  heatmapShow: 'Toon heatmap',
+  heatmapHide: 'Verberg heatmap',
+  heatmapPeriod: 'Heatmapperiode',
+  heatmap1h: '1 uur',
+  heatmap4h: '4 uur',
+  heatmap8h: '8 uur',
+  heatmap24h: '24 uur',
+  heatmap7d: '7 dagen',
+  heatmapLoading: 'Laden…',
+  heatmapUnavailable: 'Heatmap niet beschikbaar',
+  heatmapEmpty: 'Geen gegevens',
+  heatmapLow: 'Weinig',
+  heatmapHigh: 'Veel',
   filterArea: 'Gebied',
   mapAreas: 'Gebieden',
   areaCircle: 'Cirkel',
@@ -473,6 +487,20 @@ const nl = {
 export type TranslationKey = keyof typeof nl;
 
 const en: Record<TranslationKey, string> = {
+  heatmap: 'Heatmap',
+  heatmapShow: 'Show heatmap',
+  heatmapHide: 'Hide heatmap',
+  heatmapPeriod: 'Heatmap period',
+  heatmap1h: '1 hour',
+  heatmap4h: '4 hours',
+  heatmap8h: '8 hours',
+  heatmap24h: '24 hours',
+  heatmap7d: '7 days',
+  heatmapLoading: 'Loading…',
+  heatmapUnavailable: 'Heatmap unavailable',
+  heatmapEmpty: 'No data',
+  heatmapLow: 'Low',
+  heatmapHigh: 'High',
   filterArea: 'Area',
   mapAreas: 'Areas',
   areaCircle: 'Circle',

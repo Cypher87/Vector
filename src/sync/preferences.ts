@@ -13,6 +13,7 @@ import { legTracePeriods, type LegTracePeriod } from '../domain/aircraft-trace.t
 import { normalizeFavoriteAircraftIds, normalizeFavoriteCallsigns, normalizeFavoriteRegistrations } from '../domain/favorite-aircraft.ts';
 import { normalizeRadarEventPreferences, type RadarEventPreferences } from '../domain/radar-event.ts';
 import type { Language } from '../i18n.ts';
+import { isHeatmapPeriod, type HeatmapPeriod } from '../domain/heatmap.ts';
 import { normalizeThemeMode, type ThemeMode } from '../theme.ts';
 
 export type SyncedAircraftFilters = AircraftFilters;
@@ -37,6 +38,8 @@ export type SyncPreferences = {
   legTracePeriod?: LegTracePeriod;
   mapLabels?: boolean;
   mapAreas?: boolean;
+  heatmap?: boolean;
+  heatmapPeriod?: HeatmapPeriod;
   radarEventPreferences?: RadarEventPreferences;
   theme?: ThemeMode;
   unitSystem?: UnitSystem;
@@ -77,13 +80,14 @@ export function normalizeSyncPreferences(value: unknown): SyncPreferences {
     preferences.radarEventPreferences = normalizeRadarEventPreferences(value.radarEventPreferences);
   }
 
-  for (const key of ['actualRangeOutline', 'aircraftMotion', 'aircraftShadows', 'aircraftWakes', 'aircraftFavoritesFirst', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels', 'mapAreas'] as const) {
+  for (const key of ['actualRangeOutline', 'aircraftMotion', 'aircraftShadows', 'aircraftWakes', 'aircraftFavoritesFirst', 'autoHideDetails', 'distanceRings', 'legTrace', 'mapLabels', 'mapAreas', 'heatmap'] as const) {
     if (typeof value[key] === 'boolean') preferences[key] = value[key];
   }
 
   if (legTracePeriods.includes(value.legTracePeriod as LegTracePeriod)) {
     preferences.legTracePeriod = value.legTracePeriod as LegTracePeriod;
   }
+  if (isHeatmapPeriod(value.heatmapPeriod)) preferences.heatmapPeriod = value.heatmapPeriod;
 
   if (isAircraftSort(value.aircraftSort)) {
     preferences.aircraftSort = value.aircraftSort;
@@ -122,6 +126,8 @@ const scalarPreferenceKeys = [
   'legTracePeriod',
   'mapLabels',
   'mapAreas',
+  'heatmap',
+  'heatmapPeriod',
   'radarEventPreferences',
   'theme',
   'unitSystem',

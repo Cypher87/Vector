@@ -2,7 +2,7 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.12.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.13.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
@@ -10,6 +10,7 @@ A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/reads
 - Search, advanced filters, drawn map areas with entry alerts, saved views, and favorites.
 - Aircraft details with photos, routes, technical data, and interactive flight profiles.
 - Altitude-colored traces, receiver history replay, distance rings, and range outline.
+- Time-selectable traffic heatmap with continuous recorded routes, relative colors, automatic refresh, and a local server cache.
 - Receiver dashboard and events for favorite arrivals, emergencies, and connection changes.
 - Persistent receiver logbook with search, favorites, live selection, and sighting replay with routes and flight profiles.
 - Desktop and mobile layouts, Dutch/English, coordinated dark/light/automatic appearance, and three unit systems.
@@ -77,6 +78,7 @@ For another Vector server, use `READSB_SOURCE=vector` and `READSB_REMOTE_URL=htt
 | `VECTOR_MAP_STYLE_URL` | MapLibre style; defaults to `/map-style.json`. |
 | `VECTOR_SYNC_STORE` | Synchronization database; the installer sets `/var/lib/vector/sync.json`. |
 | `VECTOR_LOGBOOK_DAYS` | Logbook retention; `90` days by default (1–365). Set `VECTOR_LOGBOOK_ENABLED=false` to disable recording and access. |
+| `VECTOR_HEATMAP_CACHE` | Optional local SQLite cache path; defaults to `heatmap-cache.sqlite` beside the synchronization store. Keep it on local storage, not NFS. |
 | `VECTOR_UPDATES_ENABLED` | Enables the browser update menu; `false` by default. Requires a separate administrator password. |
 
 Units accept `metric`, `aeronautical`, or `imperial`. See the [complete configuration example](packaging/vector.env.example).

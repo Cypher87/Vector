@@ -1,6 +1,8 @@
 import type { Map as MapLibre } from 'maplibre-gl';
 import { createVectorIconElement, type VectorIconName } from '../components/vector-icon';
 import { translate, type Language } from '../i18n';
+import { heatmapPeriods, isHeatmapPeriod, defaultHeatmapPeriod, type HeatmapPeriod } from '../domain/heatmap';
+import { heatmapPeriodLabels } from '../components/heatmap-legend';
 
 const mapControlLabels = (
   language: Language,
@@ -49,13 +51,17 @@ export const createMapNavigationControl = (
   onLegTraceToggle: () => void,
   onHistoryToggle: () => void,
   areas?: { visible: boolean; onToggle: () => void },
+  heatmap?: { visible: boolean; period: HeatmapPeriod; onToggle: () => void; onPeriodChange: (period: HeatmapPeriod) => void },
 ) => {
   let container: HTMLDivElement | undefined;
   let layerMenu: HTMLDivElement | undefined;
   let documentPointerDown: ((event: PointerEvent) => void) | undefined;
+  let heatmapField: HTMLLabelElement | undefined;
+  let heatmapSelect: HTMLSelectElement | undefined;
   let controls: {
     actualRange: HTMLButtonElement;
     areas: HTMLButtonElement;
+    heatmap: HTMLButtonElement;
     aircraftShadows: HTMLButtonElement;
     aircraftWakes: HTMLButtonElement;
     center: HTMLButtonElement;
@@ -77,6 +83,8 @@ export const createMapNavigationControl = (
   let currentLegTraceVisible = legTraceVisible;
   let currentHistoryOpen = historyOpen;
   let currentAreasVisible = areas?.visible ?? true;
+  let currentHeatmapVisible = heatmap?.visible ?? false;
+  let currentHeatmapPeriod = heatmap?.period ?? defaultHeatmapPeriod;
   let menuOpen = false;
 
   const button = (className: string, label: string, onClick: () => void, iconName: VectorIconName) => {
@@ -146,6 +154,15 @@ export const createMapNavigationControl = (
     setLayerButtonState(controls.actualRange, labels.actualRangeName, labels.actualRange, currentActualRangeVisible);
     setLayerButtonState(controls.distanceRings, labels.distanceRingsName, labels.distanceRings, currentDistanceRingsVisible);
     setLayerButtonState(controls.areas, translate(currentLanguage, 'mapAreas'), translate(currentLanguage, currentAreasVisible ? 'areaHide' : 'areaShow'), currentAreasVisible);
+    setLayerButtonState(controls.heatmap, translate(currentLanguage, 'heatmap'), translate(currentLanguage, currentHeatmapVisible ? 'heatmapHide' : 'heatmapShow'), currentHeatmapVisible);
+    controls.heatmap.disabled = currentHistoryOpen;
+    if (heatmapField && heatmapSelect) {
+      heatmapField.hidden = !currentHeatmapVisible || currentHistoryOpen;
+      heatmapField.querySelector('span')!.textContent = translate(currentLanguage, 'heatmapPeriod');
+      heatmapSelect.setAttribute('aria-label', translate(currentLanguage, 'heatmapPeriod'));
+      for (const option of heatmapSelect.options) if (isHeatmapPeriod(option.value)) option.textContent = translate(currentLanguage, heatmapPeriodLabels[option.value]);
+      heatmapSelect.value = currentHeatmapPeriod;
+    }
     controls.actualRange.disabled = !currentActualRangeAvailable;
     controls.legTrace.disabled = currentHistoryOpen;
     controls.aircraftWakes.disabled = currentHistoryOpen;
@@ -166,6 +183,8 @@ export const createMapNavigationControl = (
     nextLegTraceVisible: boolean,
     nextHistoryOpen: boolean,
     nextAreasVisible = currentAreasVisible,
+    nextHeatmapVisible = currentHeatmapVisible,
+    nextHeatmapPeriod = currentHeatmapPeriod,
   ) => {
     currentLanguage = nextLanguage;
     currentActualRangeAvailable = nextActualRangeAvailable;
@@ -177,6 +196,8 @@ export const createMapNavigationControl = (
     currentLegTraceVisible = nextLegTraceVisible;
     currentHistoryOpen = nextHistoryOpen;
     currentAreasVisible = nextAreasVisible;
+    currentHeatmapVisible = nextHeatmapVisible;
+    currentHeatmapPeriod = nextHeatmapPeriod;
     updateState();
   };
 
@@ -201,6 +222,7 @@ export const createMapNavigationControl = (
       layerHeading.textContent = labels.mapLayers;
       layerMenu.appendChild(layerHeading);
       controls = {
+        heatmap: layerButton('vector-map-heatmap', translate(currentLanguage, 'heatmap'), () => heatmap?.onToggle(), 'heatmap'),
         areas: layerButton('vector-map-areas', translate(currentLanguage, 'mapAreas'), () => areas?.onToggle(), 'range'),
         zoomIn: button('vector-map-zoom-in', labels.zoomIn, () => map.zoomIn({ duration: 250 }), 'zoomIn'),
         zoomOut: button('vector-map-zoom-out', labels.zoomOut, () => map.zoomOut({ duration: 250 }), 'zoomOut'),
@@ -229,6 +251,15 @@ export const createMapNavigationControl = (
       layerMenu.appendChild(controls.actualRange);
       layerMenu.appendChild(controls.distanceRings);
       layerMenu.appendChild(controls.areas);
+      layerMenu.appendChild(controls.heatmap);
+      heatmapField = document.createElement('label'); heatmapField.className = 'vector-heatmap-period';
+      heatmapField.appendChild(document.createElement('span'));
+      heatmapSelect = document.createElement('select');
+      for (const period of heatmapPeriods) {
+        const option = document.createElement('option'); option.value = period; heatmapSelect.appendChild(option);
+      }
+      heatmapSelect.addEventListener('change', () => { if (heatmapSelect && isHeatmapPeriod(heatmapSelect.value)) heatmap?.onPeriodChange(heatmapSelect.value); });
+      heatmapField.appendChild(heatmapSelect); layerMenu.appendChild(heatmapField);
       container.appendChild(layerMenu);
       container.appendChild(controls.zoomIn);
       container.appendChild(controls.zoomOut);
@@ -250,6 +281,7 @@ export const createMapNavigationControl = (
       layerMenu = undefined;
       documentPointerDown = undefined;
       controls = undefined;
+      heatmapField = undefined; heatmapSelect = undefined;
     },
     setState,
   };

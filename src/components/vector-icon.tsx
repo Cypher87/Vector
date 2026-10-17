@@ -11,6 +11,7 @@ export type VectorIconName =
   | 'favorite'
   | 'follow'
   | 'history'
+  | 'heatmap'
   | 'labels'
   | 'layers'
   | 'list'
@@ -55,6 +56,7 @@ const iconPaths: Record<VectorIconName, readonly string[]> = {
   favorite: ['m12 3.5 2.62 5.3 5.85.85-4.24 4.13 1 5.83L12 17l-5.23 2.75 1-5.83-4.24-4.13 5.85-.85L12 3.5Z'],
   follow: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z', 'M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z', 'M12 12h.01'],
   history: ['M3 3v5h5', 'M3.6 8A9 9 0 1 1 3 12', 'M12 7v5l3 2'],
+  heatmap: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z', 'M15.5 8.5c-1.7-2-5.3-1.8-6.7.5-2 3.4 1.7 7.1 5.1 5.1 2.3-1.4 2.5-5 .5-6.7', 'M12 12h.01'],
   labels: ['M5 6.5h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H9l-4 3v-3a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2Z', 'M8 11h8M8 14h5'],
   layers: ['m12 3-9 5 9 5 9-5-9-5Z', 'm3 12 9 5 9-5', 'm3 16 9 5 9-5'],
   list: ['M9 6h11M9 12h11M9 18h11', 'M4 6h.01M4 12h.01M4 18h.01'],

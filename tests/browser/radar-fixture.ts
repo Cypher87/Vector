@@ -55,6 +55,12 @@ export class RadarFixture {
   traceResponses = new Map<string, unknown>();
   traceSpeed: number | null = 200;
   extraAircraft: Record<string, unknown>[] = [];
+  heatmapRequests: string[] = [];
+  heatmapLoading = 0;
+  heatmapError = false;
+  heatmapEmpty = false;
+  heatmapPartial = false;
+  heatmapPointCount?: number;
   private started = Date.now();
 
   async install(page: Page) {
@@ -78,6 +84,26 @@ export class RadarFixture {
       }
       if (url.pathname === '/api/sync/session') return json({ connected: false, preferences: {} });
       if (url.pathname === '/api/updates') return json({ enabled: false });
+      if (url.pathname === '/api/heatmap') {
+        const period = url.searchParams.get('period') || '24h'; this.heatmapRequests.push(period);
+        if (this.heatmapError) return json({ status: 'error', loaded: 0, total: 3 }, 503);
+        if (this.heatmapLoading-- > 0) return json({ status: 'loading', loaded: 1, total: 49 }, 202);
+        const hours = ({ '1h': 1, '4h': 4, '8h': 8, '24h': 24, '7d': 168 } as Record<string, number>)[period];
+        const to = Math.floor(Date.now() / 60_000) * 60;
+        const pointCount = this.heatmapPointCount ?? (period === '1h' ? 500 : 2000);
+        const points = this.heatmapEmpty ? [] : Array.from({ length: pointCount }, (_, index) => {
+          if (period === '1h' && !this.heatmapPointCount) {
+            const step = index % 125 / 125, route = Math.floor(index / 125);
+            return [4 + step * 1.8, 52 + route * .15 + step * .4, 1 + Math.round(20 * Math.exp(-((step - .55) ** 2) / .015))];
+          }
+          const columns = this.heatmapPointCount ? Math.ceil(Math.sqrt(pointCount)) : 50, x = index % columns, y = Math.floor(index / columns);
+          const step = this.heatmapPointCount ? .002 : .01;
+          return [4.55 + x * step, 52.1 + y * step,
+            1 + Math.round(60 * Math.exp(-((x - columns * .5) ** 2 + (y - columns * .35) ** 2) / 40))];
+        });
+        return json({ status: 'ready', loaded: hours * 2 + 1, total: hours * 2 + 1,
+          data: { from: to - hours * 3600, to, first: this.heatmapEmpty ? null : to - 1800, last: this.heatmapEmpty ? null : to - 60, gridZoom: 16, partial: this.heatmapPartial, points } });
+      }
       if (url.pathname === '/api/aircraft-database-status') return json({ state: 'ready', location: 'local', updatedAt: Date.now() - 3600_000, records: 623176 });
       if (url.pathname === '/api/aircraft-metadata') return json({ aircraft: {
         abc123: { aircraftType: 'A320', registration: 'TEST-1', category: 'A3' },

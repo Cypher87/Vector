@@ -1,0 +1,18 @@
+.map .vector-map-layer-menu { max-height: calc(100svh - 220px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.vector-heatmap-period { display: grid; gap: 6px; padding: 8px 7px 12px; font-size: 12px; color: var(--text-secondary-color); }
+.vector-heatmap-period[hidden] { display: none; }
+.vector-heatmap-period select { width: 100%; min-width: 0; height: 36px; padding: 6px 30px 6px 9px; border: 1px solid var(--line); border-radius: 4px; background-color: var(--theme-input); color: var(--ink); font: inherit; }
+.heatmap-legend { position: absolute; z-index: 6; right: var(--map-edge-inset); bottom: var(--map-bottom-inset); width: 185px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--theme-control); box-shadow: var(--shadow-control); font-size: 12px; color: var(--ink); }
+.heatmap-legend header { display: flex; align-items: center; gap: 8px; }
+.heatmap-legend strong { font-size: 12px; font-weight: 600; }
+.heatmap-legend strong span { font-weight: 400; color: var(--text-secondary-color); }
+.heatmap-key { margin-top: 7px; }
+.heatmap-gradient { height: 8px; border-radius: 2px; background: linear-gradient(90deg, #4d8e8c, #c6ad6c 40%, #db984d 65%, #bd583b); }
+.heatmap-key-labels { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 10px; color: var(--text-secondary-color); }
+.heatmap-status { color: var(--text-secondary-color); font-size: 12px; line-height: 1.4; }
+.heatmap-status:not(:empty) { margin-top: 6px; }
+@media (max-width: 720px) {
+  .vector-heatmap-period select { height: 40px; font-size: 16px; }
+  .heatmap-legend { width: 145px; padding: 8px 10px; }
+  .map.heatmap-visible .altitude-legend { width: min(145px, calc(50% - 18px)); }
+}

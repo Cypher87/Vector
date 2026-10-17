@@ -66,6 +66,14 @@ test('local and remote production runtimes serve live, metadata, outline, traces
     replay.writeUInt32LE(stamp % 2 ** 32, 8);
     replay.writeUInt32LE(0xabc123, 16);
     await writeFile(join(history, '2026/10/04/heatmap/00.bin.ttf'), gzipSync(replay));
+    const heatmapStamp = Math.floor(Date.now() / 60_000) * 60_000 - 120_000;
+    const heatmapDate = new Date(heatmapStamp);
+    const heatmapDirectory = join(history, String(heatmapDate.getUTCFullYear()), String(heatmapDate.getUTCMonth() + 1).padStart(2, '0'), String(heatmapDate.getUTCDate()).padStart(2, '0'), 'heatmap');
+    await mkdir(heatmapDirectory, { recursive: true });
+    const heatmapRecording = Buffer.alloc(32);
+    heatmapRecording.writeUInt32LE(0x0e7f7c9d); heatmapRecording.writeUInt32LE(Math.floor(heatmapStamp / 2 ** 32), 4); heatmapRecording.writeUInt32LE(heatmapStamp % 2 ** 32, 8);
+    heatmapRecording.writeUInt32LE(0xabc123, 16); heatmapRecording.writeInt32LE(52_300_000, 20); heatmapRecording.writeInt32LE(4_800_000, 24);
+    await writeFile(join(heatmapDirectory, `${String(heatmapDate.getUTCHours() * 2 + Math.floor(heatmapDate.getUTCMinutes() / 30)).padStart(2, '0')}.bin.ttf`), gzipSync(heatmapRecording));
     const environment = {
       READSB_SOURCE: 'local',
       READSB_LIVE_DIR: live, READSB_HISTORY_DIR: history, VECTOR_AIRCRAFT_DATABASE: database,
@@ -99,6 +107,22 @@ test('local and remote production runtimes serve live, metadata, outline, traces
         return response;
       };
       const config = await (await get('/api/config')).json();
+      assert.equal((await request(`${origin}/api/heatmap?period=999d`)).status, 400);
+      assert.equal((await request(`${origin}/api/heatmap?period=1h&path=../secret`)).status, 400);
+      let heatmapResponse;
+      for (let i = 0; i < 100; i++) {
+        heatmapResponse = await request(`${origin}/api/heatmap?period=1h`);
+        if (heatmapResponse.status !== 202) break;
+        await delay(30);
+      }
+      assert.equal(heatmapResponse.status, 200, await heatmapResponse.clone().text());
+      const heatmap = await heatmapResponse.json();
+      assert.equal(heatmap.status, 'ready'); assert.equal(heatmap.data.points.length, 1);
+      assert.equal(heatmap.data.points[0][2], 1);
+      assert.equal(heatmap.data.to - heatmap.data.from, 3600);
+      assert.equal(heatmap.data.partial, true);
+      assert.equal(JSON.stringify(heatmap).includes(root), false);
+      assert.equal(heatmapResponse.headers.get('cache-control'), 'no-store');
       const logbook = await (await get('/api/logbook')).json();
       assert.equal(logbook.total, 1);
       assert.equal(logbook.entries[0].registration, 'TEST-A');
@@ -158,7 +182,7 @@ test('local and remote production runtimes serve live, metadata, outline, traces
       assert.equal((await get('/')).status, 200);
       assert.equal((await get('/credits.html')).status, 200);
     }
-    for (const path of ['/api/readsb?source=live&path=aircraft.json', '/api/aircraft-metadata?ids=abc123', '/api/aircraft-database-status', '/api/logbook']) {
+    for (const path of ['/api/readsb?source=live&path=aircraft.json', '/api/aircraft-metadata?ids=abc123', '/api/aircraft-database-status', '/api/logbook', '/api/heatmap?period=1h']) {
       assert.equal((await request(`${remote}${path}`, { headers: { 'x-vector-data-proxy': '1' } })).status, 508);
     }
     assert.equal((await request(`${remote}/api/logbook`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-vector-data-proxy': '1' }, body: '{"favorites":[]}' })).status, 508);

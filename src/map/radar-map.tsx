@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AttributionControl, Map as MapLibre, Marker } from 'maplibre-gl';
+import { AttributionControl, Map as MapLibre, Marker, setWorkerUrl } from 'maplibre-gl';
+import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { createVectorIconElement } from '../components/vector-icon';
 import { createMapNavigationControl } from './map-navigation-control';
 import type { Aircraft, AircraftTracePoint, UnitSystem } from '../domain/aircraft';
@@ -36,8 +37,11 @@ import { createAreaOverlay, type AreaOverlayItem } from './area-overlay';
 import { createAreaCenterHandle } from './area-center-handle';
 import { areaBounds, type AreaCoordinate, type AreaDrawing, type MapArea } from '../domain/map-area';
 import { MapAreaEditor } from '../components/map-area-editor';
+import { createTrafficHeatmap } from './traffic-heatmap';
+import type { HeatmapData, HeatmapPeriod } from '../domain/heatmap';
 
 type RadarMapProps = {
+  heatmap: { visible: boolean; period: HeatmapPeriod; data?: HeatmapData; onVisibleChange: (visible: boolean) => void; onPeriodChange: (period: HeatmapPeriod) => void };
   actualRangeAvailable: boolean;
   actualRangeVisible: boolean;
   aircraft: Aircraft[];
@@ -201,7 +205,7 @@ const createAircraftMarker = (onSelect: () => void): AircraftMarker => {
   };
 };
 
-export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, wakeTraces, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, live, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId, shadowTimestamp, theme, unitSystem, areas, areasVisible, areaDrawing, onAreasVisibleChange, onAreaPoint, onAreaDrawingChange, onAreaFinish, onAreaCancel }: RadarMapProps) {
+export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, aircraftMotionEnabled, aircraftShadowsVisible, aircraftWakesVisible, wakeTraces, center, dataBaseUrl, distanceRingsVisible, favoriteIds, focusTarget, following, historyOpen, labelsVisible, live, tracePoints, highlightedTracePoint, legTraceVisible, language, mapStyleUrl, onActualRangeVisibleChange, onAircraftShadowsVisibleChange, onAircraftWakesVisibleChange, onDeselect, onDistanceRingsVisibleChange, onHistoryToggle, onLabelsVisibleChange, onLegTraceVisibleChange, onSelect, selectedId, shadowTimestamp, theme, unitSystem, areas, areasVisible, areaDrawing, onAreasVisibleChange, onAreaPoint, onAreaDrawingChange, onAreaFinish, onAreaCancel, heatmap }: RadarMapProps) {
   const centerLongitude = center[0];
   const centerLatitude = center[1];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -248,6 +252,19 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
   const shadowTimestampRef = useRef(shadowTimestamp ?? Date.now() / 1_000);
   const navigationControlRef = useRef<ReturnType<typeof createMapNavigationControl> | undefined>(undefined);
   const [ready, setReady] = useState(false);
+  const heatmapRef = useRef(heatmap);
+  const heatmapLayerRef = useRef<ReturnType<typeof createTrafficHeatmap> | undefined>(undefined);
+  useEffect(() => { heatmapRef.current = heatmap; }, [heatmap]);
+  useEffect(() => {
+    if (!ready || !mapRef.current) return;
+    const layer = createTrafficHeatmap(mapRef.current, (state) => containerRef.current?.setAttribute('data-heatmap-rendered', state)); heatmapLayerRef.current = layer;
+    return () => { layer.dispose(); heatmapLayerRef.current = undefined; };
+  }, [ready]);
+  useEffect(() => {
+    heatmapLayerRef.current?.update(heatmap.data, heatmap.visible && !historyOpen, theme);
+    containerRef.current?.setAttribute('data-heatmap-points', String(heatmap.data?.points.length ?? 0));
+    containerRef.current?.setAttribute('data-heatmap-visible', String(heatmap.visible && !historyOpen));
+  }, [ready, heatmap.data, heatmap.visible, historyOpen, theme]);
   const areaOverlayRef = useRef<ReturnType<typeof createAreaOverlay> | undefined>(undefined);
   const areaCenterRef = useRef<ReturnType<typeof createAreaCenterHandle> | undefined>(undefined);
   const areaItemsRef = useRef(areas);
@@ -347,8 +364,10 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       legTraceVisible,
       historyOpen,
       areasVisible,
+      heatmap.visible,
+      heatmap.period,
     );
-  }, [actualRangeAvailable, actualRangeVisible, aircraftShadowsVisible, aircraftWakesVisible, distanceRingsVisible, historyOpen, labelsVisible, language, legTraceVisible, shadowTimestamp, areasVisible]);
+  }, [actualRangeAvailable, actualRangeVisible, aircraftShadowsVisible, aircraftWakesVisible, distanceRingsVisible, historyOpen, labelsVisible, language, legTraceVisible, shadowTimestamp, areasVisible, heatmap.visible, heatmap.period]);
 
   const updateWakePositions = useCallback(function requestWakeDraw() {
     // Feed, marker motion, move and rotate may all request the same frame.
@@ -741,6 +760,9 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
     if (!containerRef.current || mapRef.current) return;
 
     setReady(false);
+    // Bundle the worker and its shared module; MapLibre's default relative URL
+    // otherwise points beside the application bundle instead of its own package.
+    setWorkerUrl(mapWorkerUrl);
     const map = new MapLibre({
       container: containerRef.current,
       style: mapStyleUrl,
@@ -895,6 +917,8 @@ export function RadarMap({ actualRangeAvailable, actualRangeVisible, aircraft, a
       () => onLegTraceVisibleChangeRef.current(!legTraceVisibleRef.current),
       () => onHistoryToggleRef.current(),
       { visible: areasVisibleRef.current, onToggle: () => areasToggleRef.current(!areasVisibleRef.current) },
+      { visible: heatmapRef.current.visible, period: heatmapRef.current.period,
+        onToggle: () => heatmapRef.current.onVisibleChange(!heatmapRef.current.visible), onPeriodChange: (period) => heatmapRef.current.onPeriodChange(period) },
     );
     navigationControlRef.current = navigationControl;
     map.addControl(navigationControl, 'top-right');

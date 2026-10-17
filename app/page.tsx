@@ -9,6 +9,9 @@ import { AircraftRoute, AircraftRouteSummary, useAircraftRoute } from '../src/co
 import { AircraftTechnicalData } from '../src/components/aircraft-technical-data';
 import { EventCenter } from '../src/components/event-center';
 import { HistoryControls } from '../src/components/history-controls';
+import { HeatmapLegend } from '../src/components/heatmap-legend';
+import { useHeatmap } from '../src/data/use-heatmap';
+import { defaultHeatmapPeriod, parseHeatmapPeriod, type HeatmapPeriod } from '../src/domain/heatmap';
 import { FlightProfile } from '../src/components/flight-profile';
 import { ReceiverDashboard } from '../src/components/receiver-dashboard';
 import { LogbookMenu } from '../src/components/logbook-menu';
@@ -151,6 +154,8 @@ export default function Home() {
   const [actualRangeVisible, setActualRangeVisible] = useState(false);
   const [distanceRingsVisible, setDistanceRingsVisible] = useState(false);
   const [areasVisible, setAreasVisible] = useState(true);
+  const [heatmapVisible, setHeatmapVisible] = useState(false);
+  const [heatmapPeriod, setHeatmapPeriod] = useState<HeatmapPeriod>(defaultHeatmapPeriod);
   const [areaDrawing, setAreaDrawing] = useState<AreaDrawing>();
   const [areaReturnRequest, setAreaReturnRequest] = useState(0);
   const [technicalDataOpen, setTechnicalDataOpen] = useState(false);
@@ -169,6 +174,7 @@ export default function Home() {
   const [favoriteRegistrations, setFavoriteRegistrations] = useState<string[]>([]);
   const [localPreferencesReady, setLocalPreferencesReady] = useState(false);
   const theme = useResolvedTheme(themeMode, localPreferencesReady);
+  const heatmap = useHeatmap(heatmapVisible && !history.open && localPreferencesReady, heatmapPeriod);
   const syncPreferencesAppliedForRef = useRef<string | undefined>(undefined);
   const syncPreferencesLastRemoteRef = useRef<SyncPreferences | undefined>(undefined);
   const syncPreferencesPendingForRef = useRef<string | undefined>(undefined);
@@ -194,6 +200,8 @@ export default function Home() {
       if (window.localStorage.getItem('vector.actualRangeOutline') === 'true') setActualRangeVisible(true);
       if (window.localStorage.getItem('vector.distanceRings') === 'true') setDistanceRingsVisible(true);
       if (window.localStorage.getItem('vector.mapAreas') === 'false') setAreasVisible(false);
+      if (window.localStorage.getItem('vector.heatmap') === 'true') setHeatmapVisible(true);
+      setHeatmapPeriod(parseHeatmapPeriod(window.localStorage.getItem('vector.heatmapPeriod')));
       if (window.localStorage.getItem('vector.autoHideDetails') === 'true') setAutoHideDetails(true);
       setFavoriteAircraftIds(parseFavoriteAircraftIds(window.localStorage.getItem(favoriteAircraftStorageKey)));
       setFavoriteCallsigns(parseFavoriteCallsigns(window.localStorage.getItem(favoriteCallsignStorageKey)));
@@ -307,6 +315,12 @@ export default function Home() {
   const changeAreasVisible = (visible: boolean) => {
     setAreasVisible(visible);
     window.localStorage.setItem('vector.mapAreas', String(visible));
+  };
+  const changeHeatmapVisible = (visible: boolean) => {
+    setHeatmapVisible(visible); window.localStorage.setItem('vector.heatmap', String(visible));
+  };
+  const changeHeatmapPeriod = (period: HeatmapPeriod) => {
+    setHeatmapPeriod(period); window.localStorage.setItem('vector.heatmapPeriod', period);
   };
   const clearAircraftSelection = () => {
     setSelectedId(null);
@@ -488,9 +502,11 @@ export default function Home() {
     legTracePeriod,
     mapLabels: labelsVisible,
     mapAreas: areasVisible,
+    heatmap: heatmapVisible,
+    heatmapPeriod,
     theme: themeMode,
     unitSystem,
-  }), [actualRangeVisible, aircraftFavoritesFirst, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, favoriteCallsigns, favoriteRegistrations, labelsVisible, language, legTracePeriod, legTraceVisible, radarEventPreferences, themeMode, unitSystem, areasVisible]);
+  }), [actualRangeVisible, aircraftFavoritesFirst, aircraftFilterPresets, aircraftFilters, aircraftMotionEnabled, aircraftShadowsVisible, aircraftSort, aircraftWakesVisible, autoHideDetails, distanceRingsVisible, favoriteAircraftIds, favoriteCallsigns, favoriteRegistrations, labelsVisible, language, legTracePeriod, legTraceVisible, radarEventPreferences, themeMode, unitSystem, areasVisible, heatmapVisible, heatmapPeriod]);
 
   useEffect(() => {
     if (!syncProfileId) {
@@ -539,6 +555,12 @@ export default function Home() {
       if (saved.mapAreas !== undefined) {
         setAreasVisible(saved.mapAreas);
         window.localStorage.setItem('vector.mapAreas', String(saved.mapAreas));
+      }
+      if (saved.heatmap !== undefined) {
+        setHeatmapVisible(saved.heatmap); window.localStorage.setItem('vector.heatmap', String(saved.heatmap));
+      }
+      if (saved.heatmapPeriod !== undefined) {
+        setHeatmapPeriod(saved.heatmapPeriod); window.localStorage.setItem('vector.heatmapPeriod', saved.heatmapPeriod);
       }
       if (saved.aircraftMotion !== undefined) {
         setAircraftMotionEnabled(saved.aircraftMotion);
@@ -990,7 +1012,7 @@ export default function Home() {
           </div>
         </aside>
 
-        <section className={`map ${history.open ? 'history-open' : ''}`} aria-label={t('radarMap')}>
+        <section className={`map ${history.open ? 'history-open' : ''} ${heatmapVisible && !history.open ? 'heatmap-visible' : ''}`} aria-label={t('radarMap')}>
           <RadarMap
             actualRangeAvailable={feed.receiver?.outlineJson === true}
             actualRangeVisible={actualRangeVisible}
@@ -1007,6 +1029,7 @@ export default function Home() {
             areas={mapAreas}
             areasVisible={areasVisible}
             areaDrawing={areaDrawing}
+            heatmap={{ visible: heatmapVisible, period: heatmapPeriod, data: heatmap.data, onVisibleChange: changeHeatmapVisible, onPeriodChange: changeHeatmapPeriod }}
             onAreasVisibleChange={changeAreasVisible}
             onAreaPoint={addAreaPoint}
             onAreaDrawingChange={setAreaDrawing}
@@ -1044,6 +1067,7 @@ export default function Home() {
             unitSystem={unitSystem}
           />
 
+          {heatmapVisible && !history.open && <HeatmapLegend state={heatmap} language={language} />}
           <div className="altitude-legend" aria-label={`${t('aircraftColorAltitude')} 0 ${t('to')} ${altitudeLegend.ticks.at(-1)?.label} ${altitudeLegend.unit}`}>
             <span>{t('altitude')} <em>{altitudeLegend.unit}</em></span>
             <div aria-hidden="true" style={{ background: altitudeLegendGradient(theme) }}>{altitudeLegend.ticks.map((tick) => <i key={tick.label} style={{ left: `${tick.position}%` }} />)}</div>

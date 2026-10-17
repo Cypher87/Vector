@@ -46,6 +46,14 @@ Combine the area with other criteria and choose **Save filter**. Its bell under 
 
 The **Areas** layer shows saved outlines and the current area's boundary; hiding it does not disable filtering or notifications. Area matching requires a fresh known position. Notifications confirm a match for ten seconds and only rearm after an observed exit of five minutes. Missing positions and changes to other criteria while still inside do not count as exits. Alerts operate while this browser has Vector open and connected, not as background push notifications.
 
+## Traffic heatmap
+
+Enable **Map layers → Heatmap** and choose **1 hour**, **4 hours**, **8 hours**, **24 hours** (default), or **7 days**. The layer shows the density of recorded aircraft positions, not receiver signal strength or a count of unique aircraft. Colors are recalibrated to the density within each selected period, including sparse one-hour views; the same color does not imply equal absolute traffic across periods. Hovering the legend shows the actual observation window. Gaps do not trigger a warning; empty periods show **No data**. Missing or unreadable history never becomes invented traffic.
+
+The server reads only the requested UTC recording files, on demand, and keeps a bounded local cache separate from the readsb/NFS archive. Initial loading shows progress; subsequent views reuse summaries. The layer refreshes every five minutes while visible, pauses in hidden browser tabs, and is hidden during replay. Its period and visibility synchronize between paired devices. Current aircraft filters do not filter the historical heatmap.
+
+Consecutive recorded positions of the same aircraft are joined into continuous corridors before aggregation, so a recording interval does not turn a route into isolated dots. Connections stop at reception gaps over 60 seconds or implausible jumps; unrelated aircraft are never joined. Only Vector's disposable cache is rebuilt when this processing changes, not the readsb recordings.
+
 ## Traces, flight profiles, and replay
 
 Expand **Flight profile** in the detail panel to plot reported altitude and ground speed from the same trace as the map. Hover, tap, or use the keyboard-accessible time slider to inspect a measurement and highlight its map position. Collapsing the profile clears that highlight, not the leg trace. Values follow the selected unit system.

@@ -3,6 +3,7 @@
 @import './logbook.css';
 @import './favorites.css';
 @import './areas.css';
+@import './heatmap.css';
 
 :root {
   --ink: #f2f0e9;
