@@ -76,7 +76,9 @@ sudo bash /tmp/vector-install.sh --rollback
 
 The app and runtime links are journaled before activation and restored before the old service is restarted. A separate root-owned recovery runner under `/usr/local/lib/vector-installer/` remains usable even when the active app/runtime links are interrupted or reverted. Later administrator edits are not silently overwritten: recovery stops and reports the protected backup location if it finds a conflict. Keep backups private because they may contain receiver settings. Backups made by older installers still offer configuration-only recovery; they do not contain a previous app build.
 
-The previous builds are retained under `/opt/vector/releases/` for recovery; they are not receiver history. Do not manually remove the active or previous release while a rollback may still be needed. Vector 0.9 defaults to the development branch `main`, not a claimed stable 1.0 release. `VECTOR_REF` may select an existing installer-compatible tag or commit instead.
+After a verified installation, automatic cleanup retains the active build and two preceding recovery builds under `/opt/vector/releases/`. Only root-owned, journaled application builds are removed. Unresolved recovery, unknown directories, symlinks and mounted directories are preserved; cleanup failure does not undo a healthy installation. Runtime installations, recovery journals, configuration, synchronization data and receiver history (including NFS) are not pruned. Do not manually remove the active or previous release while a rollback may still be needed. Vector 0.9 defaults to the development branch `main`, not a claimed stable 1.0 release. `VECTOR_REF` may select an existing installer-compatible tag or commit instead.
+
+Recovery is complete only after the previously active app passes two consecutive service, web page and configuration API checks using its restored host and port. An unavailable receiver does not prevent verifying that the old app is back. If the app itself remains unreachable, recovery stays pending and reports that administrator attention is needed. Previously stopped installations stay stopped.
 
 Uninstall removes the Vector permission hook before removing its runtime. readsb's recording options, history, and the independent retention job remain; `--purge` also removes Vector configuration, state, helper code, and migration backups. It does not purge receiver history.
 
@@ -92,9 +94,9 @@ Run the current installer once to install `vector-updater.service`. Browser upda
 
 2. In `/etc/vector/vector.env`, set `VECTOR_UPDATES_ENABLED=true`. Leave the generated `VECTOR_UPDATE_PASSWORD_HASH` intact. The default is `false`.
 3. Restart the webapp: `sudo systemctl restart vector`.
-4. Refresh the browser, open **Settings → Updates**, unlock with the administrator password, check for updates, and confirm the proposed build.
+4. Refresh the browser, open **Settings → Updates**, unlock with the administrator password, and choose **Install update** for the proposed build.
 
-The menu is hidden while updates are disabled; setting a password alone does not enable it. Checks are manual: there is no automatic startup or scheduled check. The open dialog polls local progress every 2.5 seconds, not GitHub. Use the password command again to change the administrator password.
+The menu is hidden while updates are disabled; setting a password alone does not enable it. Opening the unlocked menu or unlocking it checks for updates once, reusing checks less than a minute old. There is no startup or scheduled check and no automatic installation. Existing update failures remain visible until the administrator explicitly checks again. The open dialog polls local progress every 2.5 seconds, not GitHub. Use the password command again to change the administrator password.
 
 The installed version and short Git revision distinguish releases and builds. Checks use the official `Cypher87/Vector` `main` branch. Each installation is pinned to the exact revision shown at confirmation. A browser cannot supply a different URL, repository, branch, installer flag or shell command. The worker uses the installer's shared lock, stages a separate release, preserves the source configuration, and checks fresh data after restarting. Source changes that need interactive decisions must be performed from the terminal instead.
 

@@ -294,7 +294,7 @@ fi
 # Keep a recovery runner independent of the app/runtime links being restored.
 recovery_directory="$VECTOR_RECOVERY/$(basename "$release_directory")"
 install -d -o root -g root -m 0755 "$VECTOR_RECOVERY" "$recovery_directory" "$recovery_directory/lib"
-for script in migrate-install.mjs readsb-access.mjs lib/readsb-migration.mjs lib/migration-files.mjs lib/release-switch.mjs; do
+for script in migrate-install.mjs readsb-access.mjs lib/readsb-migration.mjs lib/migration-files.mjs lib/release-switch.mjs lib/release-retention.mjs; do
   install -o root -g root -m 0644 "$source_directory/scripts/$script" "$recovery_directory/$script"
 done
 install -o root -g root -m 0755 "$source_directory/scripts/recover-install.sh" "$recovery_directory/recover-install.sh"

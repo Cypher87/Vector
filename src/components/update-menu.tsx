@@ -10,8 +10,8 @@ import { useUpdateStatus } from '../updates/use-update-status';
 
 const words = {
   nl: {
-    title: 'Updates', close: 'Updates sluiten', current: 'Geïnstalleerd', available: 'Beschikbaar', password: 'Beheerwachtwoord', login: 'Ontgrendelen', logout: 'Vergrendelen', check: 'Controleren op updates', update: 'Bijwerken', confirm: 'Update installeren', cancel: 'Annuleren',
-    confirmation: 'Vector blijft beschikbaar tijdens het bouwen en wordt daarna kort herstart.',
+    title: 'Updates', close: 'Updates sluiten', current: 'Geïnstalleerd', available: 'Beschikbaar', password: 'Beheerwachtwoord', login: 'Ontgrendelen', logout: 'Vergrendelen', check: 'Opnieuw controleren', install: 'Update installeren',
+    confirmation: 'Vector wordt na het bouwen kort herstart.',
     latest: 'Je installatie is bijgewerkt.', finishing: 'Update afgerond. Vector wordt opnieuw verbonden en de pagina vernieuwt automatisch…', reconnecting: 'Vector wordt herstart. Wachten tot de verbinding is hersteld…',
     reconnectTimeout: 'Vector is nog niet bereikbaar. De uitkomst van de update is nog onbekend. We blijven opnieuw verbinden; controleer de serverlogs als dit aanhoudt.',
     updateUnconfirmed: 'De update kon niet worden bevestigd. Controleer opnieuw op updates voordat je nog een installatie start.',
@@ -19,8 +19,8 @@ const words = {
     errors: { disabled: 'Updates zijn uitgeschakeld door de beheerder.', unauthorized: 'Ontgrendel opnieuw om verder te gaan.', invalid_password: 'Onjuist beheerwachtwoord.', rate_limited: 'Te veel pogingen. Probeer het over 15 minuten opnieuw.', check_limited: 'Wacht een minuut voordat je opnieuw controleert.', check_failed: 'Updates konden niet worden opgehaald. Probeer later opnieuw.', service_unavailable: 'De updateservice is niet bereikbaar. Voer de nieuwste installer uit op deze server.', password_not_configured: 'Stel eerst een beheerwachtwoord in op de server.', unmanaged_installation: 'Updates zijn beschikbaar na installatie met de officiële Vector-installer.', check_required: 'Controleer opnieuw voordat je deze update installeert.', busy: 'Er wordt al een update uitgevoerd.', update_failed: 'Update mislukt. Controleer de installerlogs voordat je opnieuw probeert.', recovery_required: 'Herstel vraagt aandacht. Voer de installer opnieuw uit op de server.', invalid_origin: 'Dit adres is niet toegestaan voor beheeracties. Controleer de reverse-proxyconfiguratie.', invalid_request: 'De aanvraag is ongeldig.' },
   },
   en: {
-    title: 'Updates', close: 'Close updates', current: 'Installed', available: 'Available', password: 'Administrator password', login: 'Unlock', logout: 'Lock', check: 'Check for updates', update: 'Update', confirm: 'Install update', cancel: 'Cancel',
-    confirmation: 'Vector remains available during the build, then briefly restarts.',
+    title: 'Updates', close: 'Close updates', current: 'Installed', available: 'Available', password: 'Administrator password', login: 'Unlock', logout: 'Lock', check: 'Check again', install: 'Install update',
+    confirmation: 'Vector briefly restarts after the build.',
     latest: 'Your installation is up to date.', finishing: 'Update complete. Reconnecting to Vector; this page will refresh automatically…', reconnecting: 'Vector is restarting. Waiting for the connection to return…',
     reconnectTimeout: 'Vector is still unreachable. The update outcome is not yet known. We will keep reconnecting; check the server logs if this continues.',
     updateUnconfirmed: 'The update could not be confirmed. Check for updates again before starting another installation.',
@@ -33,14 +33,13 @@ export function UpdateMenu({ language }: { language: Language }) {
   const text = words[language];
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const { status, busy, error, setError, disconnected, watching, settling, refresh, act: requestAction } = useUpdateStatus(open);
   const running = watching || activeUpdatePhases.has(status?.phase || '');
 
   useEffect(() => {
     if (status?.enabled !== false) return;
-    const timer = window.setTimeout(() => { setOpen(false); setPassword(''); setConfirm(false); }, 0);
+    const timer = window.setTimeout(() => { setOpen(false); setPassword(''); }, 0);
     return () => window.clearTimeout(timer);
   }, [status?.enabled]);
   useEffect(() => {
@@ -51,11 +50,10 @@ export function UpdateMenu({ language }: { language: Language }) {
   }, [open]);
 
   const close = () => {
-    setOpen(false); setPassword(''); setConfirm(false); setError(null);
+    setOpen(false); setPassword(''); setError(null);
     requestAnimationFrame(() => document.querySelector<HTMLElement>('.settings-menu summary')?.focus());
   };
   const act = async (action: string, extra: Record<string, unknown> = {}) => {
-    if (action === 'apply') setConfirm(false);
     await requestAction(action, extra);
     setPassword('');
   };
@@ -87,12 +85,14 @@ export function UpdateMenu({ language }: { language: Language }) {
             <button className="update-primary" disabled={busy || !password} type="submit">{text.login}</button>
           </form>}
           {status.authenticated && <>
-            {confirm && <p>{text.confirmation}</p>}
-            <div className="update-actions">
-              {confirm ? <><button className="update-primary" type="button" disabled={busy || running} onClick={() => void act('apply', { revision: status.available?.revision, confirm: true })}>{text.confirm}</button><button type="button" disabled={busy} onClick={() => setConfirm(false)}>{text.cancel}</button></>
-                : <>{!running && <button type="button" disabled={busy || !status.ready} onClick={() => void act('check')}>{text.check}</button>}{status.available && <button className="update-primary" type="button" disabled={busy || running} onClick={() => setConfirm(true)}>{text.update}</button>}</>}
-            </div>
-            {!running && <button className="update-lock" type="button" disabled={busy} onClick={() => { setConfirm(false); void act('logout'); }}>{text.logout}</button>}
+            {!running && <>
+              {status.available && <p>{text.confirmation}</p>}
+              <div className="update-actions">
+                {status.available && <button className="update-primary" type="button" disabled={busy || disconnected || !status.ready || status.phase === 'checking'} onClick={() => void act('apply', { revision: status.available?.revision, confirm: true })}>{text.install}</button>}
+                {(!status.available || failure) && <button type="button" disabled={busy || !status.ready || status.phase === 'checking'} onClick={() => void act('check')}>{text.check}</button>}
+              </div>
+              <button className="update-lock" type="button" disabled={busy} onClick={() => void act('logout')}>{text.logout}</button>
+            </>}
           </>}
         </div>
       </dialog>, document.body)}

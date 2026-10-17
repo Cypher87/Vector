@@ -2,7 +2,7 @@
 
 A standalone aircraft radar for your [readsb](https://github.com/wiedehopf/readsb) receiver. Built with React, Vinext, and MapLibre, with original Vector aircraft icons. **No tar1090 application or web server is needed or used.** The separate `tar1090-db` dataset remains the aircraft metadata source; Vector downloads and updates it independently.
 
-**Current version: 0.9.14.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
+**Current version: 0.9.15.** Vector remains pre-1.0. Find the installed version and short build revision at the bottom of **Settings**, or the version in the desktop footer; the receiver dashboard separately shows the readsb version.
 
 ## Features
 
@@ -41,7 +41,7 @@ The installer detects readsb and its data directories, configures read access, m
 
 NFS history uses the share's existing read permissions. Vector's access maintenance runs separately from readsb and never scans the history archive during receiver startup. See [NFS history and recovery](docs/STANDALONE.md#nfs-history).
 
-No `.env` editing is needed for a standard installation. Questions appear only when a choice is necessary, such as multiple receivers or an intentional external source. Updates build separately while the current app keeps running, then switch over and verify fresh receiver data. Failed activation restores the previous app, runtime, configuration and service state. See [installation details and recovery](docs/STANDALONE.md).
+No `.env` editing is needed for a standard installation. Questions appear only when a choice is necessary, such as multiple receivers or an intentional external source. Updates build separately while the current app keeps running, then switch over and verify fresh receiver data. Failed activation restores the previous app, runtime, configuration and service state, then verifies the restored app is reachable. Successful updates retain the active build and two recovery builds, removing older managed builds without touching receiver history. See [installation details and recovery](docs/STANDALONE.md).
 
 Open **`http://<pi-address>:3000`** from your local network. Allow port 3000 through your firewall if necessary. Use HTTPS through a reverse proxy before exposing Vector beyond a trusted network; set `HOST=127.0.0.1` if only that local proxy should reach it.
 
@@ -133,7 +133,7 @@ sudo /opt/vector/runtime/node/bin/node /usr/local/lib/vector-updater/set-update-
 
 Set `VECTOR_UPDATES_ENABLED=true` in `/etc/vector/vector.env`, run `sudo systemctl restart vector`, and refresh the browser. **Updates** then appears at the bottom of **Settings**. Setting a password alone does not enable the menu. Use the same password command to change it later.
 
-Unlock **Settings → Updates**, choose **Check for updates**, then confirm the proposed build. **Checks and installation are manual**: Vector does not check at startup or on a schedule. Closing the browser does not cancel an accepted update.
+Open **Settings → Updates** and unlock. Vector checks for updates automatically; choose **Install update** to install the displayed build. An already unlocked menu also checks when opened, reusing checks less than a minute old. There are no startup or scheduled checks, and installation always requires your click. Closing the browser does not cancel an accepted update.
 
 During the app and updater restarts, the interface reconnects automatically. Once the new build is ready and both services are reachable, the page refreshes once. Temporary disconnects are not reported as installation failures; a longer interruption shows an explicit connection warning, while actual installer failures remain visible.
 

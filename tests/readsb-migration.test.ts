@@ -7,7 +7,7 @@ import { parseEnv } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { dataDirectory, argumentValue, patchEnvironment, planReadsb, readerAcl, readerCanAccess, migrationSettings } from '../scripts/lib/readsb-migration.mjs';
 import { MigrationFiles, snapshot, atomicWrite } from '../scripts/lib/migration-files.mjs';
-import { detach, install, recover } from '../scripts/migrate-install.mjs';
+import { detach, health, install, recover } from '../scripts/migrate-install.mjs';
 import { ReleaseSwitch } from '../scripts/lib/release-switch.mjs';
 import { grantReadAccess, liveAccessSpec, readerFilesystem, readerMounts, removeReadAccess, restoreAccess } from '../scripts/readsb-access.mjs';
 
@@ -119,7 +119,7 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
   const map = (path: string) => join(root, path.replaceAll('\\', '/').replace(/^\/+/, ''));
   const calls: string[] = [];
   const verifications: string[][] = [];
-  const state = { argv, failHealth: false, failCheck: false, failDatabase: false, failVerify: false, sourceUid: 0, services: ['readsb.service'], choice: 0, remoteUrl: 'http://vector-receiver.example:3000/' };
+  const state = { argv, failHealth: false, failRecovery: false, recovering: false, failCheck: false, failDatabase: false, failVerify: false, sourceUid: 0, services: ['readsb.service'], choice: 0, remoteUrl: 'http://vector-receiver.example:3000/' };
   const put = async (path: string, body: string) => { await mkdir(join(map(path), '..'), { recursive: true }); await writeFile(map(path), body); };
   await put('/etc/vector/vector.env', env);
   await put('/etc/default/readsb', defaults);
@@ -135,7 +135,8 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
     async prepare(directory: string, runtime: string) { return super.prepare(map(directory), map(runtime)); }
   }
   const io = {
-    log: () => {}, sleep: async () => {},
+    log: (message: string) => { if (message.startsWith('Restoring the previous')) state.recovering = true; }, sleep: async () => {},
+    pruneReleases: async () => { calls.push('prune releases'); return []; },
     ask: async (_question: string, choices?: string[]) => { calls.push('question'); return choices ? state.choice : state.remoteUrl; },
     readFile: async (path: string) => path.startsWith('/proc/5678/') ? '/usr/bin/python3\0/usr/share/readsb-mqtt/main.py\0' : path.startsWith('/proc/') ? `${state.argv.join('\0')}\0` : readFile(map(path), 'utf8'),
     snapshot: (path: string) => snapshot(map(path)),
@@ -178,7 +179,9 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
       return '';
     },
     fetch: async (url: string) => {
-      if (state.failHealth) return new Response(null, { status: 502 });
+      calls.push(`fetch ${url}`);
+      if (state.recovering ? state.failRecovery : state.failHealth) return new Response(null, { status: 502 });
+      if (url.endsWith('/')) return new Response('<!doctype html><html></html>', { headers: { 'content-type': 'text/html' } });
       return Response.json(url.endsWith('aircraft.json') ? { now: Date.now() / 1000, aircraft: [] } : { haveReplay: true });
     },
   };
@@ -197,7 +200,7 @@ async function simulation(argv = fullArgs, env = vectorEnv) {
     await symlink(map('/opt/vector/runtime/old'), map('/opt/vector/runtime/node'));
     await put('/opt/vector/app/old-build', 'old build');
     for (const name of [...vectorUnits, 'vector-updater.service']) await put(`${release.directory}/packaging/systemd/${name}`, await readFile(new URL(`../packaging/systemd/${name}`, import.meta.url), 'utf8'));
-    for (const name of ['lib/release-switch.mjs', 'lib/migration-files.mjs', 'lib/readsb-migration.mjs', 'readsb-access.mjs', 'migrate-install.mjs', 'lib/update-auth.mjs', 'lib/update-control.mjs', 'set-update-password.mjs', 'update-service.mjs']) {
+    for (const name of ['lib/release-switch.mjs', 'lib/release-retention.mjs', 'lib/migration-files.mjs', 'lib/readsb-migration.mjs', 'readsb-access.mjs', 'migrate-install.mjs', 'lib/update-auth.mjs', 'lib/update-control.mjs', 'set-update-password.mjs', 'update-service.mjs']) {
       await put(`${release.directory}/scripts/${name}`, await readFile(new URL(`../scripts/${name}`, import.meta.url), 'utf8'));
     }
     if (protectedSource) {
@@ -222,6 +225,7 @@ test('Linux release migration switches the complete build and manual rollback re
     assert.equal(await realpath(sim.map('/opt/vector/app')), sim.map(release.directory));
     assert.equal(await realpath(sim.map('/opt/vector/runtime/node')), sim.map(release.runtime));
     assert.equal((await sim.journal()).status, 'complete');
+    assert.equal(sim.calls.at(-1), 'prune releases');
     await sim.rollback();
     assert.equal(await readFile(sim.map('/opt/vector/app/old-build'), 'utf8'), 'old build');
     assert.equal(await realpath(sim.map('/opt/vector/runtime/node')), sim.map('/opt/vector/runtime/old'));
@@ -243,6 +247,81 @@ test('Linux failed post-start health check restores app, runtime and config, wit
     assert.equal(await readFile(sim.map('/etc/vector/vector.env'), 'utf8'), vectorEnv);
     assert.equal(await readFile(sim.map('/var/globe_history/recording'), 'utf8'), 'keep');
     assert.equal((await sim.journal()).status, 'rolled-back');
+    assert.equal(sim.calls.includes('prune releases'), false);
+  } finally { await sim.cleanup(); }
+});
+
+test('failed recovery health remains pending and can be retried after the old app becomes available', async () => {
+  const sim = await simulation();
+  sim.state.failHealth = true; sim.state.failRecovery = true;
+  try {
+    await assert.rejects(() => sim.migrate(), /Recovery needs attention/);
+    assert.equal((await sim.journal()).status, 'recovering');
+    assert.equal(sim.calls.includes('prune releases'), false);
+    sim.state.failRecovery = false;
+    await sim.rollback();
+    assert.equal((await sim.journal()).status, 'rolled-back');
+  } finally { await sim.cleanup(); }
+});
+
+test('recovery probes the restored address twice and is independent of receiver availability', async () => {
+  const urls: string[] = []; let probes = 0;
+  await health({ HOST: '::1', PORT: '3456' }, {
+    log() {}, sleep: async () => {},
+    run: async () => { probes++; },
+    fetch: async (url: string) => {
+      urls.push(url);
+      if (url.endsWith('/')) return new Response('<html></html>', { headers: { 'content-type': 'text/html' } });
+      if (url.endsWith('/api/config')) return Response.json({});
+      return new Response(null, { status: 503 });
+    },
+  }, { recovery: true });
+  assert.equal(probes, 2);
+  assert.deepEqual(urls, ['http://[::1]:3456/', 'http://[::1]:3456/api/config', 'http://[::1]:3456/', 'http://[::1]:3456/api/config']);
+});
+
+test('health rejects a broken frontend even when JSON endpoints would succeed', async () => {
+  await assert.rejects(() => health({}, {
+    log() {}, sleep: async () => {}, run: async () => {},
+    fetch: async (url: string) => url.endsWith('/') ? new Response(null, { status: 500 }) : Response.json({}),
+  }, { recovery: true }), /HTTP 500/);
+});
+
+test('health resets its stability count after a startup failure', async () => {
+  let attempts = 0;
+  await health({}, {
+    log() {}, sleep: async () => {},
+    run: async () => { if (++attempts === 2) throw new Error('service crashed'); },
+    fetch: async (url: string) => url.endsWith('/')
+      ? new Response('<html></html>', { headers: { 'content-type': 'text/html' } }) : Response.json({}),
+  }, { recovery: true });
+  assert.equal(attempts, 4);
+});
+
+test('recovery leaves a previously stopped installation stopped without an HTTP probe', async () => {
+  const sim = await simulation();
+  try {
+    const run = sim.io.run;
+    sim.io.run = async (command, args) => {
+      if (command === 'systemctl' && args[0] === 'is-active' && args.at(-1) === 'vector.service' && !sim.state.recovering) throw new Error('previously stopped');
+      return run(command, args);
+    };
+    sim.state.failCheck = true;
+    await assert.rejects(() => sim.migrate(), /Previous installation and configuration restored/);
+    assert.equal((await sim.journal()).status, 'rolled-back');
+    assert.equal(sim.calls.some((call) => call.startsWith('fetch ')), false);
+    assert.equal(sim.calls.includes('systemctl restart vector.service'), false);
+  } finally { await sim.cleanup(); }
+});
+
+test('cleanup failure does not roll back a healthy newly installed release', { skip: process.platform !== 'linux' }, async () => {
+  const sim = await simulation();
+  try {
+    const release = await sim.stage();
+    sim.io.pruneReleases = async () => { throw new Error('cleanup unavailable'); };
+    await sim.migrate({ release });
+    assert.equal((await sim.journal()).status, 'complete');
+    assert.equal(await realpath(sim.map('/opt/vector/app')), sim.map(release.directory));
   } finally { await sim.cleanup(); }
 });
 

@@ -82,7 +82,7 @@ export function useUpdateStatus(open: boolean) {
         }
         // Completion is an installer journal entry, not a perpetual call to reload.
         track(false); setSettling(false); p.target = null; p.completeAt = null;
-        publish({ ...next, phase: 'idle', checkedAt: next.checkedAt || Date.now() }); return;
+        publish({ ...next, phase: 'idle' }); return;
       }
       if (p.watching && p.target && next.phase === 'idle') setError('update_unconfirmed');
       track(false); setSettling(false); p.target = null; p.completeAt = null;
@@ -102,11 +102,12 @@ export function useUpdateStatus(open: boolean) {
     return () => window.clearInterval(timer);
   }, [open, watching, refresh]);
 
-  const act = async (action: string, extra: Record<string, unknown> = {}) => {
+  const act = useCallback(async (action: string, extra: Record<string, unknown> = {}) => {
     const p = progress.current;
     if (p.posting) return;
     p.posting = true; p.epoch++;
     setBusy(true); setError(null);
+    if (action === 'check') publish({ ...p.status!, phase: 'checking', error: null });
     if (action === 'apply') {
       p.target = typeof extra.revision === 'string' ? extra.revision : null;
       p.completeAt = null; p.outageAt = null;
@@ -133,10 +134,23 @@ export function useUpdateStatus(open: boolean) {
       if (action === 'apply') unavailable();
       else setError('service_unavailable');
     } finally {
+      if (action === 'check' && p.status?.phase === 'checking') publish({ ...p.status, phase: 'idle' });
       p.posting = false; setBusy(false);
       void refresh();
     }
-  };
+  }, [publish, refresh, track, unavailable]);
+
+  const checkedOnOpen = useRef(false);
+  useEffect(() => {
+    if (!open || !status?.authenticated) { checkedOnOpen.current = false; return; }
+    if (checkedOnOpen.current || !status?.enabled || !status.authenticated || !status.ready || busy || watching) return;
+    // An explicit visit by an unlocked administrator may check, never install.
+    // Preserve failures for inspection and reuse the worker's one-minute cache.
+    if (status.phase !== 'idle' || status.error) { checkedOnOpen.current = true; return; }
+    if (status.checkedAt && Date.now() - status.checkedAt < 60_000) { checkedOnOpen.current = true; return; }
+    const timer = window.setTimeout(() => { checkedOnOpen.current = true; void act('check'); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [open, status, busy, watching, act]);
 
   return { status, busy, error, setError, disconnected, watching, settling, refresh, act };
 }

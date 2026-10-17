@@ -10,6 +10,7 @@ import { configPath, ownedHistory, planReadsb, migrationSettings, patchEnvironme
 import { MigrationFiles, atomicWrite, snapshot } from './lib/migration-files.mjs';
 import { grantReadAccess, liveAccessSpec, removeReadAccess, restoreAccess } from './readsb-access.mjs';
 import { ReleaseSwitch } from './lib/release-switch.mjs';
+import { pruneReleases } from './lib/release-retention.mjs';
 
 const app = '/opt/vector/app';
 const node = '/opt/vector/runtime/node/bin/node';
@@ -20,7 +21,7 @@ const accessService = 'vector-readsb-access.service';
 const log = (message) => console.log(`[Vector] ${message}`);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const system = { run, ask, readFile, mkdir, chown, lstat, realpath, statfs, unlink, snapshot, atomicWrite,
-  MigrationFiles, ReleaseSwitch, grantReadAccess, removeReadAccess, fetch: (...args) => fetch(...args), sleep, log };
+  MigrationFiles, ReleaseSwitch, pruneReleases, grantReadAccess, removeReadAccess, fetch: (...args) => fetch(...args), sleep, log };
 
 export function run(command, args, input, timeout = 60_000) {
   return new Promise((resolve, reject) => {
@@ -110,22 +111,36 @@ async function waitFor(check, seconds, io) {
   throw last;
 }
 
-async function health(environment, io) {
+export async function health(environment, io, { recovery = false } = {}) {
   const { run, fetch, log } = io;
   const port = Number(environment.PORT || 3000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Invalid Vector port');
   const host = environment.HOST && !['0.0.0.0', '::'].includes(environment.HOST) ? environment.HOST : '127.0.0.1';
   const origin = `http://${host.includes(':') && !host.startsWith('[') ? `[${host}]` : host}:${port}`;
+  let successes = 0;
   await waitFor(async () => {
-    await run('systemctl', ['is-active', '--quiet', 'vector.service']);
-    for (const path of ['/api/config', '/api/readsb?source=live&path=receiver.json', '/api/readsb?source=live&path=aircraft.json']) {
-      const response = await fetch(`${origin}${path}`, { signal: AbortSignal.timeout(3000), redirect: 'error' });
-      if (!response.ok) throw new Error(`Vector data check returned HTTP ${response.status}`);
-      const json = await response.json();
-      if (path.endsWith('aircraft.json') && (!Array.isArray(json.aircraft) || !Number.isFinite(json.now) || Math.abs(Date.now() / 1000 - json.now) > 60)) throw new Error('Vector is not receiving fresh aircraft data');
-    }
+    try {
+      await run('systemctl', ['is-active', '--quiet', 'vector.service']);
+      // Recovery checks the restored app, not the receiver/network outage which may
+      // have caused activation to fail in the first place.
+      const paths = recovery ? ['/', '/api/config'] : ['/', '/api/config', '/api/readsb?source=live&path=receiver.json', '/api/readsb?source=live&path=aircraft.json'];
+      for (const path of paths) {
+        const response = await fetch(`${origin}${path}`, { signal: AbortSignal.timeout(3000), redirect: 'error' });
+        if (!response.ok) throw new Error(`Vector data check returned HTTP ${response.status}`);
+        if (path === '/') {
+          if (!response.headers.get('content-type')?.includes('text/html')) throw new Error('Vector page did not return HTML');
+          await response.body?.cancel();
+          continue;
+        }
+        const json = await response.json();
+        if (!json || typeof json !== 'object' || Array.isArray(json)) throw new Error('Invalid Vector response');
+        if (path.endsWith('aircraft.json') && (!Array.isArray(json.aircraft) || !Number.isFinite(json.now) || Math.abs(Date.now() / 1000 - json.now) > 60)) throw new Error('Vector is not receiving fresh aircraft data');
+      }
+    } catch (error) { successes = 0; throw error; }
+    // Type=simple reports a successful restart before application startup finishes.
+    if (++successes < 2) throw new Error('Waiting for stable Vector startup');
   }, 20, io);
-  log(`Installation verified. Open http://<pi-address>:${port}`);
+  log(recovery ? 'Previous application is reachable again.' : `Installation verified. Open http://<pi-address>:${port}`);
 }
 
 async function serviceState(name, io) {
@@ -186,6 +201,11 @@ export async function recover(transaction, io = system) {
     if (state.name === 'vector-updater.service' && process.env.VECTOR_WEB_UPDATE === '1') continue;
     if (state.active) await run('systemctl', ['restart', state.name]);
     else await run('systemctl', ['stop', state.name]).catch(() => {});
+  }
+  if (transaction.state.services?.some((state) => state.name === 'vector.service' && state.active)) {
+    const restored = await io.snapshot(configPath);
+    if (!restored) throw new Error('Restored Vector configuration is missing');
+    await health(parseEnv(restored.content), io, { recovery: true });
   }
   transaction.state.status = 'rolled-back';
   await transaction.save();
@@ -250,7 +270,7 @@ export async function install({ yes = false, keepSource = false, release } = {},
     if (release) {
       await new io.ReleaseSwitch(transaction).prepare(release.directory, release.runtime);
       // Dependencies first, entry point last. Hooks execute only root-owned helper copies.
-      for (const name of ['lib/release-switch.mjs', 'lib/migration-files.mjs', 'lib/readsb-migration.mjs', 'readsb-access.mjs', 'migrate-install.mjs']) {
+      for (const name of ['lib/release-switch.mjs', 'lib/release-retention.mjs', 'lib/migration-files.mjs', 'lib/readsb-migration.mjs', 'readsb-access.mjs', 'migrate-install.mjs']) {
         await transaction.write(join(admin, name), await readFile(join(privilegedSource, 'scripts', name), 'utf8'), 0o644, { uid: 0, gid: 0 });
       }
       for (const name of ['lib/update-auth.mjs', 'lib/update-control.mjs', 'lib/migration-files.mjs', 'lib/readsb-migration.mjs', 'set-update-password.mjs', 'update-service.mjs']) {
@@ -346,6 +366,13 @@ export async function install({ yes = false, keepSource = false, release } = {},
     await health(parseEnv(candidate), io);
     transaction.state.status = 'complete';
     await transaction.save();
+    if (release) {
+      // Cleanup is maintenance, never a reason to undo a verified installation.
+      try {
+        const removed = await io.pruneReleases();
+        if (removed.length) log(`Removed ${removed.length} old application build(s); active and recovery builds retained.`);
+      } catch (error) { log(`Old builds retained: ${error.message}`); }
+    }
     const source = parseEnv(candidate).READSB_SOURCE;
     log(source === 'vector' ? 'Installation complete: data comes from the configured Vector receiver.'
       : 'Migration complete: Vector reads readsb directly. Other applications and recordings have not been removed.');

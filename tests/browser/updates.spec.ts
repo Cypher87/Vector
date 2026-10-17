@@ -18,6 +18,8 @@ test('administrator can unlock, approve an exact build, follow progress and reco
   let navigations = 0;
   page.on('request', (request) => { if (request.isNavigationRequest() && request.frame() === page.mainFrame()) navigations++; });
   let applies = 0;
+  let checks = 0;
+  let checkedAt = 0;
   const next = 'b'.repeat(40);
   await page.route('**/api/updates', (route) => {
     if (offline) { offlineRequests++; return route.fulfill({ status: 503, json: { enabled: true, ready: false, error: 'service_unavailable' } }); }
@@ -27,14 +29,14 @@ test('administrator can unlock, approve an exact build, follow progress and reco
         if (body.password !== 'test admin password') return route.fulfill({ status: 401, json: { error: 'invalid_password' } });
         authenticated = true;
       }
-      if (body.action === 'check') available = true;
+      if (body.action === 'check') { available = true; checks++; checkedAt = Date.now(); }
       if (body.action === 'apply') {
         expect(body).toEqual({ action: 'apply', revision: next, confirm: true });
         applies++; phase = 'building';
       }
       return route.fulfill({ status: body.action === 'apply' ? 202 : 200, json: {} });
     }
-    return route.fulfill({ json: { enabled: true, ready: true, authenticated, phase, restarting, current: { version: '0.9.0', revision }, available: authenticated && available ? { version: '0.9.0', revision: next } : null } });
+    return route.fulfill({ json: { enabled: true, ready: true, authenticated, phase, restarting, checkedAt, current: { version: '0.9.0', revision }, available: authenticated && available ? { version: '0.9.0', revision: next } : null } });
   });
   await page.goto('/');
   await page.locator('.settings-menu summary').click();
@@ -48,9 +50,10 @@ test('administrator can unlock, approve an exact build, follow progress and reco
   await expect(page.getByLabel('Administrator password', { exact: true })).toHaveValue('');
   await page.getByLabel('Administrator password', { exact: true }).fill('test admin password');
   await page.getByRole('button', { name: 'Unlock', exact: true }).click();
-  await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
   await expect(dialog).toContainText('0.9.0 · bbbbbbb');
-  await page.getByRole('button', { name: 'Update', exact: true }).click();
+  expect(checks).toBe(1);
+  await expect(dialog.getByRole('button', { name: 'Update', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Check again', exact: true })).toHaveCount(0);
   expect(applies).toBe(0);
   await page.screenshot({ path: testInfo.outputPath('update-confirmation.png') });
   const bounds = (await dialog.boundingBox())!;
@@ -58,11 +61,12 @@ test('administrator can unlock, approve an exact build, follow progress and reco
   expect(bounds.y + bounds.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   await page.getByRole('button', { name: 'Install update', exact: true }).click();
   await expect(dialog).toContainText('Building new version…');
-  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Check again', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Install update', exact: true })).toHaveCount(0);
   expect(applies).toBe(1);
   offline = true;
   await expect(dialog).toContainText('Vector is restarting.', { timeout: 8000 });
-  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Check again', exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('alert')).toHaveCount(0);
   offline = false; phase = 'complete'; restarting = true; authenticated = false; available = false; revision = next;
   await expect(dialog).toContainText('0.9.0 · bbbbbbb');
@@ -123,12 +127,11 @@ test('lost apply response is reconciled without another install and a real rollb
     if (offline) return route.fulfill({ status: 502, contentType: 'text/html', body: 'Restarting' });
     return route.fulfill({ json: { enabled: true, ready: true, authenticated: true, phase,
       error: phase === 'failed' ? 'update_failed' : null,
-      current: { version: '0.9.1', revision: 'a'.repeat(40) }, available: { version: '0.9.1', revision: next } } });
+      checkedAt: Date.now(), current: { version: '0.9.1', revision: 'a'.repeat(40) }, available: { version: '0.9.1', revision: next } } });
   });
   await page.goto('/');
   await page.locator('.settings-menu summary').click();
   await page.getByRole('button', { name: 'Updates', exact: true }).click();
-  await page.getByRole('button', { name: 'Update', exact: true }).click();
   await page.getByRole('button', { name: 'Install update', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('Vector is restarting.');
@@ -137,10 +140,10 @@ test('lost apply response is reconciled without another install and a real rollb
   await expect(dialog).toContainText('Building new version');
   phase = 'restoring';
   await expect(dialog).toContainText('Restoring previous installation');
-  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Check again', exact: true })).toHaveCount(0);
   phase = 'failed';
   await expect(dialog.getByRole('alert')).toContainText('Update failed.');
-  await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: 'Check again', exact: true })).toBeEnabled();
   expect(applies).toBe(1);
 });
 
@@ -200,7 +203,7 @@ for (const phase of ['idle', 'checking', 'building', 'complete', 'failed']) {
     await expect(dialog.getByRole('status')).toHaveCount(0);
     await expect(dialog.getByRole('alert')).toHaveCount(0);
     await expect(dialog.getByLabel('Administrator password', { exact: true })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Check for updates', exact: true })).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Check again', exact: true })).toHaveCount(0);
   });
 }
 
@@ -226,4 +229,70 @@ test('locking an administrator session hides its previous success message', asyn
   await expect(dialog.getByLabel('Administrator password', { exact: true })).toBeVisible();
   await expect(dialog.getByRole('status')).toHaveCount(0);
   await expect(dialog.getByRole('alert')).toHaveCount(0);
+});
+
+test('an unlocked dialog checks once on opening, reuses recent checks and never installs automatically', async ({ page }) => {
+  await page.clock.install();
+  let checks = 0, applies = 0, checkedAt = 0;
+  await page.route('**/api/updates', (route) => {
+    if (route.request().method() === 'POST') {
+      const { action } = route.request().postDataJSON();
+      if (action === 'check') { checks++; checkedAt = Date.now(); }
+      if (action === 'apply') applies++;
+      return route.fulfill({ json: {} });
+    }
+    return route.fulfill({ json: { enabled: true, ready: true, authenticated: true, phase: 'idle', checkedAt,
+      current: { version: '0.9.14', revision: 'a'.repeat(40) },
+      available: checks ? { version: '0.9.15', revision: 'b'.repeat(40) } : null,
+    } });
+  });
+  await page.goto('/');
+  await page.locator('.settings-menu summary').click();
+  const updates = page.getByRole('button', { name: 'Updates', exact: true });
+  await expect(updates).toBeVisible();
+  expect(checks).toBe(0);
+  await updates.click();
+  const dialog = page.getByRole('dialog', { name: 'Updates' });
+  await expect(dialog.getByRole('button', { name: 'Install update', exact: true })).toBeEnabled();
+  expect(checks).toBe(1); expect(applies).toBe(0);
+  await page.getByRole('button', { name: 'Close updates', exact: true }).click();
+  await page.locator('.settings-menu summary').click();
+  await updates.click();
+  await page.clock.runFor(3000);
+  expect(checks).toBe(1);
+  // Polls do not become periodic GitHub checks. Reopen after expiry to check again.
+  await page.clock.fastForward(65_000);
+  expect(checks).toBe(1);
+  await page.getByRole('button', { name: 'Close updates', exact: true }).click();
+  await page.locator('.settings-menu summary').click();
+  await updates.click();
+  await expect.poll(() => checks).toBe(2);
+  expect(applies).toBe(0);
+});
+
+test('failed automatic check has an explicit retry without installing or repeatedly checking', async ({ page }) => {
+  let checks = 0, failed = false;
+  await page.route('**/api/updates', (route) => {
+    if (route.request().method() === 'POST') {
+      expect(route.request().postDataJSON().action).toBe('check');
+      checks++; failed = true;
+      return route.fulfill({ status: 502, json: { error: 'check_failed' } });
+    }
+    return route.fulfill({ json: { enabled: true, ready: true, authenticated: true, phase: 'idle',
+      error: failed ? 'check_failed' : null, current: { version: '0.9.14', revision: 'a'.repeat(40) },
+    } });
+  });
+  await page.goto('/');
+  await page.locator('.settings-menu summary').click();
+  await page.getByRole('button', { name: 'Updates', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Updates' });
+  await expect(dialog.getByRole('alert')).toContainText('Updates could not be retrieved');
+  expect(checks).toBe(1);
+  await page.getByRole('button', { name: 'Close updates', exact: true }).click();
+  await page.locator('.settings-menu summary').click();
+  await page.getByRole('button', { name: 'Updates', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Updates could not be retrieved');
+  expect(checks).toBe(1);
+  await dialog.getByRole('button', { name: 'Check again', exact: true }).click();
+  await expect.poll(() => checks).toBe(2);
 });
